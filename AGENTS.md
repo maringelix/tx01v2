@@ -9,8 +9,9 @@ is the source of truth. The full rule list (pt-BR) is [docs/GUARDRAILS.md](docs/
   `dx01v2` on AWS now; `tx02v2`/`dx02v2` on Azure and `tx03v2`/`dx03v2` on GCP are planned).
 - It must stay healthy without any cloud account: every claim is backed by the local harness or
   carries a status label (`verified in CI`, `verified locally`, `not run in the cloud (v2)`, `planned`).
-- Current status: the harness (`make verify`) passes locally in a Linux container. **Nothing of v2
-  has run in AWS** (bootstrap, apply, platform, destroy are `not run in the cloud (v2)`).
+- Current status: the harness (`make verify`) passes locally in a Linux container and in CI (jobs
+  `static`, `test`). **Nothing of v2 has run in AWS** (bootstrap, apply, platform, destroy are
+  `not run in the cloud (v2)`).
 - The interface with `dx01v2` is [docs/CONTRATO.md](docs/CONTRATO.md) (contract v1, owned here).
 
 ## 2. Non-negotiable rules

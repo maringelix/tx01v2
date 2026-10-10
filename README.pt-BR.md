@@ -18,7 +18,7 @@ A família do lab (v2):
 | Repositório | Nuvem | Papel | Status |
 |---|---|---|---|
 | `tx01v2` (este repositório) | AWS | infraestrutura (Terraform, camada de plataforma) | ver matriz de status |
-| [`dx01v2`](https://github.com/maringelix/dx01v2) | AWS | aplicação (construída sobre o `docs/CONTRATO.md`) | desenvolvido em paralelo |
+| [`dx01v2`](https://github.com/maringelix/dx01v2) | AWS | aplicação (construída sobre o `docs/CONTRATO.md`) | veja a matriz de status dele |
 | `tx02v2` / `dx02v2` | Azure | infraestrutura / aplicação | `planejado` |
 | `tx03v2` / `dx03v2` | GCP | infraestrutura / aplicação | `planejado` |
 
@@ -26,11 +26,11 @@ A família do lab (v2):
 
 | Capacidade | Status | Evidência |
 |---|---|---|
-| Formatação, validação, lock files de providers (4 plataformas) | `verificado localmente` | `make static` (`terraform-fmt`, `terraform-validate:*`, `terraform-lockfiles`); job `static` do CI |
-| Lint e scan de segurança da IaC (tflint, trivy HIGH/CRITICAL) | `verificado localmente` | `make static` (`tflint`, `trivy-config`, `trivy-config-tfvars`) |
-| Workflows, scripts, manifests Kubernetes e values do Helm (actionlint, shellcheck, kubeconform, helm template) | `verificado localmente` | `make static` |
-| Scan de segredos e políticas do repositório (sem identificadores reais, actions fixadas, regressões do v1) | `verificado localmente` | `make static` (`gitleaks`, `policy-*`, `repo-structure`) |
-| Testes unitários do Terraform com provider AWS mockado (trust OIDC, bucket, budget, EKS, nós, RDS, ECR, WAF, KMS, parâmetros SSM do contrato, validações negativas) | `verificado localmente` | `make test`; job `test` do CI |
+| Formatação, validação, lock files de providers (4 plataformas) | `verificado no CI` | `make static` (`terraform-fmt`, `terraform-validate:*`, `terraform-lockfiles`); job `static` do CI |
+| Lint e scan de segurança da IaC (tflint, trivy HIGH/CRITICAL) | `verificado no CI` | `make static` (`tflint`, `trivy-config`, `trivy-config-tfvars`) |
+| Workflows, scripts, manifests Kubernetes e values do Helm (actionlint, shellcheck, kubeconform, helm template) | `verificado no CI` | `make static` |
+| Scan de segredos e políticas do repositório (sem identificadores reais, actions fixadas, regressões do v1) | `verificado no CI` | `make static` (`gitleaks`, `policy-*`, `repo-structure`) |
+| Testes unitários do Terraform com provider AWS mockado (trust OIDC, bucket, budget, EKS, nós, RDS, ECR, WAF, KMS, parâmetros SSM do contrato, validações negativas) | `verificado no CI` | `make test`; job `test` do CI |
 | Bootstrap (bucket de state, papéis OIDC do GitHub, budget) | `não executado em nuvem (v2)` | `terraform/bootstrap`, `docs/RUNBOOK.md` |
 | Apply do lab (VPC, EKS 1.36, RDS PostgreSQL 17, ECR, WAF, contrato no SSM) | `não executado em nuvem (v2)` | `.github/workflows/terraform-apply.yml` |
 | Plan em pull requests | `não executado em nuvem (v2)` | `.github/workflows/terraform-plan.yml` |
@@ -38,8 +38,9 @@ A família do lab (v2):
 | Destroy + checagem de sobras | `não executado em nuvem (v2)` | `.github/workflows/terraform-destroy.yml`, `scripts/leftovers.sh` |
 | Configurações do repositório como código (ruleset, environment `lab`) | `planejado` | `scripts/repo-guardrails.sh`, `docs/PUBLICACAO.md` |
 
-`verificado localmente` vira `verificado no CI` quando o CI rodar no GitHub. Uma linha de nuvem só
-muda com uma issue `cloud_run_report` (data, região, commit, custo, sobras).
+As linhas `verificado no CI` rodam em todo pull request, em todo push para a `main` e toda semana
+(jobs `static` e `test` do CI). Uma linha de nuvem só muda com uma issue `cloud_run_report` (data,
+região, commit, custo, sobras).
 
 ## Arquitetura
 
