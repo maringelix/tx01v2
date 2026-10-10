@@ -25,4 +25,10 @@ All notable changes to this project are documented here. The format follows
     ruleset and repository settings as code; Dependabot; issue and PR templates.
   - `scripts/leftovers.sh` to find billable leftovers after a destroy.
   - Brazilian Portuguese docs: architecture, contract v1, runbook, costs, guardrails, harness,
-    sustainment, publication checklist.
+    sustainment, publication checklist, and `docs/LICOES_APRENDIDAS.md` (sanitized lessons learned
+    from the v1 AWS lab, Nov 2025 – Mar 2026).
+
+### Changed
+
+- The CI (`static`, `test`) ran green on GitHub: the README status matrix now says `verified in CI`
+  for those rows.

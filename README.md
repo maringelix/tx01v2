@@ -18,7 +18,7 @@ The lab family (v2):
 | Repository | Cloud | Role | Status |
 |---|---|---|---|
 | `tx01v2` (this repo) | AWS | infrastructure (Terraform, platform layer) | see status matrix |
-| [`dx01v2`](https://github.com/maringelix/dx01v2) | AWS | application (built against `docs/CONTRATO.md`) | developed in parallel |
+| [`dx01v2`](https://github.com/maringelix/dx01v2) | AWS | application (built against `docs/CONTRATO.md`) | see its status matrix |
 | `tx02v2` / `dx02v2` | Azure | infrastructure / application | `planned` |
 | `tx03v2` / `dx03v2` | GCP | infrastructure / application | `planned` |
 
@@ -26,11 +26,11 @@ The lab family (v2):
 
 | Capability | Status | Evidence |
 |---|---|---|
-| Formatting, validation, provider lock files (4 platforms) | `verified locally` | `make static` (`terraform-fmt`, `terraform-validate:*`, `terraform-lockfiles`); CI job `static` |
-| Lint and IaC security scan (tflint, trivy HIGH/CRITICAL) | `verified locally` | `make static` (`tflint`, `trivy-config`, `trivy-config-tfvars`) |
-| Workflows, scripts, Kubernetes manifests and Helm values (actionlint, shellcheck, kubeconform, helm template) | `verified locally` | `make static` |
-| Secret scan and repository policies (no real identifiers, pinned actions, v1 regressions) | `verified locally` | `make static` (`gitleaks`, `policy-*`, `repo-structure`) |
-| Terraform unit tests with a mocked AWS provider (OIDC trust, bucket, budget, EKS, nodes, RDS, ECR, WAF, KMS, contract SSM parameters, negative validations) | `verified locally` | `make test`; CI job `test` |
+| Formatting, validation, provider lock files (4 platforms) | `verified in CI` | `make static` (`terraform-fmt`, `terraform-validate:*`, `terraform-lockfiles`); CI job `static` |
+| Lint and IaC security scan (tflint, trivy HIGH/CRITICAL) | `verified in CI` | `make static` (`tflint`, `trivy-config`, `trivy-config-tfvars`) |
+| Workflows, scripts, Kubernetes manifests and Helm values (actionlint, shellcheck, kubeconform, helm template) | `verified in CI` | `make static` |
+| Secret scan and repository policies (no real identifiers, pinned actions, v1 regressions) | `verified in CI` | `make static` (`gitleaks`, `policy-*`, `repo-structure`) |
+| Terraform unit tests with a mocked AWS provider (OIDC trust, bucket, budget, EKS, nodes, RDS, ECR, WAF, KMS, contract SSM parameters, negative validations) | `verified in CI` | `make test`; CI job `test` |
 | Bootstrap (state bucket, GitHub OIDC roles, budget) | `not run in the cloud (v2)` | `terraform/bootstrap`, `docs/RUNBOOK.md` |
 | Lab apply (VPC, EKS 1.36, RDS PostgreSQL 17, ECR, WAF, SSM contract) | `not run in the cloud (v2)` | `.github/workflows/terraform-apply.yml` |
 | Plan on pull requests | `not run in the cloud (v2)` | `.github/workflows/terraform-plan.yml` |
@@ -38,8 +38,9 @@ The lab family (v2):
 | Destroy + leftover check | `not run in the cloud (v2)` | `.github/workflows/terraform-destroy.yml`, `scripts/leftovers.sh` |
 | Repository settings as code (ruleset, environment `lab`) | `planned` | `scripts/repo-guardrails.sh`, `docs/PUBLICACAO.md` |
 
-`verified locally` becomes `verified in CI` once the CI has run on GitHub. A cloud row changes only
-with a `cloud_run_report` issue (date, region, commit, cost, leftovers).
+`verified in CI` rows run on every pull request, on every push to `main` and weekly (CI jobs
+`static` and `test`). A cloud row changes only with a `cloud_run_report` issue (date, region,
+commit, cost, leftovers).
 
 ## Architecture
 
