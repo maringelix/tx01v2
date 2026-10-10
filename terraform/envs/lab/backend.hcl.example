@@ -1,0 +1,5 @@
+# Copy to backend.hcl (git-ignored) and use: terraform init -backend-config=backend.hcl
+# The bootstrap output backend_hcl prints this file with your real values.
+# key, use_lockfile and encrypt are fixed in versions.tf.
+bucket = "tx01v2-tfstate-123456789012-us-east-1"
+region = "us-east-1"

@@ -1,0 +1,71 @@
+# Installs (or removes) the platform layer on the lab cluster: AWS Load Balancer Controller, External
+# Secrets Operator and platform/manifests. CLOUD-MUTATING: dispatch manually after terraform-apply.
+# The apply role must be in LAB_CLUSTER_ADMIN_PRINCIPAL_ARNS and GitHub-hosted runners must reach the
+# public endpoint (LAB_ENDPOINT_PUBLIC_ACCESS_CIDRS, docs/ARQUITETURA.md).
+name: platform
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: install or uninstall
+        type: choice
+        options:
+          - install
+          - uninstall
+        default: install
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tx01v2-lab-cloud
+  cancel-in-progress: false
+
+jobs:
+  platform:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: lab
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+    steps:
+      - name: Check repository variables
+        env:
+          AWS_APPLY_ROLE_ARN: ${{ vars.AWS_APPLY_ROLE_ARN }}
+        run: |
+          missing=()
+          for v in AWS_REGION AWS_APPLY_ROLE_ARN; do
+            [[ -n "${!v}" ]] || missing+=("$v")
+          done
+          if ((${#missing[@]} > 0)); then
+            echo "::error::Missing repository variables for: ${missing[*]}. See docs/RUNBOOK.md (section 'Variáveis do GitHub')."
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_APPLY_ROLE_ARN }}
+          role-session-name: tx01v2-platform-${{ github.run_id }}
+          aws-region: ${{ vars.AWS_REGION }}
+          mask-aws-account-id: true
+
+      - name: Install kubectl and helm (pinned, SHA256-verified)
+        run: bash scripts/install-tools.sh kubectl helm
+
+      - name: Run platform/${{ inputs.action }}.sh
+        env:
+          ACTION: ${{ inputs.action }}
+        run: |
+          case "$ACTION" in
+            install) bash platform/install.sh ;;
+            uninstall) bash platform/uninstall.sh ;;
+            *) echo "::error::unknown action: $ACTION"; exit 1 ;;
+          esac

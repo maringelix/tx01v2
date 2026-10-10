@@ -1,0 +1,37 @@
+# Static values of the aws-load-balancer-controller chart. platform/install.sh adds clusterName,
+# region and vpcId from the contract SSM parameters (the pods cannot use IMDS: hop limit 1).
+image:
+  repository: public.ecr.aws/eks/aws-load-balancer-controller
+  # v3.6.0, pinned by digest (verified 2026-10-10).
+  tag: v3.6.0@sha256:337a9bf9a99bbac372c8da20afad7b059e0bc89034f1087e325455b28c7fd488
+
+serviceAccount:
+  create: true
+  # EKS Pod Identity association kube-system/aws-load-balancer-controller (terraform/modules/eks).
+  name: aws-load-balancer-controller
+
+ingressClass: alb
+createIngressClassResource: true
+
+# Off: the lab exposes the app through an Ingress (ALB) only. With the mutator on, the controller
+# would also take over every new Service of type LoadBalancer.
+enableServiceMutatorWebhook: false
+
+# Tags on every ALB, target group and security group the controller creates, so
+# scripts/leftovers.sh and the Resource Groups Tagging API can find them.
+defaultTags:
+  Project: tx01v2
+  Environment: lab
+
+controllerConfig:
+  featureGates:
+    # Ingress only. v3 enables Gateway API by default (auto-disabled without its CRDs); explicit here.
+    ALBGatewayAPI: false
+    NLBGatewayAPI: false
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    memory: 256Mi

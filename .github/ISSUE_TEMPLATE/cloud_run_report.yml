@@ -1,0 +1,71 @@
+name: Cloud run report
+description: I ran this lab in my own AWS account. Share what happened so the status matrix stays honest.
+title: "cloud run: <date> <region>"
+labels:
+  - cloud-run
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Follow docs/RUNBOOK.md. Redact account IDs, IPs, e-mails and ARNs (use `<ACCOUNT_ID>`).
+        A report counts as evidence only with the commit SHA and the leftover check result.
+  - type: input
+    id: date
+    attributes:
+      label: Date (UTC)
+      placeholder: "2026-10-10"
+    validations:
+      required: true
+  - type: input
+    id: region
+    attributes:
+      label: AWS region
+      placeholder: us-east-1
+    validations:
+      required: true
+  - type: textarea
+    id: versions
+    attributes:
+      label: Versions and commit
+      description: tx01v2 and dx01v2 commit SHAs, Terraform version, Kubernetes version, chart versions if changed.
+    validations:
+      required: true
+  - type: checkboxes
+    id: steps
+    attributes:
+      label: Steps executed
+      options:
+        - label: bootstrap (local apply)
+        - label: terraform-apply workflow (or local apply of terraform/envs/lab)
+        - label: platform workflow (install)
+        - label: dx01v2 deploy
+        - label: smoke test of the app through the ALB
+        - label: terraform-destroy workflow (or local destroy)
+        - label: scripts/leftovers.sh
+        - label: bootstrap teardown
+  - type: input
+    id: duration
+    attributes:
+      label: Total duration (apply to destroy)
+      placeholder: 2h15m
+    validations:
+      required: true
+  - type: input
+    id: cost
+    attributes:
+      label: Observed cost (AWS Cost Explorer or Billing, USD)
+      placeholder: "3.10"
+    validations:
+      required: true
+  - type: textarea
+    id: problems
+    attributes:
+      label: Problems and workarounds
+      description: Errors, retries, manual fixes (redacted logs welcome).
+  - type: textarea
+    id: leftovers
+    attributes:
+      label: Leftovers after destroy
+      description: Output of `scripts/leftovers.sh` (redacted) and anything you had to delete by hand.
+    validations:
+      required: true

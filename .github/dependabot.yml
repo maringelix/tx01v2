@@ -1,0 +1,46 @@
+# Monthly dependency PRs: minor + patch grouped per ecosystem, majors one by one.
+# Review procedure: AGENTS.md (Dependency updater) and docs/SUSTENTACAO.md.
+# Harness tools (tools/), charts (platform/versions.env) and image digests are updated by hand
+# (scripts/update-tool-checksums.sh) in the quarterly routine.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+    groups:
+      github-actions-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: terraform
+    directories:
+      - /terraform/bootstrap
+      - /terraform/envs/lab
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+    groups:
+      terraform-minor-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: pre-commit
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+    groups:
+      pre-commit-minor-patch:
+        update-types:
+          - minor
+          - patch

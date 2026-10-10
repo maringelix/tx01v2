@@ -1,0 +1,135 @@
+# Sustentação do tx01v2
+
+Como manter o repositório saudável sem conta na nuvem: rotinas, calendário de fim de suporte e
+procedimentos passo a passo. Datas e versões verificadas em 2026-10-10.
+
+## 1. Objetivo e escopo
+
+Cobre o código (Terraform, scripts, workflows), as ferramentas do harness, as versões de plataforma
+(EKS, AL2023, PostgreSQL, charts) e as rodadas opcionais em nuvem. Não cobre o app (ver `dx01v2`).
+
+## 2. Estado atual
+
+- Harness completo (`make verify`) `verificado localmente` em container Linux; CI ainda não rodou.
+- Bootstrap, apply, plataforma e destroy: `não executado em nuvem (v2)`.
+- Contrato com o dx01v2: versão 1 (`docs/CONTRATO.md`).
+
+## 3. Rotinas
+
+| Quando | O quê | Como |
+|---|---|---|
+| Semanal (automático) | CI agendado (segunda 06:00 UTC) roda todo o harness | Falhou? Seção 6. Causas típicas: ignore vencido, URL que mudou, rede |
+| Mensal | PRs do Dependabot (actions, providers Terraform, pre-commit) | Playbook "Dependency updater" do `AGENTS.md`; um PR por grupo, harness verde antes do merge |
+| Trimestral | Ferramentas do harness, charts e digests, versões de plataforma, schemas do kubeconform, ignores perto de vencer | Seções 4 e 5; registre no CHANGELOG |
+| Por rodada em nuvem: antes | Ler `docs/CUSTOS.md`, conferir o budget, CI verde no commit, variáveis do GitHub | `docs/RUNBOOK.md` |
+| Por rodada em nuvem: durante | Anotar horários e problemas; não deixar a rodada aberta de um dia para o outro | `docs/RUNBOOK.md` |
+| Por rodada em nuvem: depois | destroy, `scripts/leftovers.sh` limpo, issue `cloud_run_report`, matriz de status só com evidência | `docs/RUNBOOK.md`, seção 7 |
+
+## 4. Calendário de fim de suporte
+
+| Componente | Versão | Fim do suporte | Fonte | Ação |
+|---|---|---|---|---|
+| Kubernetes no EKS | 1.36 (padrão do lab) | padrão: 2027-08-02; estendido: 2028-08-02 | [calendário do EKS](https://docs.aws.amazon.com/eks/latest/userguide/kubernetes-versions.html) | Migrar para 1.37 antes de 2027-08-02. Com `upgrade_policy = STANDARD` o EKS faz upgrade automático no fim do suporte padrão (sem cobrança de estendido, US$0,60/h) |
+| Kubernetes no EKS | 1.37 (lançado no EKS em 2026-10-01) | padrão: 2027-12-01; estendido: 2028-12-01 | idem | Candidato a padrão na próxima revisão trimestral, depois de conferir LBC, ESO e add-ons |
+| Amazon Linux 2023 (nós) | AL2023 | suporte padrão até 2027-06-30; manutenção até 2029-06-30 | [AL2023 release cadence](https://docs.aws.amazon.com/linux/al2023/ug/release-cadence.html) | AMIs novas chegam com o node group; planejar a sucessora antes de 2029 |
+| PostgreSQL (RDS) | 17 | comunidade: 2029-11-08; RDS padrão: 2030-02-28 (depois, cobrança de Extended Support) | [calendário do RDS PostgreSQL](https://docs.aws.amazon.com/AmazonRDS/latest/PostgreSQLReleaseNotes/postgresql-release-calendar.html) | Upgrade de major (contrato v2) antes de 2030-02-28 |
+| Terraform CLI | 1.16.5 (`>= 1.11.0, < 2.0.0`) | sem data fixa | [releases](https://releases.hashicorp.com/terraform/) | Trimestral (5.2) |
+| Provider hashicorp/aws | 6.68.0 (`~> 6.68`) | sem data fixa; a major 7 exigirá migração | registry.terraform.io | Dependabot mensal (5.3) |
+| Provider hashicorp/random | 3.9.1 (`~> 3.9`) | sem data fixa | registry.terraform.io | Dependabot mensal |
+| AWS Load Balancer Controller | v3.6.0 (chart 3.6.0) | sem política de EOL publicada | [releases](https://github.com/kubernetes-sigs/aws-load-balancer-controller/releases) | Trimestral (5.5) |
+| External Secrets Operator | v2.12.0 (chart 2.12.0, CRDs `external-secrets.io/v1`) | o projeto mantém só as versões recentes | [releases](https://github.com/external-secrets/external-secrets/releases) | Trimestral (5.6) |
+| kubectl / Helm | 1.37.1 / 4.3.0 | kubectl suporta ±1 minor da API (1.36–1.38) | kubernetes.io, helm.sh | Acompanhar a versão do cluster; Helm 4 removeu `--atomic` (use `--rollback-on-failure`) |
+| Runners e devcontainer | Ubuntu 24.04 LTS | suporte padrão de 5 anos (até 2029-04) | ubuntu.com | Trocar antes do fim |
+| Exceções do trivy | 4 entradas | 2027-04-30 | `.trivyignore.yaml` | Revisar até 2027-04 (5.9) |
+
+## 5. Procedimentos
+
+### 5.1 Ferramenta do harness (terraform, tflint, ruleset AWS, trivy, actionlint, shellcheck, kubeconform, gitleaks, kubectl, helm)
+
+```bash
+scripts/update-tool-checksums.sh trivy 0.76.0   # baixa o arquivo de checksums oficial da release
+make tools && HARNESS_STRICT=1 make verify
+git diff tools/ .tflint.hcl                     # versions.env + checksums.txt (+ .tflint.hcl para o ruleset)
+```
+
+O script lê o arquivo de checksums publicado na release exata (shellcheck não publica: o script baixa
+os três artefatos e calcula o SHA256). Leia as release notes antes; para o trivy, achados novos
+aparecem com a ferramenta nova, porque o harness usa as regras embutidas (`--skip-check-update`).
+
+### 5.2 Terraform CLI
+
+Atualize com `scripts/update-tool-checksums.sh terraform <versão>`. `required_version` só muda se a
+versão mínima precisar subir (todos os `versions.tf` iguais — checado por `version-consistency`).
+
+### 5.3 Providers (aws, random) e lock multi-plataforma
+
+1. Revise o CHANGELOG/upgrade guide do provider (na v6: `data.aws_region.current.region` no lugar de
+   `.name`, argumentos write-only, atributo `region` por recurso).
+2. Mesma restrição em todos os `versions.tf` (o PR do Dependabot só altera os roots).
+3. Em `terraform/bootstrap` e `terraform/envs/lab`:
+   ```bash
+   terraform init -backend=false -upgrade
+   terraform providers lock -platform=linux_amd64 -platform=linux_arm64 -platform=darwin_arm64 -platform=windows_amd64
+   ```
+4. `HARNESS_STRICT=1 make verify` (o check `terraform-lockfiles` exige 4 hashes `h1:` por provider).
+
+### 5.4 Versão do Kubernetes
+
+Mudar `cluster_version` é mudança de contrato (versão + PR no dx01v2). Antes: release notes do EKS,
+compatibilidade do LBC e do ESO, versões padrão dos add-ons. Atualize `K8S_SCHEMA_KUBERNETES_VERSION`
+em `scripts/harness.sh`. O node group acompanha a versão do cluster; os add-ons usam a versão padrão
+do EKS para a versão escolhida (`data.aws_eks_addon_version`, `most_recent = false`).
+
+### 5.5 AWS Load Balancer Controller
+
+1. Leia as release notes (mudanças incompatíveis, CRDs).
+2. `platform/versions.env`: `LBC_CHART_VERSION` (desde a v3 o chart tem a mesma versão do app).
+3. Digest da imagem: `docker buildx imagetools inspect public.ecr.aws/eks/aws-load-balancer-controller:v<versão>` →
+   `platform/values/aws-load-balancer-controller.yaml`.
+4. Política IAM da tag exata:
+   `curl -fsSLo terraform/modules/eks/policies/aws-load-balancer-controller-v<versão>.json https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v<versão>/docs/install/iam_policy.json`,
+   apague a versão anterior, atualize `load_balancer_controller_version` em
+   `terraform/modules/eks/pod_identity.tf` e `LBC_IAM_POLICY_SHA256` (`sha256sum` do arquivo).
+5. Em um cluster existente, o Helm não atualiza CRDs: aplique os CRDs da mesma versão antes do upgrade.
+
+### 5.6 External Secrets Operator
+
+`ESO_CHART_VERSION`, digest da imagem (usada também pelo webhook e pelo cert controller) e a versão de
+API dos CRDs (`external-secrets.io/v1` hoje). Se a API mudar, é mudança de contrato.
+
+### 5.7 Schemas do kubeconform
+
+`K8S_SCHEMA_REF` (yannh/kubernetes-json-schema) e `CRD_SCHEMA_REF` (datreeio/CRDs-catalog) em
+`scripts/harness.sh` apontam para commits fixos:
+`gh api repos/datreeio/CRDs-catalog/commits?path=external-secrets.io/clustersecretstore_v1.json`.
+Veja a nota sobre o schema do ESO em `docs/HARNESS.md`.
+
+### 5.8 Digests de imagens e actions
+
+Devcontainer: `docker buildx imagetools inspect mcr.microsoft.com/devcontainers/base:ubuntu-24.04`.
+Actions (fora do Dependabot): `gh api repos/<o>/<r>/git/ref/tags/<tag>`; se `object.type == "tag"`,
+siga `gh api repos/<o>/<r>/git/tags/<sha>`; use o SHA do commit com `# vX.Y.Z`.
+
+### 5.9 Revisão das exceções do trivy
+
+Para cada entrada de `.trivyignore.yaml` perto do `expired_at`: o motivo ainda vale? Se sim, renove
+por até ~7 meses com a justificativa atualizada; se não, corrija o código e remova a entrada.
+
+## 6. Resposta a problemas
+
+| Situação | Primeiros passos |
+|---|---|
+| CI vermelho | Leia o primeiro `FAIL` (o log do check vem logo abaixo). Corrija no código; nunca enfraqueça o check. Reproduza com `HARNESS_STRICT=1 make verify` |
+| Vulnerabilidade | Alerta do Dependabot ou advisory: atualize por PR. Em ferramenta do harness: 5.1. Reporte privado: `SECURITY.md` |
+| Alerta de custo (e-mail do budget) | `AWS_REGION=<região> scripts/leftovers.sh`; se houver lab de pé, rode o destroy; confira o Cost Explorer |
+| Credencial exposta | Revogue/gire na hora (IAM, GitHub). Verifique o CloudTrail. Reescrever histórico é decisão do mantenedor |
+| Sobras após o destroy | Siga a saída de `scripts/leftovers.sh` e a seção de sobras do `docs/RUNBOOK.md`; registre no `cloud_run_report` |
+
+## 7. Registro de execuções em nuvem
+
+Toda rodada gera uma issue com o template `cloud_run_report` (data, região, commits, passos, duração,
+custo observado, problemas, sobras). A matriz de status do README só muda com essa evidência.
+
+## 8. Responsáveis
+
+Mantenedor: @maringelix (decisões, merges, rodadas em nuvem). Agentes de IA seguem o `AGENTS.md`.

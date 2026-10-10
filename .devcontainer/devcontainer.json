@@ -1,0 +1,21 @@
+// Linux environment for the harness (Windows and macOS contributors). `make tools` installs the
+// pinned tools into .tools/ on creation; then run `make verify`.
+{
+  "name": "tx01v2",
+  // mcr.microsoft.com/devcontainers/base:ubuntu-24.04, pinned by digest (verified 2026-10-10)
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04@sha256:d94c97dd9cacf183d0a6fd12a8e87b526e9e928307674ae9c94139139c0c6eae",
+  "postCreateCommand": "make tools",
+  "remoteEnv": {
+    "HARNESS_STRICT": "1"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "hashicorp.terraform",
+        "timonwong.shellcheck",
+        "redhat.vscode-yaml",
+        "editorconfig.editorconfig"
+      ]
+    }
+  }
+}

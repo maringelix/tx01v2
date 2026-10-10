@@ -1,0 +1,91 @@
+# Read-only plan of terraform/envs/lab with the tx01v2-gha-plan role (OIDC sub: pull_request or
+# refs/heads/main; no environment). Runs only when AWS_PLAN_ROLE_ARN is configured and the PR comes
+# from this repository: forks never get AWS credentials. Plans use -lock=false (read-only role).
+name: terraform-plan
+
+on:
+  pull_request:
+    paths:
+      - "terraform/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terraform-plan-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plan:
+    if: vars.AWS_PLAN_ROLE_ARN != '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+      TF_IN_AUTOMATION: "1"
+      TF_INPUT: "0"
+      TF_VAR_aws_region: ${{ vars.AWS_REGION }}
+      TF_VAR_github_owner: ${{ github.repository_owner }}
+      TF_VAR_endpoint_public_access_cidrs: ${{ vars.LAB_ENDPOINT_PUBLIC_ACCESS_CIDRS }}
+      TF_VAR_allow_endpoint_from_anywhere: ${{ vars.LAB_ALLOW_ENDPOINT_FROM_ANYWHERE || 'false' }}
+      TF_VAR_cluster_admin_principal_arns: ${{ vars.LAB_CLUSTER_ADMIN_PRINCIPAL_ARNS }}
+      TF_VAR_app_deployer_principal_arns: ${{ vars.LAB_APP_DEPLOYER_PRINCIPAL_ARNS || '[]' }}
+    steps:
+      - name: Check repository variables
+        env:
+          AWS_PLAN_ROLE_ARN: ${{ vars.AWS_PLAN_ROLE_ARN }}
+        run: |
+          missing=()
+          for v in AWS_REGION TF_STATE_BUCKET AWS_PLAN_ROLE_ARN TF_VAR_endpoint_public_access_cidrs TF_VAR_cluster_admin_principal_arns; do
+            [[ -n "${!v}" ]] || missing+=("$v")
+          done
+          if ((${#missing[@]} > 0)); then
+            echo "::error::Missing repository variables for: ${missing[*]}. Settings > Secrets and variables > Actions > Variables; names and values in docs/RUNBOOK.md (section 'Variáveis do GitHub')."
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          role-session-name: tx01v2-plan-${{ github.run_id }}
+          aws-region: ${{ vars.AWS_REGION }}
+          mask-aws-account-id: true
+
+      - name: Install terraform (pinned, SHA256-verified)
+        run: |
+          bash scripts/install-tools.sh terraform
+          echo "$GITHUB_WORKSPACE/.tools/bin" >> "$GITHUB_PATH"
+
+      - name: terraform init
+        run: terraform -chdir=terraform/envs/lab init -input=false -lockfile=readonly -backend-config="bucket=$TF_STATE_BUCKET" -backend-config="region=$AWS_REGION"
+
+      - name: terraform plan (read-only, -lock=false)
+        run: terraform -chdir=terraform/envs/lab plan -lock=false -input=false -no-color -out=tfplan
+
+      - name: Plan text to the job summary
+        run: |
+          account_id="$(aws sts get-caller-identity --query Account --output text)"
+          plan_text="$(terraform -chdir=terraform/envs/lab show -no-color tfplan)"
+          printf '%s\n' "${plan_text//"$account_id"/<ACCOUNT_ID>}" > plan.txt
+          {
+            echo "## terraform plan: terraform/envs/lab"
+            echo '```'
+            head -c 60000 plan.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: terraform-plan-lab
+          path: plan.txt
+          retention-days: 7
+          if-no-files-found: error

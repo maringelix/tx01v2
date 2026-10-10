@@ -1,0 +1,44 @@
+name: Bug report
+description: Something in the harness, the Terraform code, the scripts or the docs is wrong.
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Do not paste credentials, AWS account IDs, IPs or e-mail addresses:
+        replace them with placeholders such as `<ACCOUNT_ID>` or `<YOUR_IP>/32`.
+  - type: input
+    id: commit
+    attributes:
+      label: Commit SHA of tx01v2
+      placeholder: 40-character SHA
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - harness (make / scripts/harness.sh)
+        - terraform (bootstrap)
+        - terraform (envs/lab or modules)
+        - platform (install/uninstall)
+        - GitHub workflows
+        - docs
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Exact commands, environment (devcontainer, WSL, Linux, macOS) and tool versions.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs. actual result
+      description: Include the relevant PASS/FAIL lines or error output (redacted).
+    validations:
+      required: true

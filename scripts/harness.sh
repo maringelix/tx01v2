@@ -1,0 +1,737 @@
+#!/usr/bin/env bash
+# tx01v2 harness: every check lives here. `make` targets and every CI job only call this script.
+# Usage: scripts/harness.sh <stage>...   stages: static, test, all (= static test), list
+#   HARNESS_STRICT=1   (set in CI) turns every SKIP into a FAIL
+#   HARNESS_VERBOSE=1  also prints the output of passing checks
+#   HARNESS_WORK_DIR   scratch dir for Terraform data, logs and caches (default: $TMPDIR/tx01v2-harness)
+# Prints "PASS|FAIL|SKIP <check> (<secs>s)" per check and a summary; exits 1 on any FAIL.
+set -euo pipefail
+
+# shellcheck source=scripts/lib/common.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
+# shellcheck source=scripts/lib/tools.sh
+source "$REPO_ROOT/scripts/lib/tools.sh"
+
+export PATH="$REPO_ROOT/.tools/bin:$PATH"
+export TFLINT_PLUGIN_DIR="$REPO_ROOT/.tools/tflint-plugins"
+export TF_IN_AUTOMATION=1 TF_INPUT=0 CHECKPOINT_DISABLE=1
+export TF_PLUGIN_CACHE_DIR="${TF_PLUGIN_CACHE_DIR:-$HOME/.terraform.d/plugin-cache}"
+
+HARNESS_STRICT="${HARNESS_STRICT:-0}"
+HARNESS_VERBOSE="${HARNESS_VERBOSE:-0}"
+HARNESS_WORK_DIR="${HARNESS_WORK_DIR:-${TMPDIR:-/tmp}/tx01v2-harness}"
+# Optional extended regex: run only the checks whose name matches (local debugging; never in CI).
+HARNESS_ONLY="${HARNESS_ONLY:-}"
+
+# Pinned schema sources of kubeconform (update procedure: docs/SUSTENTACAO.md).
+K8S_SCHEMA_KUBERNETES_VERSION="1.36.0"
+K8S_SCHEMA_REF="5f1fa4f7908afc9b6641c62d282a4a22437626e1" # yannh/kubernetes-json-schema
+# datreeio/CRDs-catalog at 2026-06-02: its next revision of external-secrets.io/clustersecretstore_v1.json
+# (b7e2015, 2026-10-08) cannot be compiled by kubeconform ("could not find schema"); see docs/HARNESS.md.
+CRD_SCHEMA_REF="f3e4382095909ac60000da025f323ba44d4c738a"
+# Scanner ignores must be reviewed at least every ~7 months.
+TRIVYIGNORE_MAX_DAYS=214
+
+REQUIRED_FILES=(
+  README.md README.pt-BR.md AGENTS.md CLAUDE.md CONTRIBUTING.md SECURITY.md CHANGELOG.md LICENSE
+  .editorconfig .gitattributes .gitignore .pre-commit-config.yaml Makefile .tflint.hcl .trivyignore.yaml
+  .devcontainer/devcontainer.json
+  .github/CODEOWNERS .github/dependabot.yml .github/pull_request_template.md
+  .github/ISSUE_TEMPLATE/config.yml .github/ISSUE_TEMPLATE/bug_report.yml .github/ISSUE_TEMPLATE/cloud_run_report.yml
+  .github/workflows/ci.yml .github/rulesets/main.json
+  docs/SUSTENTACAO.md docs/GUARDRAILS.md docs/HARNESS.md docs/CONTRATO.md docs/RUNBOOK.md
+  docs/ARQUITETURA.md docs/PUBLICACAO.md docs/CUSTOS.md
+  tools/versions.env tools/checksums.txt
+  scripts/install-tools.sh scripts/update-tool-checksums.sh scripts/harness.sh scripts/repo-guardrails.sh scripts/leftovers.sh
+  platform/install.sh platform/uninstall.sh platform/versions.env
+  terraform/bootstrap/.terraform.lock.hcl terraform/envs/lab/.terraform.lock.hcl
+  terraform/envs/lab/terraform.tfvars.example terraform/envs/lab/backend.hcl.example
+)
+
+# ---------------------------------------------------------------------------------------------
+# Check registry and helpers
+# ---------------------------------------------------------------------------------------------
+
+declare -a CHECK_STAGE=() CHECK_NAME=() CHECK_CMD=()
+register() {
+  CHECK_STAGE+=("$1")
+  CHECK_NAME+=("$2")
+  CHECK_CMD+=("$3")
+}
+
+strict() { [[ "$HARNESS_STRICT" == 1 ]]; }
+
+# skip REASON -> ends the current check as SKIP (FAIL in strict mode). Only for missing preconditions.
+# Exit code 77 (the automake SKIP convention) never collides with the tools' own codes.
+SKIP_CODE=77
+skip() {
+  printf 'SKIP_REASON: %s\n' "$*"
+  exit "$SKIP_CODE"
+}
+
+need() {
+  local c
+  for c in "$@"; do
+    command -v "$c" >/dev/null 2>&1 || skip "'$c' not found (run: make tools)"
+  done
+}
+
+# visible_files -> files git would track (tracked + untracked, minus .gitignore), one per line.
+visible_files() {
+  git ls-files --cached --others --exclude-standard
+}
+
+# forbid REGEX MESSAGE GLOB PATH... -> fails when the extended regex matches in the files named
+# GLOB ('*' for all) under PATH (recursive).
+forbid() {
+  local re=$1 msg=$2 glob=$3 out status=0
+  shift 3
+  out="$(grep -rnIE --include="$glob" -e "$re" -- "$@")" || status=$?
+  ((status <= 1)) || {
+    echo "grep failed with status $status"
+    return 1
+  }
+  if [[ -n "$out" ]]; then
+    printf 'forbidden: %s\n%s\n' "$msg" "$out"
+    return 1
+  fi
+}
+
+date_plus_days() {
+  date -u -d "+$1 days" +%F 2>/dev/null || date -u -v+"$1"d +%F
+}
+
+tf_init() {
+  local dir=$1
+  local -a args=(-backend=false -input=false -no-color)
+  mkdir -p "$TF_PLUGIN_CACHE_DIR"
+  export TF_DATA_DIR="$HARNESS_WORK_DIR/terraform/${dir//\//_}"
+  # Root configurations must resolve providers from their committed lock file only.
+  [[ -f "$dir/.terraform.lock.hcl" && "$dir" != terraform/modules/* ]] && args+=(-lockfile=readonly)
+  terraform -chdir="$dir" init "${args[@]}"
+}
+
+installed_version() {
+  local out=""
+  case "$1" in
+    terraform) out="$(terraform version 2>/dev/null)" || out="" ;;
+    tflint) out="$(tflint --version 2>/dev/null)" || out="" ;;
+    trivy) out="$(trivy --version 2>/dev/null)" || out="" ;;
+    actionlint) out="$(actionlint -version 2>/dev/null)" || out="" ;;
+    shellcheck) out="$(shellcheck --version 2>/dev/null)" || out="" ;;
+    kubeconform) out="$(kubeconform -v 2>/dev/null)" || out="" ;;
+    gitleaks) out="$(gitleaks version 2>/dev/null)" || out="" ;;
+    kubectl) out="$(kubectl version --client 2>/dev/null)" || out="" ;;
+    helm) out="$(helm version --short 2>/dev/null)" || out="" ;;
+  esac
+  [[ "$out" =~ ([0-9]+\.[0-9]+\.[0-9]+) ]] && printf '%s' "${BASH_REMATCH[1]}"
+  return 0
+}
+
+# ---------------------------------------------------------------------------------------------
+# Checks (each runs in its own subshell from the repository root)
+# ---------------------------------------------------------------------------------------------
+
+check_tool_versions() {
+  local t want got
+  local -a missing=() mismatch=()
+  load_versions
+  for t in "${TOOLS_ALL[@]}"; do
+    want="$(tool_version "$t")"
+    if [[ "$t" == tflint-ruleset-aws ]]; then
+      if [[ -x "$(tool_installed_path "$t" "$want" "$REPO_ROOT/.tools")" ]]; then
+        printf '%-20s %s (plugin)\n' "$t" "$want"
+      else
+        missing+=("$t")
+      fi
+      continue
+    fi
+    if ! command -v "$t" >/dev/null 2>&1; then
+      missing+=("$t")
+      continue
+    fi
+    got="$(installed_version "$t")"
+    printf '%-20s want %-8s got %-8s %s\n' "$t" "$want" "${got:-?}" "$(command -v "$t")"
+    [[ "$got" == "$want" ]] || mismatch+=("$t")
+  done
+  ((${#missing[@]} == 0)) || skip "missing tools: ${missing[*]} (run: make tools)"
+  if ((${#mismatch[@]} > 0)); then
+    strict && {
+      echo "versions differ from tools/versions.env: ${mismatch[*]}"
+      return 1
+    }
+    skip "versions differ from tools/versions.env: ${mismatch[*]} (run: make tools)"
+  fi
+}
+
+check_repo_structure() {
+  local f d rc=0
+  for f in "${REQUIRED_FILES[@]}"; do
+    [[ -f "$f" ]] || {
+      echo "missing required file: $f"
+      rc=1
+    }
+  done
+  if [[ -f CLAUDE.md ]]; then
+    [[ "$(sed -n 1p CLAUDE.md)" == "@AGENTS.md" ]] || {
+      echo "CLAUDE.md: the first line must be @AGENTS.md"
+      rc=1
+    }
+    (($(grep -c . CLAUDE.md) == 2)) || {
+      echo "CLAUDE.md: must contain exactly @AGENTS.md and one sentence"
+      rc=1
+    }
+  fi
+  if [[ -f README.md ]] && (($(wc -l <README.md) > 250)); then
+    echo "README.md: more than 250 lines"
+    rc=1
+  fi
+  forbid 'production-grade|production-ready|enterprise|best-in-class|world-class' "self-ratings in the READMEs" '*' README.md README.pt-BR.md || rc=1
+  grep -qF 'not run in the cloud (v2)' README.md || {
+    echo "README.md: the status matrix must use the label 'not run in the cloud (v2)'"
+    rc=1
+  }
+  grep -qF 'não executado em nuvem (v2)' README.pt-BR.md || {
+    echo "README.pt-BR.md: the status matrix must use the label 'não executado em nuvem (v2)'"
+    rc=1
+  }
+  for d in terraform/modules/*/; do
+    grep -q 'required_providers' "${d}versions.tf" 2>/dev/null || {
+      echo "${d}versions.tf: missing required_providers"
+      rc=1
+    }
+  done
+  need git
+  while IFS= read -r f; do
+    [[ -f "$f" ]] || continue
+    if grep -q $'\r' "$f"; then
+      echo "CRLF line endings (LF required): $f"
+      rc=1
+    fi
+  done < <(visible_files)
+  # Entry-point scripts must keep the executable bit in git (commits from Windows can drop it).
+  while IFS= read -r f; do
+    [[ "$(git ls-files -s -- "$f" | awk '{ print $1 }')" == 100755 ]] || {
+      echo "not executable in the git index (git update-index --chmod=+x $f): $f"
+      rc=1
+    }
+  done < <(git ls-files -- 'scripts/*.sh' 'platform/*.sh' | grep -v '^scripts/lib/')
+  return "$rc"
+}
+
+check_version_consistency() {
+  local rc=0 v lbc key value policy
+  declare -A pv=()
+  load_versions
+  v="$(awk '/^plugin "aws"/ { a = 1 } a && /^[[:space:]]*version[[:space:]]*=/ { gsub(/[" ]/, ""); sub(/^version=/, ""); print; exit }' .tflint.hcl)"
+  [[ "$v" == "$TFLINT_RULESET_AWS_VERSION" ]] || {
+    echo ".tflint.hcl uses tflint-ruleset-aws $v but tools/versions.env pins $TFLINT_RULESET_AWS_VERSION"
+    rc=1
+  }
+  while IFS='=' read -r key value; do
+    [[ "$key" =~ ^[A-Z0-9_]+$ ]] && pv[$key]="$value"
+  done < <(grep -E '^[A-Z0-9_]+=' platform/versions.env)
+  lbc="${pv[LBC_CHART_VERSION]:-}"
+  grep -qF "load_balancer_controller_version = \"$lbc\"" terraform/modules/eks/pod_identity.tf || {
+    echo "terraform/modules/eks/pod_identity.tf must pin load_balancer_controller_version = \"$lbc\""
+    rc=1
+  }
+  policy="terraform/modules/eks/policies/aws-load-balancer-controller-v$lbc.json"
+  if [[ -f "$policy" ]]; then
+    [[ "$(sha256_of "$policy")" == "${pv[LBC_IAM_POLICY_SHA256]:-}" ]] || {
+      echo "$policy differs from the upstream copy recorded in platform/versions.env (LBC_IAM_POLICY_SHA256)"
+      rc=1
+    }
+  else
+    echo "missing $policy"
+    rc=1
+  fi
+  (($(find terraform/modules/eks/policies -name 'aws-load-balancer-controller-v*.json' | wc -l) == 1)) || {
+    echo "keep exactly one LBC policy version in terraform/modules/eks/policies"
+    rc=1
+  }
+  grep -qE "tag: v${lbc//./\\.}@sha256:[0-9a-f]{64}$" platform/values/aws-load-balancer-controller.yaml || {
+    echo "platform/values/aws-load-balancer-controller.yaml must pin image v$lbc by digest"
+    rc=1
+  }
+  (($(grep -cE "tag: v${pv[ESO_CHART_VERSION]//./\\.}@sha256:[0-9a-f]{64}$" platform/values/external-secrets.yaml) == 3)) || {
+    echo "platform/values/external-secrets.yaml must pin the three images to v${pv[ESO_CHART_VERSION]:-?} by digest"
+    rc=1
+  }
+  (($(grep -h 'required_version' terraform/*/versions.tf terraform/*/*/versions.tf | sort -u | wc -l) == 1)) || {
+    echo "every versions.tf must use the same required_version"
+    rc=1
+  }
+  (($(grep -h -A1 'source  = "hashicorp/aws"' terraform/*/versions.tf terraform/*/*/versions.tf | grep version | sort -u | wc -l) == 1)) || {
+    echo "every versions.tf must use the same hashicorp/aws constraint"
+    rc=1
+  }
+  [[ "$(grep -A1 'hashicorp/aws"' terraform/bootstrap/.terraform.lock.hcl | grep version)" == "$(grep -A1 'hashicorp/aws"' terraform/envs/lab/.terraform.lock.hcl | grep version)" ]] || {
+    echo "bootstrap and envs/lab must lock the same hashicorp/aws version"
+    rc=1
+  }
+  return "$rc"
+}
+
+check_terraform_fmt() {
+  need terraform
+  terraform fmt -check -recursive -diff -no-color terraform
+}
+
+check_terraform_validate() {
+  need terraform
+  tf_init "$1"
+  terraform -chdir="$1" validate -no-color
+}
+
+check_terraform_lockfiles() {
+  local f rc=0
+  for f in terraform/bootstrap/.terraform.lock.hcl terraform/envs/lab/.terraform.lock.hcl; do
+    awk -v file="$f" '
+      /^provider "/ { name = $2; h1 = 0; next }
+      /"h1:/ { h1++ }
+      /^}/ && name != "" { printf "%s %s: %d platform hashes (h1)\n", file, name, h1; if (h1 < 4) bad = 1; name = "" }
+      END { exit bad }
+    ' "$f" || {
+      echo "$f: every provider needs h1 hashes for linux_amd64, linux_arm64, darwin_arm64 and windows_amd64"
+      echo "fix: terraform providers lock -platform=linux_amd64 -platform=linux_arm64 -platform=darwin_arm64 -platform=windows_amd64"
+      rc=1
+    }
+  done
+  return "$rc"
+}
+
+check_policy_terraform() {
+  local rc=0
+  forbid '^[[:space:]]*resource[[:space:]]+"random_(password|string)"' \
+    "generated secrets must be ephemeral resources (a random_password resource stores its result in state)" '*.tf' terraform || rc=1
+  # Top-level resource arguments only (terraform fmt indents them with exactly two spaces).
+  forbid '^  (password|secret_string|secret_binary)[[:space:]]*=' \
+    "set secrets only through write-only arguments (password_wo, secret_string_wo)" '*.tf' terraform || rc=1
+  forbid 'provider[[:space:]]+"(kubernetes|helm)"|hashicorp/(kubernetes|helm)' \
+    "Terraform must not talk to the Kubernetes API (platform/install.sh does)" '*.tf' terraform || rc=1
+  forbid '^[^#]*(kubernetes_config_map|"aws-auth"|system:masters)' \
+    "cluster access goes through EKS access entries only" '*' terraform platform || rc=1
+  forbid 'aws_iam_openid_connect_provider' \
+    "no IRSA OIDC provider in the lab (EKS Pod Identity is used)" '*.tf' terraform/envs terraform/modules || rc=1
+  forbid '^[[:space:]]*disk_size[[:space:]]*=' \
+    "the node root volume comes from the launch template (disk_size + launch template breaks the node group)" '*.tf' terraform/modules/eks || rc=1
+  forbid '^[[:space:]]*(vpc_security_group_ids|security_group_names|image_id|user_data)[[:space:]]*=' \
+    "the node launch template must not set security groups, AMI or user data" '*.tf' terraform/modules/eks || rc=1
+  return "$rc"
+}
+
+check_policy_identifiers() {
+  local rc=0 out
+  local -a files=()
+  need git
+  grep -qP 'x' <<<"x" 2>/dev/null || skip "grep -P (PCRE) is not available"
+  mapfile -t files < <(visible_files | grep -vE '(^|/)(\.terraform\.lock\.hcl|checksums\.txt)$')
+  ((${#files[@]} > 0)) || return 0
+  out="$(grep -noP '(?<![0-9A-Za-z])[0-9]{12}(?![0-9A-Za-z])' "${files[@]}" | grep -v ':123456789012$')" || true
+  [[ -z "$out" ]] || {
+    printf 'AWS account IDs must be placeholders (<ACCOUNT_ID> or 123456789012):\n%s\n' "$out"
+    rc=1
+  }
+  out="$(grep -noP '[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}' "${files[@]}" |
+    grep -vP '@(example\.(com|org|net)|users\.noreply\.github\.com)$')" || true
+  [[ -z "$out" ]] || {
+    printf 'e-mail addresses must use example.com/example.org placeholders:\n%s\n' "$out"
+    rc=1
+  }
+  out="$(grep -noP '(?<![0-9.])(?:[0-9]{1,3}\.){3}[0-9]{1,3}(?![0-9.])' "${files[@]}" |
+    grep -vP ':(10\.|127\.|169\.254\.|172\.(1[6-9]|2[0-9]|3[01])\.|192\.168\.|192\.0\.2\.|198\.51\.100\.|203\.0\.113\.|0\.0\.0\.0)')" || true
+  [[ -z "$out" ]] || {
+    printf 'IP addresses must be private or documentation ranges (RFC 1918 / RFC 5737):\n%s\n' "$out"
+    rc=1
+  }
+  return "$rc"
+}
+
+check_tflint() {
+  need tflint
+  [[ -d "$TFLINT_PLUGIN_DIR/github.com/terraform-linters/tflint-ruleset-aws" ]] || skip "tflint-ruleset-aws is not installed (run: make tools)"
+  (cd terraform && tflint --recursive --config "$REPO_ROOT/.tflint.hcl" --format compact --no-color)
+}
+
+trivy_config() {
+  trivy config --quiet --skip-check-update --exit-code 1 --severity HIGH,CRITICAL \
+    --cache-dir "$HARNESS_WORK_DIR/trivy-cache" --ignorefile .trivyignore.yaml \
+    --skip-dirs .tools --skip-dirs .cache --skip-dirs '**/.terraform' "$@"
+}
+
+check_trivy_config() {
+  need trivy
+  trivy_config .
+}
+
+# Same scan with the example inputs: trivy applies them to the terraform/envs/lab root, so
+# variable-dependent checks (for example public endpoint CIDRs) see real values.
+check_trivy_config_tfvars() {
+  need trivy
+  trivy_config --tf-vars terraform/envs/lab/terraform.tfvars.example .
+}
+
+check_trivyignore_policy() {
+  local today max
+  today="$(date -u +%F)"
+  max="$(date_plus_days "$TRIVYIGNORE_MAX_DAYS")"
+  awk -v today="$today" -v max="$max" '
+    function flush() {
+      if (id != "") {
+        n++
+        if (!st) { print "entry " id ": missing a non-empty statement"; bad = 1 }
+        if (expiry !~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$/) { print "entry " id ": expired_at must be YYYY-MM-DD"; bad = 1 }
+        else if (expiry < today) { print "entry " id ": expired on " expiry " (review or remove it)"; bad = 1 }
+        else if (expiry > max) { print "entry " id ": expired_at " expiry " is after " max " (at most ~7 months ahead)"; bad = 1 }
+        else { print "entry " id ": ok until " expiry }
+      }
+      id = ""; st = 0; expiry = ""
+    }
+    /^[[:space:]]*-[[:space:]]+id:/ { flush(); id = $NF; next }
+    /^[[:space:]]+statement:[[:space:]]*[^[:space:]]/ { st = 1 }
+    /^[[:space:]]+expired_at:/ { expiry = $NF; gsub(/["\047]/, "", expiry) }
+    END { flush(); printf "%d ignore entries checked\n", n; exit bad }
+  ' .trivyignore.yaml
+}
+
+check_actionlint() {
+  need actionlint shellcheck
+  actionlint -shellcheck "$(command -v shellcheck)"
+}
+
+check_policy_workflows() {
+  local f rc=0 out ctx
+  local -a files=()
+  shopt -s nullglob
+  files=(.github/workflows/*.yml .github/workflows/*.yaml)
+  ((${#files[@]} > 0)) || {
+    echo "no workflows found"
+    return 1
+  }
+  for f in "${files[@]}"; do
+    out="$(awk -v file="$f" '
+      function err(m) { printf "%s:%d: %s\n", file, NR, m; bad = 1 }
+      /^permissions:/ { top_perm = 1; in_top_perm = 1; next }
+      in_top_perm && /^  contents: read[[:space:]]*$/ { top_read = 1 }
+      in_top_perm && /^[^[:space:]]/ { in_top_perm = 0 }
+      /^concurrency:/ { concurrency = 1 }
+      /^jobs:/ { in_jobs = 1; next }
+      in_jobs && /^  [A-Za-z0-9_-]+:[[:space:]]*$/ { job = $1; sub(/:$/, "", job); jobs[job] = 1; next }
+      in_jobs && /^    timeout-minutes:/ { timeout[job] = 1 }
+      in_jobs && /^    runs-on: ubuntu-24\.04[[:space:]]*$/ { runs[job] = 1 }
+      /^[[:space:]-]*uses:/ {
+        ref = $0; sub(/^[[:space:]-]*uses:[[:space:]]*/, "", ref)
+        if (ref ~ /^\.\//) next
+        if (ref !~ /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.\/-]+@[0-9a-f]+[[:space:]]+#[[:space:]]+v[0-9]+\.[0-9]+\.[0-9]+[[:space:]]*$/) {
+          err("pin actions to a full commit SHA with a trailing # vX.Y.Z comment: " ref)
+        } else {
+          sha = ref; sub(/^[^@]*@/, "", sha); sub(/[[:space:]].*$/, "", sha)
+          if (length(sha) != 40) err("the commit SHA must have 40 characters: " ref)
+        }
+        if (ref ~ /^actions\/checkout@/) checkouts++
+      }
+      /persist-credentials: false/ { persist++ }
+      /continue-on-error:[[:space:]]*true/ { err("continue-on-error: true is forbidden") }
+      /\|\|[[:space:]]*(true|echo|:)([[:space:]]|$)/ { err("never swallow errors (|| true, || echo, || :)") }
+      /aquasecurity\/(trivy-action|setup-trivy)/ { err("trivy-action/setup-trivy are forbidden; trivy comes from scripts/install-tools.sh") }
+      /(^|[^A-Za-z])sed[[:space:]].*\.tf([^A-Za-z]|$)/ { err("never edit Terraform files with sed") }
+      END {
+        if (!top_perm || !top_read) { printf "%s: top-level permissions must be exactly contents: read\n", file; bad = 1 }
+        if (!concurrency) { printf "%s: a top-level concurrency group is required\n", file; bad = 1 }
+        for (j in jobs) {
+          if (!timeout[j]) { printf "%s: job %s has no timeout-minutes\n", file, j; bad = 1 }
+          if (!runs[j]) { printf "%s: job %s must use runs-on: ubuntu-24.04\n", file, j; bad = 1 }
+        }
+        if (checkouts != persist) { printf "%s: every actions/checkout needs persist-credentials: false\n", file; bad = 1 }
+        exit bad
+      }' "$f")" || {
+      printf '%s\n' "$out"
+      rc=1
+    }
+  done
+  if grep -n 'id-token: write' .github/workflows/ci.yml; then
+    echo "ci.yml must never request id-token: write (OIDC is for cloud workflows only)"
+    rc=1
+  fi
+  for ctx in static test; do
+    grep -qE "^  ${ctx}:[[:space:]]*$" .github/workflows/ci.yml || {
+      echo "ci.yml must keep the stable job id '$ctx' (required status check)"
+      rc=1
+    }
+    grep -qF "\"context\": \"$ctx\"" .github/rulesets/main.json || {
+      echo ".github/rulesets/main.json must require the status check '$ctx'"
+      rc=1
+    }
+  done
+  return "$rc"
+}
+
+check_shellcheck() {
+  local -a files=()
+  need shellcheck
+  mapfile -t files < <(find scripts platform -type f -name '*.sh' | sort)
+  printf 'shellcheck: %s\n' "${files[@]}"
+  shellcheck --external-sources --severity=style "${files[@]}"
+}
+
+check_kubeconform() {
+  local rendered="$HARNESS_WORK_DIR/platform-manifests.yaml"
+  need kubeconform
+  mkdir -p "$HARNESS_WORK_DIR/kubeconform-cache"
+  bash platform/render-manifests.sh us-east-1 >"$rendered"
+  kubeconform -strict -summary -output text \
+    -kubernetes-version "$K8S_SCHEMA_KUBERNETES_VERSION" \
+    -cache "$HARNESS_WORK_DIR/kubeconform-cache" \
+    -schema-location "https://raw.githubusercontent.com/yannh/kubernetes-json-schema/$K8S_SCHEMA_REF/{{.NormalizedKubernetesVersion}}-standalone{{.StrictSuffix}}/{{.ResourceKind}}{{.KindSuffix}}.json" \
+    -schema-location "https://raw.githubusercontent.com/datreeio/CRDs-catalog/$CRD_SCHEMA_REF/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json" \
+    "$rendered"
+}
+
+check_contract_platform() {
+  local rc=0 m e verbs
+  m="$(bash platform/render-manifests.sh us-east-1)"
+  local -a expect=(
+    "kind: Namespace" "name: dx01v2"
+    "pod-security.kubernetes.io/enforce: restricted"
+    "pod-security.kubernetes.io/enforce-version: latest"
+    "elbv2.k8s.aws/pod-readiness-gate-inject: enabled"
+    "kind: Role" "name: dx01v2-deployer"
+    "kind: RoleBinding" "name: dx01v2-deployers"
+    "apiVersion: external-secrets.io/v1" "kind: ClusterSecretStore" "name: aws-secrets-manager"
+    "service: SecretsManager" "region: us-east-1"
+  )
+  for e in "${expect[@]}"; do
+    grep -qF -- "$e" <<<"$m" || {
+      echo "platform/manifests: missing '$e' (docs/CONTRATO.md)"
+      rc=1
+    }
+  done
+  verbs="$(awk '/resources: \["secrets"\]/ { getline; print; exit }' <<<"$m")"
+  [[ "$verbs" =~ verbs:\ \[\"get\",\ \"list\",\ \"watch\"\]$ ]] || {
+    echo "the dx01v2-deployer Role must only read secrets (get, list, watch); got: $verbs"
+    rc=1
+  }
+  grep -qE '^  name: aws-load-balancer-controller$' platform/values/aws-load-balancer-controller.yaml || {
+    echo "LBC service account must be aws-load-balancer-controller (Pod Identity association)"
+    rc=1
+  }
+  grep -qE '^enableServiceMutatorWebhook: false$' platform/values/aws-load-balancer-controller.yaml || {
+    echo "the LBC service mutator webhook must stay off"
+    rc=1
+  }
+  grep -qE '^  name: external-secrets$' platform/values/external-secrets.yaml || {
+    echo "ESO service account must be external-secrets (Pod Identity association)"
+    rc=1
+  }
+  return "$rc"
+}
+
+# Renders both pinned charts with platform/values/*.yaml (no cluster needed) and asserts that the
+# values are consumed as intended: images by digest, Pod Identity service accounts, feature gates,
+# default tags, no service mutator webhook.
+check_helm_template() {
+  local rc=0 lbc eso key value want e
+  declare -A pv=()
+  need helm
+  while IFS='=' read -r key value; do
+    [[ "$key" =~ ^[A-Z0-9_]+$ ]] && pv[$key]="$value"
+  done < <(grep -E '^[A-Z0-9_]+=' platform/versions.env)
+  export HELM_CACHE_HOME="$HARNESS_WORK_DIR/helm/cache" HELM_CONFIG_HOME="$HARNESS_WORK_DIR/helm/config" HELM_DATA_HOME="$HARNESS_WORK_DIR/helm/data"
+  lbc="$(helm template aws-load-balancer-controller aws-load-balancer-controller \
+    --repo https://aws.github.io/eks-charts --version "${pv[LBC_CHART_VERSION]}" --namespace kube-system \
+    --values platform/values/aws-load-balancer-controller.yaml \
+    --set-string clusterName=tx01v2-lab --set-string region=us-east-1 --set-string vpcId=vpc-0123456789abcdef0)"
+  eso="$(helm template external-secrets external-secrets \
+    --repo https://charts.external-secrets.io --version "${pv[ESO_CHART_VERSION]}" --namespace external-secrets \
+    --values platform/values/external-secrets.yaml)"
+  want="$(sed -n 's/^  tag: //p' platform/values/aws-load-balancer-controller.yaml)"
+  local -a expect=(
+    "image: \"public.ecr.aws/eks/aws-load-balancer-controller:$want\""
+    "serviceAccountName: aws-load-balancer-controller"
+    "- --cluster-name=tx01v2-lab"
+    "- --default-tags=Environment=lab,Project=tx01v2"
+    "- --feature-gates=ALBGatewayAPI=false,NLBGatewayAPI=false"
+    "kind: IngressClass"
+  )
+  for e in "${expect[@]}"; do
+    grep -qF -- "$e" <<<"$lbc" || {
+      echo "aws-load-balancer-controller chart: missing '$e'"
+      rc=1
+    }
+  done
+  if grep -qF 'mservice.elbv2.k8s.aws' <<<"$lbc"; then
+    echo "aws-load-balancer-controller chart: the service mutator webhook is rendered"
+    rc=1
+  fi
+  want="$(sed -n 's/^  tag: //p' platform/values/external-secrets.yaml)"
+  (($(grep -cF "image: ghcr.io/external-secrets/external-secrets:$want" <<<"$eso") == 3)) || {
+    echo "external-secrets chart: the controller, webhook and cert controller must all use the pinned digest"
+    rc=1
+  }
+  grep -qE '^      serviceAccountName: external-secrets$' <<<"$eso" || {
+    echo "external-secrets chart: the controller must run as the service account external-secrets"
+    rc=1
+  }
+  echo "rendered aws-load-balancer-controller ${pv[LBC_CHART_VERSION]} ($(wc -l <<<"$lbc") lines) and external-secrets ${pv[ESO_CHART_VERSION]} ($(wc -l <<<"$eso") lines)"
+  return "$rc"
+}
+
+check_gitleaks() {
+  need gitleaks git
+  if git rev-parse --verify -q HEAD >/dev/null; then
+    echo "repository has commits: scanning the full history (gitleaks git)"
+    gitleaks git --no-banner --redact --log-level warn .
+  else
+    echo "no commits yet: scanning the working tree (gitleaks dir)"
+    gitleaks dir --no-banner --redact --log-level warn .
+  fi
+}
+
+check_terraform_test() {
+  need terraform
+  tf_init "$1"
+  terraform -chdir="$1" test -no-color
+}
+
+register_checks() {
+  local d
+  register static tool-versions check_tool_versions
+  register static repo-structure check_repo_structure
+  register static version-consistency check_version_consistency
+  register static policy-terraform check_policy_terraform
+  register static policy-identifiers check_policy_identifiers
+  register static policy-workflows check_policy_workflows
+  register static trivyignore-policy check_trivyignore_policy
+  register static contract-platform check_contract_platform
+  register static terraform-fmt check_terraform_fmt
+  register static terraform-lockfiles check_terraform_lockfiles
+  for d in terraform/bootstrap terraform/envs/lab "$REPO_ROOT"/terraform/modules/*/; do
+    d="${d#"$REPO_ROOT"/}"
+    d="${d%/}"
+    register static "terraform-validate:${d#terraform/}" "check_terraform_validate $d"
+  done
+  register static tflint check_tflint
+  register static trivy-config check_trivy_config
+  register static trivy-config-tfvars check_trivy_config_tfvars
+  register static actionlint check_actionlint
+  register static shellcheck check_shellcheck
+  register static kubeconform check_kubeconform
+  register static helm-template check_helm_template
+  register static gitleaks check_gitleaks
+  register test tool-versions check_tool_versions
+  register test terraform-test:bootstrap "check_terraform_test terraform/bootstrap"
+  register test terraform-test:envs/lab "check_terraform_test terraform/envs/lab"
+}
+
+# ---------------------------------------------------------------------------------------------
+# Runner
+# ---------------------------------------------------------------------------------------------
+
+PASS_COUNT=0
+FAIL_COUNT=0
+SKIP_COUNT=0
+declare -a FAILED=()
+
+run_check() {
+  local name=$1 cmd=$2 log rc start secs status reason="" lines
+  local -a parts=()
+  read -ra parts <<<"$cmd"
+  log="$HARNESS_WORK_DIR/logs/${name//[^A-Za-z0-9._-]/_}.log"
+  start=$SECONDS
+  set +e
+  (
+    set -euo pipefail
+    cd "$REPO_ROOT"
+    "${parts[@]}"
+  ) >"$log" 2>&1
+  rc=$?
+  set -e
+  secs=$((SECONDS - start))
+  case "$rc" in
+    0) status=PASS ;;
+    "$SKIP_CODE")
+      reason="$(sed -n 's/^SKIP_REASON: //p' "$log" | tail -n 1)"
+      if strict; then
+        status=FAIL
+        reason="$reason (SKIP is not allowed with HARNESS_STRICT=1)"
+      else
+        status=SKIP
+      fi
+      ;;
+    *) status=FAIL ;;
+  esac
+  printf '%s %s (%ss)%s\n' "$status" "$name" "$secs" "${reason:+ - $reason}"
+  case "$status" in
+    PASS) PASS_COUNT=$((PASS_COUNT + 1)) ;;
+    SKIP) SKIP_COUNT=$((SKIP_COUNT + 1)) ;;
+    FAIL)
+      FAIL_COUNT=$((FAIL_COUNT + 1))
+      FAILED+=("$name")
+      ;;
+  esac
+  if [[ "$status" == FAIL || "$HARNESS_VERBOSE" == 1 ]]; then
+    lines="$(wc -l <"$log")"
+    if ((lines > 400)); then
+      echo "    ... last 400 of $lines lines (full log: $log)"
+    fi
+    tail -n 400 "$log" | sed 's/^/    /'
+  fi
+}
+
+list_checks() {
+  local i
+  echo "stages:"
+  echo "  static  policies, fmt, validate, lock files, tflint, trivy, actionlint, shellcheck, kubeconform, helm template, gitleaks"
+  echo "  test    terraform test (mock AWS provider) for terraform/bootstrap and terraform/envs/lab"
+  echo "  all     static + test"
+  echo "checks:"
+  for i in "${!CHECK_NAME[@]}"; do
+    printf '  %-7s %s\n' "${CHECK_STAGE[$i]}" "${CHECK_NAME[$i]}"
+  done
+}
+
+usage() {
+  echo "usage: $0 <stage>...   (stages: static, test, all, list)" >&2
+  exit 2
+}
+
+main() {
+  local arg stage i start_all=$SECONDS
+  local -a stages=()
+  declare -A seen=()
+  (($# > 0)) || usage
+  register_checks
+  for arg in "$@"; do
+    case "$arg" in
+      static | test) stages+=("$arg") ;;
+      all) stages+=(static test) ;;
+      list)
+        list_checks
+        return 0
+        ;;
+      *) usage ;;
+    esac
+  done
+  mkdir -p "$HARNESS_WORK_DIR/logs"
+  echo "harness: stages=${stages[*]} strict=$HARNESS_STRICT work_dir=$HARNESS_WORK_DIR${HARNESS_ONLY:+ only=$HARNESS_ONLY}"
+  for stage in "${stages[@]}"; do
+    for i in "${!CHECK_NAME[@]}"; do
+      [[ "${CHECK_STAGE[$i]}" == "$stage" && -z "${seen[${CHECK_NAME[$i]}]:-}" ]] || continue
+      [[ -z "$HARNESS_ONLY" || "${CHECK_NAME[$i]}" =~ $HARNESS_ONLY ]] || continue
+      seen[${CHECK_NAME[$i]}]=1
+      run_check "${CHECK_NAME[$i]}" "${CHECK_CMD[$i]}"
+    done
+  done
+  echo "summary: $((PASS_COUNT + FAIL_COUNT + SKIP_COUNT)) checks, $PASS_COUNT PASS, $FAIL_COUNT FAIL, $SKIP_COUNT SKIP ($((SECONDS - start_all))s, strict=$HARNESS_STRICT)"
+  if ((PASS_COUNT + FAIL_COUNT + SKIP_COUNT == 0)); then
+    echo "no check matched HARNESS_ONLY='$HARNESS_ONLY'"
+    return 1
+  fi
+  if ((FAIL_COUNT > 0)); then
+    echo "failed: ${FAILED[*]}"
+    return 1
+  fi
+}
+
+main "$@"

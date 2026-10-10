@@ -1,0 +1,33 @@
+# SHA256 of every harness tool artifact: <sha256>  <tool>  <version>  <os>_<arch>
+# Taken from the upstream checksum file of each exact release (shellcheck has none:
+# computed from the downloaded artifacts). Regenerate with scripts/update-tool-checksums.sh.
+2bc2fcfff033265c9e02ca0351f01794eb122f62a9b2a49a3294b9e49eaab5e4  terraform  1.16.5  linux_amd64
+61a50b00485ee4810cf20581ef080fc54d34d666e175c58d9a10501c65c1ccde  terraform  1.16.5  linux_arm64
+ecdef65e24193d627f27c39baeda31295f08c938d8a3d4764f442fb916d4b7dc  terraform  1.16.5  darwin_arm64
+cca9d13e2e1d7a2c627af60ff899a3c9b74212899416aeb96ec764d2ef954537  tflint  0.64.0  linux_amd64
+560da89aacf59389d4eb029730dd5b109b7288096c32f2726a0d9e783a5ea8eb  tflint  0.64.0  linux_arm64
+2496e9cb3d24992d553b45e7c87a0fdc9449ca975233876247a9bfeda857e6c0  tflint  0.64.0  darwin_arm64
+98a530130d33efd49408f3d0ab9198072192ede413cc2a2ce38295d0922eb1c6  tflint-ruleset-aws  0.49.0  linux_amd64
+94f4f965a959d1699ae59687ffccc25031f8aaeae6f49756e5d8ca6e36d9f95b  tflint-ruleset-aws  0.49.0  linux_arm64
+246818b24c65a60d2b95d7c88921480d72bdca89cfbb936f23bb583b8c631f87  tflint-ruleset-aws  0.49.0  darwin_arm64
+c6e65abddb348e25f10549df887045629cf28cc72453cd1c63acb717316b3f3f  trivy  0.75.0  linux_amd64
+a1ee9f6ffb7d112b64ff726a2a0717c21175c1114361391f4a132956751a13b3  trivy  0.75.0  linux_arm64
+4a77108cccf8e55c8d6823e1e759939a622277e66cd0daa3c1fc621ed69e4568  trivy  0.75.0  darwin_arm64
+8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  actionlint  1.7.12  linux_amd64
+325e971b6ba9bfa504672e29be93c24981eeb1c07576d730e9f7c8805afff0c6  actionlint  1.7.12  linux_arm64
+aba9ced2dee8d27fecca3dc7feb1a7f9a52caefa1eb46f3271ea66b6e0e6953f  actionlint  1.7.12  darwin_arm64
+8c3be12b05d5c177a04c29e3c78ce89ac86f1595681cab149b65b97c4e227198  shellcheck  0.11.0  linux_amd64
+12b331c1d2db6b9eb13cfca64306b1b157a86eb69db83023e261eaa7e7c14588  shellcheck  0.11.0  linux_arm64
+56affdd8de5527894dca6dc3d7e0a99a873b0f004d7aabc30ae407d3f48b0a79  shellcheck  0.11.0  darwin_arm64
+9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883  kubeconform  0.8.0  linux_amd64
+1f53fc8e81258197a35e8603054162a5af1de8c5af13746c71ab680d9534ed87  kubeconform  0.8.0  linux_arm64
+f84f4dfbebf4a6b0b230385fa065a39ea35e02608c2b50d025dcf64775a69d67  kubeconform  0.8.0  darwin_arm64
+551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  gitleaks  8.30.1  linux_amd64
+e4a487ee7ccd7d3a7f7ec08657610aa3606637dab924210b3aee62570fb4b080  gitleaks  8.30.1  linux_arm64
+b40ab0ae55c505963e365f271a8d3846efbc170aa17f2607f13df610a9aeb6a5  gitleaks  8.30.1  darwin_arm64
+65691ff77eb6fa44c908b77a1082c9f092c3b9733b5cefabec0d1104890e21a8  kubectl  1.37.1  linux_amd64
+ff749f4b78d9c4f1ec87307df9b50119ed819e2094aa9810cb9acffc3286c8c7  kubectl  1.37.1  linux_arm64
+fd65982c97ddad3106754b69ffa196d0e543aa591930ae52aed1adfb92f8c77f  kubectl  1.37.1  darwin_arm64
+86584a54def73570558f66f5111cc53dfed56689637ae32c1201205d494f54fb  helm  4.3.0  linux_amd64
+31c5794dd55c66a51e6b7d2e2ac7a114ae8b1de41ff1d9ba51748ac973b06a08  helm  4.3.0  linux_arm64
+d3870437e1e95b67f8edbde964156c84a26503f560821d40c542441658934fba  helm  4.3.0  darwin_arm64

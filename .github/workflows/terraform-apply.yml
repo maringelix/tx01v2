@@ -1,0 +1,84 @@
+# Applies terraform/envs/lab. CLOUD-MUTATING and billable: dispatch manually, after reading the latest
+# terraform-plan run. The `lab` environment (required reviewer, main only) gates the OIDC role.
+name: terraform-apply
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tx01v2-lab-cloud
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    environment: lab
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+      TF_IN_AUTOMATION: "1"
+      TF_INPUT: "0"
+      TF_VAR_aws_region: ${{ vars.AWS_REGION }}
+      TF_VAR_github_owner: ${{ github.repository_owner }}
+      TF_VAR_endpoint_public_access_cidrs: ${{ vars.LAB_ENDPOINT_PUBLIC_ACCESS_CIDRS }}
+      TF_VAR_allow_endpoint_from_anywhere: ${{ vars.LAB_ALLOW_ENDPOINT_FROM_ANYWHERE || 'false' }}
+      TF_VAR_cluster_admin_principal_arns: ${{ vars.LAB_CLUSTER_ADMIN_PRINCIPAL_ARNS }}
+      TF_VAR_app_deployer_principal_arns: ${{ vars.LAB_APP_DEPLOYER_PRINCIPAL_ARNS || '[]' }}
+    steps:
+      - name: Check repository variables
+        env:
+          AWS_APPLY_ROLE_ARN: ${{ vars.AWS_APPLY_ROLE_ARN }}
+        run: |
+          missing=()
+          for v in AWS_REGION TF_STATE_BUCKET AWS_APPLY_ROLE_ARN TF_VAR_endpoint_public_access_cidrs TF_VAR_cluster_admin_principal_arns; do
+            [[ -n "${!v}" ]] || missing+=("$v")
+          done
+          if ((${#missing[@]} > 0)); then
+            echo "::error::Missing repository variables for: ${missing[*]}. Settings > Secrets and variables > Actions > Variables; names and values in docs/RUNBOOK.md (section 'Variáveis do GitHub')."
+            exit 1
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_APPLY_ROLE_ARN }}
+          role-session-name: tx01v2-apply-${{ github.run_id }}
+          role-duration-seconds: 7200
+          aws-region: ${{ vars.AWS_REGION }}
+          mask-aws-account-id: true
+
+      - name: Install terraform (pinned, SHA256-verified)
+        run: |
+          bash scripts/install-tools.sh terraform
+          echo "$GITHUB_WORKSPACE/.tools/bin" >> "$GITHUB_PATH"
+
+      - name: terraform init
+        run: terraform -chdir=terraform/envs/lab init -input=false -lockfile=readonly -backend-config="bucket=$TF_STATE_BUCKET" -backend-config="region=$AWS_REGION"
+
+      - name: terraform plan
+        run: terraform -chdir=terraform/envs/lab plan -input=false -no-color -out=tfplan
+
+      - name: terraform apply
+        run: terraform -chdir=terraform/envs/lab apply -input=false -no-color tfplan
+
+      - name: Outputs to the job summary
+        run: |
+          account_id="$(aws sts get-caller-identity --query Account --output text)"
+          outputs="$(terraform -chdir=terraform/envs/lab output -no-color)"
+          {
+            echo "## terraform apply: terraform/envs/lab"
+            echo '```'
+            printf '%s\n' "${outputs//"$account_id"/<ACCOUNT_ID>}"
+            echo '```'
+            echo "Next: dispatch the platform workflow (action=install), then deploy dx01v2. Destroy when done."
+          } >> "$GITHUB_STEP_SUMMARY"

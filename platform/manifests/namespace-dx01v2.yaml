@@ -1,0 +1,9 @@
+# Namespace of the dx01v2 app (contract v1, docs/CONTRATO.md).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dx01v2
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    elbv2.k8s.aws/pod-readiness-gate-inject: enabled

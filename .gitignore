@@ -1,0 +1,37 @@
+# Harness tools and scratch data
+.tools/
+.cache/
+
+# Terraform working data, local state and plans
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+crash.log
+crash.*.log
+.terraform.tfstate.lock.info
+# Lock files are committed only for the root configurations
+terraform/modules/**/.terraform.lock.hcl
+
+# Real inputs never get committed (the *.example files do)
+*.tfvars
+*.tfvars.json
+backend.hcl
+*.auto.tfvars
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Local credentials and editor noise
+.env
+.env.*
+*.pem
+*.key
+kubeconfig
+.kube/
+.DS_Store
+.idea/
+.vscode/
+*.swp

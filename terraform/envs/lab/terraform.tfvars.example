@@ -1,0 +1,28 @@
+# Copy to terraform.tfvars (git-ignored) for local runs. CI uses TF_VAR_* repository variables
+# instead (docs/RUNBOOK.md). Placeholder values only: 203.0.113.10/32 is a documentation address
+# (RFC 5737) and 123456789012 is the AWS documentation account ID.
+
+aws_region = "us-east-1"
+
+# Your public IP as /32. GitHub-hosted runners need 0.0.0.0/0 plus
+# allow_endpoint_from_anywhere = true for the platform/deploy workflows (docs/ARQUITETURA.md).
+endpoint_public_access_cidrs = ["203.0.113.10/32"]
+allow_endpoint_from_anywhere = false
+
+# tx01v2-gha-apply runs the platform and destroy workflows; add your own admin role too.
+cluster_admin_principal_arns = [
+  "arn:aws:iam::123456789012:role/tx01v2-gha-apply",
+  "arn:aws:iam::123456789012:role/Admin",
+]
+
+# Output deploy_role_arn of terraform/bootstrap.
+app_deployer_principal_arns = ["arn:aws:iam::123456789012:role/dx01v2-gha-deploy"]
+
+# Lab-friendly defaults (change only if you know the cost impact, see docs/CUSTOS.md):
+# cluster_version          = "1.36"
+# node_capacity_type       = "SPOT"
+# node_instance_types      = ["t3.medium", "t3a.medium"]
+# nat_gateway_per_az       = false
+# db_multi_az              = false
+# db_backup_retention_days = 1
+# log_retention_days       = 7
