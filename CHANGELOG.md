@@ -32,3 +32,4 @@ All notable changes to this project are documented here. The format follows
 
 - The CI (`static`, `test`) ran green on GitHub: the README status matrix now says `verified in CI`
   for those rows.
+- The README family table links the Azure pair (`tx02v2`, `dx02v2`), now public.

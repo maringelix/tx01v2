@@ -6,7 +6,7 @@ is the source of truth. The full rule list (pt-BR) is [docs/GUARDRAILS.md](docs/
 ## 1. Mission and context
 
 - `tx01v2` is the AWS infrastructure half of a public, educational DevOps lab (v2 family: `tx01v2` +
-  `dx01v2` on AWS now; `tx02v2`/`dx02v2` on Azure and `tx03v2`/`dx03v2` on GCP are planned).
+  `dx01v2` on AWS, `tx02v2` + `dx02v2` on Azure; `tx03v2`/`dx03v2` on GCP are planned).
 - It must stay healthy without any cloud account: every claim is backed by the local harness or
   carries a status label (`verified in CI`, `verified locally`, `not run in the cloud (v2)`, `planned`).
 - Current status: the harness (`make verify`) passes locally in a Linux container and in CI (jobs

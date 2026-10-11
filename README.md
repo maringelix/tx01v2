@@ -19,7 +19,8 @@ The lab family (v2):
 |---|---|---|---|
 | `tx01v2` (this repo) | AWS | infrastructure (Terraform, platform layer) | see status matrix |
 | [`dx01v2`](https://github.com/maringelix/dx01v2) | AWS | application (built against `docs/CONTRATO.md`) | see its status matrix |
-| `tx02v2` / `dx02v2` | Azure | infrastructure / application | `planned` |
+| [`tx02v2`](https://github.com/maringelix/tx02v2) | Azure | infrastructure (Terraform, AKS, PostgreSQL Flexible Server, Application Gateway for Containers) | see its status matrix |
+| [`dx02v2`](https://github.com/maringelix/dx02v2) | Azure | application (the dx01v2 app on AKS) | see its status matrix |
 | `tx03v2` / `dx03v2` | GCP | infrastructure / application | `planned` |
 
 ## Status matrix
