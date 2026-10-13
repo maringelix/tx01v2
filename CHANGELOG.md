@@ -37,6 +37,12 @@ All notable changes to this project are documented here. The format follows
 - README status matrix: repository settings as code are applied (read back with `gh api`), no
   longer `planned`.
 
+### Fixed
+
+- `platform/local/uninstall.sh`: the teardown no longer fails when the Service of a Gateway that is
+  being deleted disappears between the listing and the delete (`--ignore-not-found`); seen in the
+  app repo platform e2e, where the app Gateway still exists at teardown.
+
 ### Added (first v2)
 
 - Initial v2 of the AWS infrastructure lab, rebuilt from scratch with the lessons of v1
