@@ -31,7 +31,8 @@ main() {
     kubectl -n argocd scale statefulset argocd-application-controller --replicas=0 >/dev/null
     kubectl -n argocd wait --for=delete pod -l app.kubernetes.io/name=argocd-application-controller --timeout=120s >/dev/null
   fi
-  # Gateways first: Istio owns the Service of each Gateway and would recreate a deleted one.
+  # Gateways first: Istio owns the Service of each Gateway and would recreate a deleted one. The
+  # list below can still show a Service of a Gateway that is going away: --ignore-not-found.
   if kubectl get crd gateways.gateway.networking.k8s.io >/dev/null 2>&1; then
     kubectl delete gateways.gateway.networking.k8s.io --all --all-namespaces --wait=true --timeout=120s
   fi
@@ -40,7 +41,7 @@ main() {
   if [[ -n "$services" ]]; then
     while IFS=/ read -r ns name; do
       log "deleting Service $ns/$name (type LoadBalancer)"
-      kubectl -n "$ns" delete service "$name" --wait=true --timeout=120s
+      kubectl -n "$ns" delete service "$name" --ignore-not-found --wait=true --timeout=120s
     done <<<"$services"
   fi
   for i in $(seq 1 "$WAIT_SECONDS"); do
