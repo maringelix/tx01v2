@@ -39,16 +39,16 @@ The lab family (v2):
 | Platform layer (AWS Load Balancer Controller v3.6.0, External Secrets Operator 2.12.0) | `not run in the cloud (v2)` | `.github/workflows/platform.yml`, `platform/install.sh` |
 | Destroy + leftover check | `not run in the cloud (v2)` | `.github/workflows/terraform-destroy.yml`, `scripts/leftovers.sh` |
 | Repository settings as code (ruleset, environment `lab`) | `verified locally` | `scripts/repo-guardrails.sh` applied; read back with `gh api` on 2026-10-13 (`docs/PUBLICACAO.md`) |
-| **Local lab** (Terraform on Docker): kind cluster + emulated ECR, RDS (TLS only), S3, load balancer, git server; destroy + leftover check | `verified locally` | `make e2e` (`terraform/envs/local`, `scripts/local-lab.sh`); `terraform-test:envs/local` |
-| Service mesh: Istio 1.31 ambient, mTLS `STRICT`, identity-based `AuthorizationPolicy` | `verified locally` | `make e2e` (`platform/local/check.sh`: allowed, other identity and plaintext probes) |
-| Gateway API on Istio behind the emulated load balancer, HTTPS with cert-manager (lab CA), HTTP → HTTPS | `verified locally` | `make e2e` |
-| External Secrets (ClusterSecretStore `local-secrets`), metrics-server | `verified locally` | `make e2e` |
-| Observability: Prometheus, Alertmanager (synthetic alert delivered), Grafana (ClusterIP), Loki + Alloy | `verified locally` | `make e2e`; `helm-template-local` |
-| GitOps with Argo CD 3.5 (commit → sync → self-heal from the lab git server) | `verified locally` | `make e2e` |
-| Policy as code: Gatekeeper 3.23 in `deny` (allowed registries, pinned images, resources, probes, labels, NodePort) | `verified locally` | `policy-gator` (`gator verify`); `make e2e` |
-| In-cluster scanning: Trivy Operator (vulnerability and configuration reports) | `verified locally` | `make e2e` |
-| Backup and restore drill: Velero to the S3 emulator (namespace deleted, restored with its data) | `verified locally` | `make e2e` |
-| Chaos engineering with a hypothesis: Chaos Mesh pod-kill, availability measured | `verified locally` | `make e2e` |
+| **Local lab** (Terraform on Docker): kind cluster + emulated ECR, RDS (TLS only), S3, load balancer, git server; destroy + leftover check | `verified in CI` | `make e2e` (`terraform/envs/local`, `scripts/local-lab.sh`); `terraform-test:envs/local` |
+| Service mesh: Istio 1.31 ambient, mTLS `STRICT`, identity-based `AuthorizationPolicy` | `verified in CI` | `make e2e` (`platform/local/check.sh`: allowed, other identity and plaintext probes) |
+| Gateway API on Istio behind the emulated load balancer, HTTPS with cert-manager (lab CA), HTTP → HTTPS | `verified in CI` | `make e2e` |
+| External Secrets (ClusterSecretStore `local-secrets`), metrics-server | `verified in CI` | `make e2e` |
+| Observability: Prometheus, Alertmanager (synthetic alert delivered), Grafana (ClusterIP), Loki + Alloy | `verified in CI` | `make e2e`; `helm-template-local` |
+| GitOps with Argo CD 3.5 (commit → sync → self-heal from the lab git server) | `verified in CI` | `make e2e` |
+| Policy as code: Gatekeeper 3.23 in `deny` (allowed registries, pinned images, resources, probes, labels, NodePort) | `verified in CI` | `policy-gator` (`gator verify`); `make e2e` |
+| In-cluster scanning: Trivy Operator (vulnerability and configuration reports) | `verified in CI` | `make e2e` |
+| Backup and restore drill: Velero to the S3 emulator (namespace deleted, restored with its data) | `verified in CI` | `make e2e` |
+| Chaos engineering with a hypothesis: Chaos Mesh pod-kill, availability measured | `verified in CI` | `make e2e` |
 | The same add-ons on EKS | `planned` | the local platform shows the target; the cloud platform layer installs only LBC + ESO |
 
 `verified in CI` rows run on every pull request, on every push to `main` and weekly (CI jobs

@@ -9,8 +9,8 @@ is the source of truth. The full rule list (pt-BR) is [docs/GUARDRAILS.md](docs/
   `dx01v2` on AWS, `tx02v2` + `dx02v2` on Azure, `tx03v2` + `dx03v2` on Google Cloud).
 - It must stay healthy without any cloud account: every claim is backed by the local harness or
   carries a status label (`verified in CI`, `verified locally`, `not run in the cloud (v2)`, `planned`).
-- Current status: the harness (`make verify`) passes locally in a Linux container and in CI (jobs
-  `static`, `test`). **Nothing of v2 has run in AWS** (bootstrap, apply, platform, destroy are
+- Current status: the harness (`make verify`) and the local lab (`make e2e`) pass locally in a Linux
+  container and in CI (jobs `static`, `test`, `e2e`). **Nothing of v2 has run in AWS** (bootstrap, apply, platform, destroy are
   `not run in the cloud (v2)`).
 - The local lab ([docs/LAB_LOCAL.md](docs/LAB_LOCAL.md)) rebuilds the whole v1 platform on Docker:
   `terraform/envs/local` (kind + emulated ECR, RDS, S3, load balancer, git server) and `platform/local`

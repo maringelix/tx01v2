@@ -5,7 +5,8 @@ Gatekeeper, Trivy Operator, backup, Chaos Mesh — mas só existia na nuvem, e b
 de verdade (`docs/LICOES_APRENDIDAS.md`). O lab local constrói essa plataforma inteira no Docker da sua
 máquina, com Terraform, e prova cada peça com tráfego ou chamadas reais. Nada aqui fala com a AWS.
 
-Status: `verificado localmente` (rodada completa em 2026-10-13, 26 sondas) e no job `e2e` do CI.
+Status: `verificado no CI` (job `e2e`, 26 sondas, 2026-10-13) e `verificado localmente` (rodada
+completa do zero no mesmo dia).
 
 ## O que é criado
 
