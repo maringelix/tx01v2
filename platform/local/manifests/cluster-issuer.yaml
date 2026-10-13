@@ -1,0 +1,9 @@
+# ClusterIssuer lab-ca: signs the Gateway certificates with the lab CA of terraform/envs/local (the
+# local twin of ACM). install.sh creates the Secret lab-ca (tls.crt/tls.key) in cert-manager first.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: lab-ca
+spec:
+  ca:
+    secretName: lab-ca

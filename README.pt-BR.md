@@ -38,11 +38,22 @@ A família do lab (v2):
 | Plan em pull requests | `não executado em nuvem (v2)` | `.github/workflows/terraform-plan.yml` |
 | Camada de plataforma (AWS Load Balancer Controller v3.6.0, External Secrets Operator 2.12.0) | `não executado em nuvem (v2)` | `.github/workflows/platform.yml`, `platform/install.sh` |
 | Destroy + checagem de sobras | `não executado em nuvem (v2)` | `.github/workflows/terraform-destroy.yml`, `scripts/leftovers.sh` |
-| Configurações do repositório como código (ruleset, environment `lab`) | `planejado` | `scripts/repo-guardrails.sh`, `docs/PUBLICACAO.md` |
+| Configurações do repositório como código (ruleset, environment `lab`) | `verificado localmente` | `scripts/repo-guardrails.sh` aplicado; conferido com `gh api` em 2026-10-13 (`docs/PUBLICACAO.md`) |
+| **Lab local** (Terraform no Docker): cluster kind + ECR, RDS (só TLS), S3, load balancer e servidor git emulados; destroy + checagem de sobras | `verificado localmente` | `make e2e` (`terraform/envs/local`, `scripts/local-lab.sh`); `terraform-test:envs/local` |
+| Service mesh: Istio 1.31 ambient, mTLS `STRICT`, `AuthorizationPolicy` por identidade | `verificado localmente` | `make e2e` (`platform/local/check.sh`: sondas permitida, de outra identidade e em texto puro) |
+| Gateway API no Istio atrás do load balancer emulado, HTTPS com cert-manager (CA do lab), HTTP → HTTPS | `verificado localmente` | `make e2e` |
+| External Secrets (ClusterSecretStore `local-secrets`), metrics-server | `verificado localmente` | `make e2e` |
+| Observabilidade: Prometheus, Alertmanager (alerta sintético entregue), Grafana (ClusterIP), Loki + Alloy | `verificado localmente` | `make e2e`; `helm-template-local` |
+| GitOps com Argo CD 3.5 (commit → sync → self-heal a partir do servidor git do lab) | `verificado localmente` | `make e2e` |
+| Policy as code: Gatekeeper 3.23 em `deny` (registries permitidos, imagens fixadas, recursos, probes, labels, NodePort) | `verificado localmente` | `policy-gator` (`gator verify`); `make e2e` |
+| Scan dentro do cluster: Trivy Operator (relatórios de vulnerabilidade e de configuração) | `verificado localmente` | `make e2e` |
+| Ensaio de backup e restore: Velero no S3 emulado (namespace apagado e restaurado com os dados) | `verificado localmente` | `make e2e` |
+| Chaos engineering com hipótese: pod-kill do Chaos Mesh, disponibilidade medida | `verificado localmente` | `make e2e` |
+| Os mesmos add-ons no EKS | `planejado` | o lab local mostra o alvo; a camada de plataforma em nuvem instala só LBC + ESO |
 
 As linhas `verificado no CI` rodam em todo pull request, em todo push para a `main` e toda semana
 (jobs `static` e `test` do CI). Uma linha de nuvem só muda com uma issue `cloud_run_report` (data,
-região, commit, custo, sobras).
+região, commit, custo, sobras). As linhas do lab local rodam também no job `e2e` do CI.
 
 ## Arquitetura
 
@@ -80,6 +91,34 @@ make help
 No Windows ou macOS, abra a pasta no devcontainer (`.devcontainer/devcontainer.json`); ele roda
 `make tools` sozinho. Nada aqui toca a AWS.
 
+### O lab inteiro na sua máquina (grátis)
+
+O lab v1 rodava a plataforma (mesh, monitoração, GitOps, políticas, scan, backup, chaos) só na nuvem.
+O lab local monta a mesma plataforma no Docker, para estudar e quebrar sem conta:
+
+```bash
+make e2e            # up + todas as sondas + down: 30 a 40 minutos, 8 GB de memória no Docker para "full"
+make local-up       # ou deixe rodando (LOCAL_PROFILE=core|observability|operations|full)
+make local-check    # sondas contra o lab rodando
+make local-down     # destroy + checagem de sobras
+```
+
+| AWS (caminho em nuvem) | Lab local |
+|---|---|
+| EKS 1.36 | kind 1.36 (`terraform/envs/local`) |
+| ECR | registry (`registry.tx01v2.local`, push em `localhost:5001`) |
+| RDS PostgreSQL 17, TLS `verify-full` | PostgreSQL 17, só TLS, CA do lab |
+| ALB + AWS Load Balancer Controller | cloud-provider-kind + Gateway do Istio (Gateway API) |
+| ACM | cert-manager, ClusterIssuer `lab-ca` |
+| Secrets Manager + ESO | Secrets de `lab-secrets` + ESO |
+| S3 (backups) | Versity S3 Gateway |
+| Contrato no SSM | ConfigMap `lab-system/lab-contract` (`docs/CONTRATO.md`) |
+| GitHub (origem do GitOps) | servidor git Soft Serve |
+
+Detalhes, sondas e limites: [docs/LAB_LOCAL.md](docs/LAB_LOCAL.md) e
+[docs/ARQUITETURA.md](docs/ARQUITETURA.md). O dx01v2 faz o deploy do app em cima dele
+(`make e2e-platform` lá).
+
 ## Caminho em nuvem (custa dinheiro)
 
 **Custo primeiro:** cerca de US$0,26–0,32 por hora em us-east-1 com os padrões (preços de tabela de
@@ -94,11 +133,12 @@ deploy do dx01v2 → smoke test → destroy → checagem de sobras → issue `cl
 | Alvo | O que roda | Quando |
 |---|---|---|
 | `make help` | lista os alvos | a qualquer momento |
-| `make tools` | `scripts/install-tools.sh`: terraform 1.16.5, tflint 0.64.0 + ruleset aws 0.49.0, trivy 0.75.0, actionlint 1.7.12, shellcheck 0.11.0, kubeconform 0.8.0, gitleaks 8.30.1, kubectl 1.37.1, helm 4.3.0 | uma vez, e depois de atualizar uma ferramenta |
+| `make tools` | `scripts/install-tools.sh`: terraform 1.16.5, tflint 0.64.0 + ruleset aws 0.49.0, trivy 0.75.0, actionlint 1.7.12, shellcheck 0.11.0, kubeconform 0.8.0, gitleaks 8.30.1, kubectl 1.37.1, helm 4.3.0, kind 0.33.0, gator 3.23.1 | uma vez, e depois de atualizar uma ferramenta |
 | `make static` | `scripts/harness.sh static` | antes de cada push |
-| `make test` | `scripts/harness.sh test` (`terraform test`, provider AWS mockado) | antes de cada push |
-| `make verify` | static + test (o que o CI roda) | antes de cada PR |
-| `make all` | todos os estágios (aqui, igual ao verify) | — |
+| `make test` | `scripts/harness.sh test` (`terraform test`, providers mockados) | antes de cada push |
+| `make verify` | static + test (jobs `static` e `test` do CI) | antes de cada PR |
+| `make e2e` | `scripts/harness.sh e2e`: o lab local de ponta a ponta (job `e2e` do CI) | mudanças na plataforma ou no lab local |
+| `make all` | static + test + e2e | — |
 | `make clean` | remove `.tools/`, caches e diretórios de trabalho do Terraform | — |
 
 `scripts/harness.sh list` mostra todos os checks. Detalhes: [docs/HARNESS.md](docs/HARNESS.md).
@@ -110,6 +150,7 @@ deploy do dx01v2 → smoke test → destroy → checagem de sobras → issue `cl
 | [docs/ARQUITETURA.md](docs/ARQUITETURA.md) | diagrama, ADRs, v1 → v2 |
 | [docs/CONTRATO.md](docs/CONTRATO.md) | contrato tx01v2 ⇄ dx01v2 v1 (fonte da verdade) |
 | [docs/RUNBOOK.md](docs/RUNBOOK.md) | rodada completa na nuvem |
+| [docs/LAB_LOCAL.md](docs/LAB_LOCAL.md) | o lab local: o que é emulado, como rodar, sondas, limites |
 | [docs/CUSTOS.md](docs/CUSTOS.md) | estimativa de custo por componente |
 | [docs/GUARDRAILS.md](docs/GUARDRAILS.md) | regras, aplicação, exceções, limites |
 | [docs/HARNESS.md](docs/HARNESS.md) | checks, modo estrito, problemas comuns |

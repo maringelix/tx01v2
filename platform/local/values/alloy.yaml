@@ -1,0 +1,87 @@
+# grafana/alloy 1.13.1 (app v1.20.1, namespace monitoring): collects the logs of every pod through the
+# Kubernetes API (no hostPath, no privileged DaemonSet) and pushes them to Loki. One replica is enough
+# for one node. Images pinned by digest (verified 2026-10-12).
+image:
+  tag: v1.20.1
+  digest: sha256:2aa2099af76c0098d4af7a4d6e48f86cb66dc1a000222ad927a1c67c6542d13f
+configReloader:
+  image:
+    # v0.94.1, the same reloader as the Prometheus Operator of kube-prometheus-stack
+    tag: v0.94.1
+    digest: sha256:06b52bd4dbe3ed6dd5905aadaf8b9987d9da4c31d37bb86deaadae68cee2d26b
+  resources:
+    requests:
+      cpu: 5m
+      memory: 16Mi
+    limits:
+      memory: 64Mi
+# The chart reads the pod security context from global (Pod Security "restricted" in monitoring).
+global:
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 473
+    runAsGroup: 473
+    seccompProfile:
+      type: RuntimeDefault
+controller:
+  type: deployment
+  replicas: 1
+  # Writable storage of Alloy (the root filesystem is read-only).
+  volumes:
+    extra:
+      - name: storage
+        emptyDir: {}
+alloy:
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: [ALL]
+  storagePath: /tmp/alloy
+  mounts:
+    varlog: false
+    dockercontainers: false
+    extra:
+      - name: storage
+        mountPath: /tmp/alloy
+  resources:
+    requests:
+      cpu: 20m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+  configMap:
+    create: true
+    content: |
+      // Every pod of the cluster, labelled with namespace, pod, container and app name.
+      discovery.kubernetes "pods" {
+        role = "pod"
+      }
+      discovery.relabel "pods" {
+        targets = discovery.kubernetes.pods.targets
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label  = "namespace"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label  = "pod"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          target_label  = "container"
+        }
+        rule {
+          source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+          target_label  = "app"
+        }
+      }
+      loki.source.kubernetes "pods" {
+        targets    = discovery.relabel.pods.output
+        forward_to = [loki.write.default.receiver]
+      }
+      loki.write "default" {
+        endpoint {
+          url = "http://loki.monitoring.svc:3100/loki/api/v1/push"
+        }
+      }

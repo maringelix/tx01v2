@@ -1,0 +1,40 @@
+# aqua/trivy-operator 0.37.0 (operator 0.35.0, scanner trivy 0.75.0, namespace trivy-system): continuous
+# vulnerability and configuration scanning inside the cluster (v1 tx03 tried it on Autopilot, where
+# its webhooks were refused). It scans the app namespace only and writes VulnerabilityReports and
+# ConfigAuditReports. Images pinned by digest (verified 2026-10-12).
+targetNamespaces: dx01v2
+image:
+  tag: 0.35.0@sha256:4cdb11af98ff409cfa7af980098203a841a5fe957cc6a0bbb0df7668065eb5fa
+trivy:
+  image:
+    tag: 0.75.0@sha256:af6acf9a6b85dfe389a1941505c0ce9efef52a4719635e1a962f022a3d855daa
+  severity: HIGH,CRITICAL
+  ignoreUnfixed: true
+  # Images of the app are named registry.tx01v2.local/... (the kind node maps that name to the registry
+  # container). Scan jobs are pods without that mapping: install.sh sets the mirror to the registry
+  # address on the lab network (plain HTTP).
+  registry:
+    mirror:
+      "registry.tx01v2.local": __REGISTRY_ENDPOINT__
+  nonSslRegistries:
+    labRegistry: __REGISTRY_ENDPOINT__
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 768Mi
+operator:
+  scanJobsConcurrentLimit: 2
+  scanJobTimeout: 10m
+  sbomGenerationEnabled: false
+  exposedSecretScannerEnabled: false
+  rbacAssessmentScannerEnabled: false
+  infraAssessmentScannerEnabled: false
+  clusterComplianceEnabled: false
+resources:
+  requests:
+    cpu: 20m
+    memory: 96Mi
+  limits:
+    memory: 384Mi

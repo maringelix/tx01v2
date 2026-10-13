@@ -1,0 +1,43 @@
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: laballowedrepos
+  annotations:
+    description: Every container image must start with one of the allowed prefixes (v1 tx01 allowed-registries).
+spec:
+  crd:
+    spec:
+      names:
+        kind: LabAllowedRepos
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            repos:
+              type: array
+              items:
+                type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package laballowedrepos
+
+        containers[c] {
+          c := input.review.object.spec.containers[_]
+        }
+        containers[c] {
+          c := input.review.object.spec.initContainers[_]
+        }
+        containers[c] {
+          c := input.review.object.spec.ephemeralContainers[_]
+        }
+
+        violation[{"msg": msg}] {
+          c := containers[_]
+          not allowed(c.image)
+          msg := sprintf("container <%v> uses image <%v>, outside the allowed repositories %v", [c.name, c.image, input.parameters.repos])
+        }
+
+        allowed(image) {
+          startswith(image, input.parameters.repos[_])
+        }

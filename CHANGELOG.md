@@ -8,6 +8,32 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- The local lab (docs/LAB_LOCAL.md): the whole v1 platform on Docker, with no cloud account.
+  - `terraform/envs/local` (providers docker 4.6.0, tls 4.4.1, random 3.9.1): network
+    `tx01v2-local`, kind 1.36 cluster, emulated ECR (registry 3.1.2), RDS (PostgreSQL 17, TLS only,
+    lab CA), S3 (Versity S3 Gateway 1.8.0), load balancer (cloud-provider-kind 0.12.0) and git server
+    (Soft Serve 0.12.3); 10 `terraform test` runs (plan only, mocked providers).
+  - `platform/local`: Gateway API 1.6.3, Istio 1.31.1 ambient, cert-manager 1.21.2 (`lab-ca`),
+    External Secrets 2.12.0 (`local-secrets`), metrics-server, kube-prometheus-stack 92.3.0 with an
+    in-cluster alert sink, Loki 7.3.0 + Alloy 1.13.1, Argo CD 10.10.3, Gatekeeper 3.23.1 with six
+    policies from v1 in `deny`, Trivy Operator 0.37.0, Velero 12.2.1, Chaos Mesh 2.8.4; charts pinned
+    by version and SHA256, images by digest; profiles `core`, `observability`, `operations`, `full`.
+  - `platform/local/check.sh`: 25 probes with real traffic or API calls (mTLS and authorization,
+    HTTPS through the emulated load balancer, alert delivery, logs, GitOps sync and self-heal, policy
+    denials, vulnerability reports, backup/restore drill, chaos experiment with a hypothesis).
+  - `scripts/local-lab.sh` (up, down, check, e2e, kubeconfig, status) and
+    `scripts/leftovers-local.sh`; local contract `lab-system/lab-contract` (docs/CONTRATO.md).
+  - Harness: checks `local-versions`, `helm-template-local`, `kubeconform-local`, `policy-gator`,
+    `terraform-validate:envs/local`, `terraform-test:envs/local`; stage `e2e` (`local-lab-e2e`,
+    `make e2e`) and the CI job `e2e`; tools kind 0.33.0 and gator 3.23.1.
+
+### Changed
+
+- README status matrix: repository settings as code are applied (read back with `gh api`), no
+  longer `planned`.
+
+### Added (first v2)
+
 - Initial v2 of the AWS infrastructure lab, rebuilt from scratch with the lessons of v1
   (docs/ARQUITETURA.md, "v1 → v2"):
   - `terraform/bootstrap`: S3 state bucket (versioned, TLS-only, native locking), GitHub OIDC

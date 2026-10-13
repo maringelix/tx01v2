@@ -1,0 +1,2 @@
+# istio/base 1.31.1: the Istio CRDs and cluster roles (namespace istio-system).
+defaultRevision: default

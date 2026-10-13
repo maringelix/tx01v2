@@ -107,6 +107,33 @@ final), que casa com o recurso `parameter/tx01v2/lab/*`; ou leia os nomes com `G
 - RDS PostgreSQL 17, porta 5432, acessível só a partir do security group do cluster EKS,
   `rds.force_ssl = 1`.
 
+## Lab local (contrato local, versão 1)
+
+O lab local (`docs/LAB_LOCAL.md`) é um contrato à parte, com versão própria (chave `version`), lido
+pelo deploy local do dx01v2. Ele espelha o contrato da nuvem com nomes do lab local; não muda nada
+acima. Publicado por `platform/local/install.sh` no ConfigMap `lab-system/lab-contract`:
+
+| Chave | Valor | Equivale na nuvem |
+|---|---|---|
+| `version` | `1` | versão deste arquivo |
+| `cluster-name` | `tx01v2-local` | `cluster-name` |
+| `network-cidr` | `10.250.0.0/24` (ou `subnet_cidr`) | `vpc-cidr` |
+| `registry` | `registry.tx01v2.local` (nome das imagens no cluster) | `ecr/api-url`, `ecr/web-url` (prefixo) |
+| `registry-push` | `localhost:5001` (push desta máquina) | — |
+| `db.endpoint-ip`, `db.hostname`, `db.port` | `10.250.0.11`, `db.tx01v2.local`, `5432` | endpoint do RDS |
+| `db.secret-name` | `tx01v2-lab-db-app` (chaves `host`, `port`, `dbname`, `username`, `password`) | `db/secret-name` |
+| `db.ca-configmap` | `lab-system/lab-ca` (chave `ca.crt`) | bundle de CA do RDS |
+| `app.admin-token-secret-name` | `tx01v2-lab-app-admin-token` (chave `token`) | `app/admin-token-secret-name` |
+| `eso.cluster-secret-store` | `local-secrets` (só o namespace `dx01v2`) | `eso/cluster-secret-store` |
+| `gateway.class` | `istio` (Gateway API) | IngressClass `alb` |
+| `tls.cluster-issuer` | `lab-ca` (cert-manager) | certificado ACM |
+| `gitops.push-url`, `gitops.read-url` | `ssh://10.250.0.13:23231/dx01v2-gitops`, `http://10.250.0.13:23232/dx01v2-gitops.git` | — |
+
+Regras do namespace `dx01v2` no lab local: Pod Security `restricted`, mesh ambient (`istio.io/dataplane-mode:
+ambient`), constraints do Gatekeeper em `deny` (`policy.lab/enforce: "true"`; imagens só de
+`registry.tx01v2.local/`), métricas do app coletadas pelo Prometheus do namespace `monitoring`. O deploy
+local escreve no repositório GitOps; quem aplica no cluster é o Argo CD.
+
 ## Mudando o contrato
 
 1. Abra PRs nos dois repositórios, com links cruzados, e incremente a versão no título deste arquivo.

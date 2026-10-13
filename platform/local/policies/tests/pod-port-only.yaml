@@ -1,0 +1,22 @@
+# localhost:5001/dx01v2/api has a registry port but no tag: it must count as untagged.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: port-only
+  namespace: dx01v2
+  labels:
+    app.kubernetes.io/name: port-only
+spec:
+  containers:
+    - name: main
+      image: localhost:5001/dx01v2/api
+      readinessProbe:
+        httpGet:
+          path: /
+          port: 8080
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+        limits:
+          memory: 32Mi
