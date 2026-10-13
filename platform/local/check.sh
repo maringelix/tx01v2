@@ -38,7 +38,7 @@ cleanup() {
       kubectl get pods --all-namespaces -o wide >"$LOCAL_DIAGNOSTICS_DIR/pods.txt" 2>&1 || true
       kubectl get events --all-namespaces --sort-by=.lastTimestamp >"$LOCAL_DIAGNOSTICS_DIR/events.txt" 2>&1 || true
       kubectl describe pods --all-namespaces >"$LOCAL_DIAGNOSTICS_DIR/describe-pods.txt" 2>&1 || true
-      helm list --all-namespaces --all >"$LOCAL_DIAGNOSTICS_DIR/helm.txt" 2>&1 || true
+      helm list --all-namespaces >"$LOCAL_DIAGNOSTICS_DIR/helm.txt" 2>&1 || true
       kubectl top pods --all-namespaces >"$LOCAL_DIAGNOSTICS_DIR/top.txt" 2>&1 || true
     fi
   fi

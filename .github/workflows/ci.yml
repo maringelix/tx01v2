@@ -94,6 +94,16 @@ jobs:
         env:
           LOCAL_DIAGNOSTICS_DIR: ${{ runner.temp }}/local-lab-diagnostics
 
+      # The job log keeps only the tail of the run (the destroy); the full log shows the failed probe.
+      # Sensitive Terraform values are never printed, and the lab credentials die with the runner.
+      - name: Keep the full e2e log
+        if: failure()
+        env:
+          DIAG_DIR: ${{ runner.temp }}/local-lab-diagnostics
+        run: |
+          mkdir -p "$DIAG_DIR"
+          cp /tmp/tx01v2-harness/logs/local-lab-e2e.log "$DIAG_DIR/" 2>/dev/null || echo "no e2e log to keep"
+
       - name: Upload diagnostics
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
