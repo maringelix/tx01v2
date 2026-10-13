@@ -4,7 +4,7 @@
 
 # Install order; also the list accepted by both scripts.
 # shellcheck disable=SC2034 # used by the scripts that source this file
-TOOLS_ALL=(terraform tflint tflint-ruleset-aws trivy actionlint shellcheck kubeconform gitleaks kubectl helm)
+TOOLS_ALL=(terraform tflint tflint-ruleset-aws trivy actionlint shellcheck kubeconform gitleaks kubectl helm kind gator)
 # shellcheck disable=SC2034
 TOOLS_PLATFORMS=(linux_amd64 linux_arm64 darwin_arm64)
 
@@ -68,6 +68,8 @@ tool_artifact() {
       ;;
     kubectl) printf 'kubectl' ;;
     helm) printf 'helm-v%s-%s-%s.tar.gz' "$v" "$os" "$arch" ;;
+    kind) printf 'kind-%s-%s' "$os" "$arch" ;;
+    gator) printf 'gator-v%s-%s-%s.tar.gz' "$v" "$os" "$arch" ;;
     *) die "unknown tool: $tool" ;;
   esac
 }
@@ -87,6 +89,8 @@ tool_url() {
     gitleaks) printf '%s/gitleaks/gitleaks/releases/download/v%s/%s' "$gh" "$v" "$a" ;;
     kubectl) printf 'https://dl.k8s.io/release/v%s/bin/%s/%s/kubectl' "$v" "$os" "$arch" ;;
     helm) printf 'https://get.helm.sh/%s' "$a" ;;
+    kind) printf '%s/kubernetes-sigs/kind/releases/download/v%s/%s' "$gh" "$v" "$a" ;;
+    gator) printf '%s/open-policy-agent/gatekeeper/releases/download/v%s/%s' "$gh" "$v" "$a" ;;
     *) die "unknown tool: $tool" ;;
   esac
 }
@@ -106,6 +110,8 @@ tool_checksum_url() {
     gitleaks) printf '%s/gitleaks/gitleaks/releases/download/v%s/gitleaks_%s_checksums.txt' "$gh" "$v" "$v" ;;
     kubectl) printf '%s.sha256' "$(tool_url "$tool" "$v" "$p")" ;;
     helm) printf '%s.sha256sum' "$(tool_url "$tool" "$v" "$p")" ;;
+    kind) printf '%s.sha256sum' "$(tool_url "$tool" "$v" "$p")" ;;
+    gator) printf '%s/open-policy-agent/gatekeeper/releases/download/v%s/sha256sums.txt' "$gh" "$v" ;;
     *) die "unknown tool: $tool" ;;
   esac
 }

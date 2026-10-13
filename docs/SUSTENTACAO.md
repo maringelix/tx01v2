@@ -10,7 +10,9 @@ Cobre o código (Terraform, scripts, workflows), as ferramentas do harness, as v
 
 ## 2. Estado atual
 
-- Harness completo (`make verify`) `verificado localmente` em container Linux; CI ainda não rodou.
+- Harness completo (`make verify`) `verificado no CI` (jobs `static` e `test`).
+- Lab local (`docs/LAB_LOCAL.md`): `make e2e` com o perfil `full` (26 sondas) `verificado localmente`
+  em 2026-10-13; roda também no job `e2e` do CI.
 - Bootstrap, apply, plataforma e destroy: `não executado em nuvem (v2)`.
 - Contrato com o dx01v2: versão 1 (`docs/CONTRATO.md`).
 
@@ -41,8 +43,22 @@ Cobre o código (Terraform, scripts, workflows), as ferramentas do harness, as v
 | kubectl / Helm | 1.37.1 / 4.3.0 | kubectl suporta ±1 minor da API (1.36–1.38) | kubernetes.io, helm.sh | Acompanhar a versão do cluster; Helm 4 removeu `--atomic` (use `--rollback-on-failure`) |
 | Runners e devcontainer | Ubuntu 24.04 LTS | suporte padrão de 5 anos (até 2029-04) | ubuntu.com | Trocar antes do fim |
 | Exceções do trivy | 4 entradas | 2027-04-30 | `.trivyignore.yaml` | Revisar até 2027-04 (5.9) |
+| Istio (lab local) | 1.31.1 | ~2027-02 (6 semanas depois da 1.33) | [releases suportadas](https://istio.io/latest/docs/releases/supported-releases/) | Trimestral (5.12); a 1.29 sai de suporte em 2026-10-12 |
+| Demais charts do lab local | `platform/local/versions.env` (cert-manager 1.21.2, kube-prometheus-stack 92.3.0, Loki 7.3.0, Alloy 1.13.1, Argo CD 10.10.3, Gatekeeper 3.23.1, Trivy Operator 0.37.0, Velero 12.2.1, Chaos Mesh 2.8.4, metrics-server 3.14.0) | cada projeto mantém as versões recentes | releases de cada projeto | Trimestral (5.12) |
+| Imagens dos serviços emulados | registry 3.1.2, Versity S3 Gateway 1.8.0, Soft Serve 0.12.3, cloud-provider-kind 0.12.0, PostgreSQL 17 | sem data fixa | `terraform/envs/local/images.tf` | Trimestral (5.12) |
 
 ## 5. Procedimentos
+
+### 5.12 Lab local (charts, imagens, kind)
+
+1. Para cada chart de `platform/local/versions.env`: leia as notas da release, rode
+   `helm pull <chart> --repo <repo> --version <nova>` e grave a versão e o `sha256sum` do `.tgz`.
+2. Atualize os digests em `platform/local/values/*.yaml` (`docker buildx imagetools inspect <imagem>:<tag>`
+   devolve o digest do índice multi-arquitetura). O check `helm-template-local` recusa imagem sem digest.
+3. Gatekeeper: suba `GATOR_VERSION` (`scripts/update-tool-checksums.sh gator <versão>`) junto com
+   `GATEKEEPER_VERSION`; o check `local-versions` exige as duas iguais.
+4. Imagens dos serviços emulados: `terraform/envs/local/images.tf` (o teste exige digest em todas).
+5. Rode `make verify` e `make e2e` (ou deixe o job `e2e` do CI provar no PR) e registre no CHANGELOG.
 
 ### 5.1 Ferramenta do harness (terraform, tflint, ruleset AWS, trivy, actionlint, shellcheck, kubeconform, gitleaks, kubectl, helm)
 

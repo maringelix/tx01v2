@@ -1,0 +1,63 @@
+# gatekeeper/gatekeeper 3.23.1 (namespace gatekeeper-system): policy as code at admission. The v1
+# policies (tx01: allowed registries, NodePort, probes, labels, limits; tx03: :latest) are the
+# ConstraintTemplates of platform/local/policies, enforced with deny on every namespace labelled
+# policy.lab/enforce=true (dx01v2). The webhook fails closed. Images pinned by digest (verified
+# 2026-10-12).
+replicas: 1
+validatingWebhookFailurePolicy: Fail
+# Fail closed, but never for the platform itself: with Gatekeeper down (for example while the node
+# restarts) the system and platform namespaces must still start their pods. The app namespace and
+# every new namespace stay covered. Gatekeeper's own namespace is always exempt.
+validatingWebhookExemptNamespacesLabels:
+  kubernetes.io/metadata.name:
+    - kube-system
+    - kube-public
+    - kube-node-lease
+    - local-path-storage
+    - istio-system
+    - cert-manager
+    - external-secrets
+    - monitoring
+    - monitoring-agents
+    - argocd
+    - trivy-system
+    - velero
+    - chaos-mesh
+    - lab-system
+    - lab-secrets
+auditInterval: 60
+constraintViolationsLimit: 50
+image:
+  repository: docker.io/openpolicyagent/gatekeeper
+  crdRepository: docker.io/openpolicyagent/gatekeeper-crds
+  release: v3.23.1@sha256:dfc6fc78753f5564303429c1c1fdfe611df17be224ab22c09ce9d2a73c468a8d
+preInstall:
+  crdRepository:
+    image:
+      repository: docker.io/openpolicyagent/gatekeeper-crds
+      tag: v3.23.1@sha256:ab3620e6bec901e2a3f71ea4a65e589cc2b8b362a9836832dd0cc6ff916e4ce5
+# The label hooks only add admission.gatekeeper.sh/ignore to gatekeeper-system, which the chart already
+# exempts by name; they failed in the restricted namespace. The probe job uses an unpinned curl image:
+# install.sh waits for the webhook itself.
+postInstall:
+  labelNamespace:
+    enabled: false
+  probeWebhook:
+    enabled: false
+postUpgrade:
+  labelNamespace:
+    enabled: false
+controllerManager:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+audit:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 512Mi

@@ -44,6 +44,12 @@ Tipos: `bloqueante` (falha o CI ou o apply), `alerta` (notifica), `processo` (di
 | CI-04 | `HARNESS_STRICT=1` no CI: todo SKIP vira FAIL | nada é pulado em silêncio | `ci.yml`, `scripts/harness.sh` | bloqueante |
 | CI-05 | Workflows de nuvem: só `workflow_dispatch` (plan com guarda), environment `lab`, validação das variáveis, confirmação digitada no destroy | ações caras exigem intenção | `terraform-*.yml`, `platform.yml` | processo |
 | CI-06 | CI semanal agendado (segunda 06:00 UTC) | detecta ignores vencidos e URLs quebradas | `ci.yml` | alerta |
+| CI-07 | O job `e2e` (lab local) roda em todo PR e precisa estar verde antes do merge | a plataforma local é provada, não só renderizada | `ci.yml`; revisão (ainda fora do ruleset) | processo |
+| LOC-01 | O lab local nunca fala com uma nuvem: sem provider de nuvem nem backend remoto em `terraform/envs/local`; Docker só por socket local | o lab é grátis e seguro de rodar | `policy-terraform`; validação de `docker_host` (`terraform-test:envs/local`) | bloqueante |
+| LOC-02 | Contêineres do lab local com o label `tx01v2.lab=local`; só o registry publica porta, e em 127.0.0.1; nada privilegiado | nada fica exposto nem esquecido | `terraform-test:envs/local`, `policy-terraform`, `scripts/leftovers-local.sh` | bloqueante |
+| LOC-03 | Charts do lab local fixados por versão e SHA256 do `.tgz`; imagens por digest; Services só ClusterIP (exceto os Gateways, criados em runtime) | supply chain e nenhuma UI exposta (erro do v1: Grafana e Argo CD públicos) | `helm-template-local`, `local-versions`, `platform/local/install.sh` (recusa SHA256 diferente) | bloqueante |
+| LOC-04 | Políticas do Gatekeeper em `deny`, webhook `Fail` para o app, cada política com casos aceitos e recusados | v1 deixava tudo em `dryrun` sem audit | `policy-gator`; sonda `policies` do `e2e` | bloqueante |
+| LOC-05 | Toda peça da plataforma local tem uma sonda com tráfego ou chamada real; o `e2e` sempre destrói e confere sobras | só se afirma o que foi provado | `platform/local/check.sh`, `scripts/local-lab.sh e2e` | bloqueante (no job `e2e`) |
 | MUD-01 | `main` protegido por ruleset: PR obrigatório, checks `static` e `test` estritos, sem force-push | toda mudança passa pelo harness | `.github/rulesets/main.json` + `scripts/repo-guardrails.sh` | bloqueante (depois de publicado) |
 | MUD-02 | Ignore de scanner só com `statement` e `expired_at` em até ~7 meses | exceções revisadas | `trivyignore-policy` | bloqueante |
 | MUD-03 | Conventional Commits; um assunto por PR; CHANGELOG `[Unreleased]` atualizado | histórico legível | template de PR | processo |
@@ -85,6 +91,11 @@ pelo deployer (`KSV-0113`).
 - A política IAM do LBC é a do upstream, com recursos `*` limitados por condições de tag.
 - `scripts/leftovers.sh` cobre os serviços que o lab usa; recursos criados à mão fora disso não.
 - O schema do ClusterSecretStore no kubeconform é de 2026-06-02 (ver `docs/HARNESS.md`).
+- O lab local prova a plataforma num nó kind, não na AWS; o cloud-provider-kind usa o socket do Docker
+  (cria contêineres): rode o lab local só numa máquina descartável ou no CI (`docs/LAB_LOCAL.md`).
+- Os namespaces `istio-system`, `monitoring-agents` e `chaos-mesh` do lab local são `privileged` por
+  necessidade dos componentes; o webhook do Gatekeeper não avalia os namespaces da plataforma (para que
+  ela suba mesmo com o Gatekeeper fora do ar).
 
 ## Como verificar
 

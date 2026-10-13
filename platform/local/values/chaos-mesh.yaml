@@ -1,0 +1,30 @@
+# chaos-mesh/chaos-mesh 2.8.4 (namespace chaos-mesh, privileged: the daemon enters other pods'
+# namespaces through the containerd socket of the kind node). v1 ran it in "prd" with every fault at
+# once and no hypothesis (docs/LICOES_APRENDIDAS.md, 13); here each experiment of the probes states a
+# hypothesis and measures it. Images pinned by digest (verified 2026-10-12).
+enableProfiling: false
+controllerManager:
+  replicaCount: 1
+  image:
+    tag: v2.8.4@sha256:9e48285bb44c63be80f2fe4468c54b0f2d7cdc447ba5f5bc9ded4ab6a973cd37
+  resources:
+    requests:
+      cpu: 25m
+      memory: 96Mi
+    limits:
+      memory: 384Mi
+chaosDaemon:
+  image:
+    tag: v2.8.4@sha256:0d28dbd95b033279f65605ea88c354d25fe902409197274016dd2efc28ef25cd
+  runtime: containerd
+  socketPath: /run/containerd/containerd.sock
+  resources:
+    requests:
+      cpu: 25m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+dashboard:
+  create: false
+dnsServer:
+  create: false

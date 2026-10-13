@@ -1,0 +1,20 @@
+# Pods are checked when a controller creates them: a Deployment that breaks a rule shows FailedCreate
+# events instead of running pods (platform/local/policies/README.md).
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: LabAllowedRepos
+metadata:
+  name: allowed-repos
+spec:
+  enforcementAction: deny
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: [Pod]
+    namespaceSelector:
+      matchLabels:
+        policy.lab/enforce: "true"
+  parameters:
+    # The lab registry (dx01v2 images) and the Envoy of the Istio gateways.
+    repos:
+      - "registry.tx01v2.local/"
+      - "docker.io/istio/proxyv2:"

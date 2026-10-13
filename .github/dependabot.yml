@@ -21,6 +21,7 @@ updates:
     directories:
       - /terraform/bootstrap
       - /terraform/envs/lab
+      - /terraform/envs/local
     schedule:
       interval: monthly
     open-pull-requests-limit: 5

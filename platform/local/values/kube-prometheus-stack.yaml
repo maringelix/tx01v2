@@ -1,0 +1,156 @@
+# prometheus-community/kube-prometheus-stack 92.3.0 (namespace monitoring; node-exporter in the
+# privileged namespace monitoring-agents). The v1 stack, without its mistakes (docs/LICOES_APRENDIDAS.md,
+# 7.x): admission webhooks on (certificates from cert-manager), Grafana only through port-forward with a
+# generated password, rules that the harness tests with promtool, Alertmanager delivering to a sink that
+# the probes read. Images pinned by digest (verified 2026-10-12).
+crds:
+  enabled: true
+
+# kind runs etcd, the controller manager, the scheduler and kube-proxy with metrics on 127.0.0.1 only:
+# no targets, no alerts that can never resolve.
+kubeEtcd:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false
+defaultRules:
+  create: true
+  rules:
+    etcd: false
+    kubeControllerManager: false
+    kubeSchedulerAlerting: false
+    kubeSchedulerRecording: false
+    kubeProxy: false
+    windows: false
+
+prometheusOperator:
+  image:
+    sha: 7c88d4e7bae63bd8d0f8da986054337c23b4472fa8d3c6817f5bc4b8407a2d6a
+  prometheusConfigReloader:
+    image:
+      sha: 06b52bd4dbe3ed6dd5905aadaf8b9987d9da4c31d37bb86deaadae68cee2d26b
+  admissionWebhooks:
+    # Invalid PrometheusRules are refused at apply time (v1 turned the webhooks off).
+    enabled: true
+    certManager:
+      enabled: true
+    patch:
+      enabled: false
+  resources:
+    requests:
+      cpu: 20m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+
+prometheus:
+  prometheusSpec:
+    image:
+      sha: b2a413d5a03ea6a76782a508d1c7947440bba3b973931a25676e278431891b01
+    retention: 6h
+    scrapeInterval: 30s
+    evaluationInterval: 30s
+    # Every ServiceMonitor, PodMonitor and PrometheusRule of the cluster (dx01v2 ships its own).
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+    resources:
+      requests:
+        cpu: 50m
+        memory: 384Mi
+      limits:
+        memory: 1Gi
+
+alertmanager:
+  alertmanagerSpec:
+    image:
+      sha: e9733bafb1bdef9b00e25a21f8f99dc26a22224bf16641ad754d1649f4c3357a
+    retention: 24h
+    resources:
+      requests:
+        cpu: 10m
+        memory: 48Mi
+      limits:
+        memory: 128Mi
+  # v1 routed to Slack with the webhook in versioned values; here every alert goes to the in-cluster
+  # sink (platform/local/manifests/alert-sink.yaml) and the probes read what it received.
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      receiver: alert-sink
+      group_by: [alertname, namespace]
+      group_wait: 10s
+      group_interval: 30s
+      repeat_interval: 4h
+      routes:
+        - receiver: "null"
+          matchers:
+            - alertname = "Watchdog"
+    receivers:
+      - name: "null"
+      - name: alert-sink
+        webhook_configs:
+          - url: http://alert-sink.monitoring.svc:8080/alertmanager
+            send_resolved: true
+
+grafana:
+  image:
+    sha: 202e5d5b3f8499e70ccac7991eea6d7da72d2790eb2e0597e7987acf724e7180
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+  persistence:
+    enabled: false
+  initChownData:
+    enabled: false
+  testFramework:
+    enabled: false
+  sidecar:
+    image:
+      sha: 092dbe0c335fba9af414a27630ca68f34df6185784fa847d9954187e69dbfdd7
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: "1"
+      searchNamespace: ALL
+  additionalDataSources:
+    - name: Loki
+      type: loki
+      uid: loki
+      url: http://loki.monitoring.svc:3100
+      access: proxy
+  # Grafana 13 was OOMKilled at 256Mi while starting its app platform.
+  resources:
+    requests:
+      cpu: 20m
+      memory: 192Mi
+    limits:
+      memory: 640Mi
+
+kube-state-metrics:
+  image:
+    sha: sha256:42cfe3723a5f058171c627537fb57a3ea0f26e4380fa18555a95cb1a1b4cfc5b
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+
+prometheus-node-exporter:
+  # hostNetwork, hostPID and hostPath: it needs a privileged namespace.
+  namespaceOverride: monitoring-agents
+  image:
+    digest: sha256:8c9bac11973b94b59be88d6e11fee4429aa743c8846cdc75d65b18db33f6a106
+  resources:
+    requests:
+      cpu: 10m
+      memory: 24Mi
+    limits:
+      memory: 64Mi

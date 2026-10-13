@@ -1,0 +1,118 @@
+# gator verify suite of the local lab policies (harness check policy-gator). Each policy has at least
+# one accepted and one rejected object; the live cluster probe is in platform/local/check.sh.
+kind: Suite
+apiVersion: test.gatekeeper.sh/v1alpha1
+metadata:
+  name: lab-policies
+tests:
+  - name: allowed-repos
+    template: ../templates/laballowedrepos.yaml
+    constraint: ../constraints/allowed-repos.yaml
+    cases:
+      - name: lab-registry-and-istio-proxy
+        object: pod-good.yaml
+        inventory:
+          - namespace-dx01v2.yaml
+        assertions:
+          - violations: no
+      - name: docker-hub
+        object: pod-bad.yaml
+        inventory:
+          - namespace-dx01v2.yaml
+        assertions:
+          - violations: yes
+            message: outside the allowed repositories
+      - name: lookalike-prefix
+        object: pod-lookalike.yaml
+        inventory:
+          - namespace-dx01v2.yaml
+        assertions:
+          - violations: 1
+  - name: image-pinned
+    template: ../templates/labimagepinned.yaml
+    constraint: ../constraints/image-pinned.yaml
+    cases:
+      - name: tag-or-digest
+        object: pod-good.yaml
+        inventory:
+          - namespace-dx01v2.yaml
+        assertions:
+          - violations: no
+      - name: no-tag-and-latest
+        object: pod-bad.yaml
+        inventory:
+          - namespace-dx01v2.yaml
+        assertions:
+          - violations: 2
+      - name: registry-port-is-not-a-tag
+        object: pod-port-only.yaml
+        inventory:
+          - namespace-dx01v2.yaml
+        assertions:
+          - violations: 1
+            message: has no tag or digest
+  - name: container-resources
+    template: ../templates/labcontainerresources.yaml
+    constraint: ../constraints/container-resources.yaml
+    cases:
+      - name: requests-and-limit
+        object: pod-good.yaml
+        inventory:
+          - namespace-dx01v2.yaml
+        assertions:
+          - violations: no
+      - name: nothing-set
+        object: pod-bad.yaml
+        inventory:
+          - namespace-dx01v2.yaml
+        assertions:
+          - violations: 6
+  - name: required-probes
+    template: ../templates/labrequiredprobes.yaml
+    constraint: ../constraints/required-probes.yaml
+    cases:
+      - name: readiness-probe
+        object: pod-good.yaml
+        inventory:
+          - namespace-dx01v2.yaml
+        assertions:
+          - violations: no
+      - name: no-probe
+        object: pod-bad.yaml
+        inventory:
+          - namespace-dx01v2.yaml
+        assertions:
+          - violations: 2
+  - name: required-labels
+    template: ../templates/labrequiredlabels.yaml
+    constraint: ../constraints/required-labels.yaml
+    cases:
+      - name: app-name-label
+        object: pod-good.yaml
+        inventory:
+          - namespace-dx01v2.yaml
+        assertions:
+          - violations: no
+      - name: no-labels
+        object: pod-bad.yaml
+        inventory:
+          - namespace-dx01v2.yaml
+        assertions:
+          - violations: 1
+            message: app.kubernetes.io/name
+  - name: block-nodeport
+    template: ../templates/labblocknodeport.yaml
+    constraint: ../constraints/block-nodeport.yaml
+    cases:
+      - name: cluster-ip
+        object: service-clusterip.yaml
+        inventory:
+          - namespace-dx01v2.yaml
+        assertions:
+          - violations: no
+      - name: node-port
+        object: service-nodeport.yaml
+        inventory:
+          - namespace-dx01v2.yaml
+        assertions:
+          - violations: 1

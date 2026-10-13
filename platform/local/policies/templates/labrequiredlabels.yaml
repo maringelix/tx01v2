@@ -1,0 +1,29 @@
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: labrequiredlabels
+  annotations:
+    description: Objects carry the listed labels (v1 tx01 required-labels, with the recommended app labels).
+spec:
+  crd:
+    spec:
+      names:
+        kind: LabRequiredLabels
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            labels:
+              type: array
+              items:
+                type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package labrequiredlabels
+
+        violation[{"msg": msg}] {
+          required := input.parameters.labels[_]
+          not input.review.object.metadata.labels[required]
+          msg := sprintf("%v <%v> is missing the label <%v>", [input.review.object.kind, input.review.object.metadata.name, required])
+        }

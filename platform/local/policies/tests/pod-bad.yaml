@@ -1,0 +1,12 @@
+# Two containers from Docker Hub: no tag, then :latest; no resources, no probes, no labels.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: bad
+  namespace: dx01v2
+spec:
+  containers:
+    - name: one
+      image: docker.io/library/busybox
+    - name: two
+      image: nginx:latest

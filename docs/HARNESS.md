@@ -21,6 +21,9 @@ Ele vive em `scripts/harness.sh`; o `Makefile` e o CI só o chamam. O que passa 
 | Charts da plataforma | `helm-template` | os charts fixados (LBC 3.6.0, ESO 2.12.0) aceitam `platform/values` e renderizam imagens por digest, service accounts do Pod Identity, feature gates e tags | instalação real e comportamento dos controllers | local, CI (rede) |
 | Segredos | `gitleaks` | nenhum segredo conhecido (histórico completo quando há commits) | segredos fora dos padrões do gitleaks | local, CI |
 | Testes unitários | `terraform-test:bootstrap`, `terraform-test:envs/lab` | trust OIDC, bucket, budget, EKS, nós, add-ons, Pod Identity, RDS sem senha no state, ECR, WAF, KMS, SSM do contrato, validações negativas | que os recursos sobem na AWS (provider mockado) | local, CI |
+| Lab local: Terraform | `terraform-validate:envs/local`, `terraform-test:envs/local` (10 runs, só plan) | rede privada, labels em tudo, só o registry publicado e só em 127.0.0.1, banco só TLS, imagens por digest, validações negativas | que o Docker cria os contêineres (isso é o `e2e`) | local, CI |
+| Lab local: plataforma | `local-versions`, `helm-template-local`, `kubeconform-local`, `policy-gator` | os 15 charts fixados por SHA256 renderizam só imagens por digest e Services ClusterIP; manifests válidos; cada política do Gatekeeper aceita e recusa os casos de `platform/local/policies/tests` | comportamento no cluster | local, CI (rede) |
+| Lab local: ponta a ponta | `local-lab-e2e` (`make e2e`) | apply do `terraform/envs/local`, instalação do perfil `full` e as 26 sondas de `platform/local/check.sh` (`docs/LAB_LOCAL.md`); destroy e checagem de sobras sempre | AWS | local (Docker, 8 GB), CI |
 | Nuvem | workflows `terraform-*`, `platform` | — | — | `não executado em nuvem (v2)` |
 
 ## Jobs do CI
@@ -29,8 +32,11 @@ Ele vive em `scripts/harness.sh`; o `Makefile` e o CI só o chamam. O que passa 
 |---|---|---|
 | `static` | `make tools && make static` | `static` |
 | `test` | `make tools && make test` | `test` |
+| `e2e` | `make tools && make e2e` | `e2e` (o lab local; diagnósticos como artifact em caso de falha) |
 
 Os ids `static` e `test` são estáveis: são os checks exigidos pelo ruleset (`.github/rulesets/main.json`).
+O `e2e` roda em todo PR e precisa estar verde para o merge (disciplina do mantenedor; ainda não está no
+ruleset).
 
 ## Modo estrito
 

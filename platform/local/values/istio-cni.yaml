@@ -1,0 +1,8 @@
+# istio/cni 1.31.1 in ambient mode (namespace istio-system): the node agent that redirects the traffic
+# of ambient pods to ztunnel. Privileged by design (that is why istio-system is a privileged namespace).
+profile: ambient
+image: docker.io/istio/install-cni:1.31.1@sha256:49140cc9a9d742cea829f452d93956896e85c4f47bbc7b69cf76484b63cce8b1
+resources:
+  requests:
+    cpu: 10m
+    memory: 48Mi

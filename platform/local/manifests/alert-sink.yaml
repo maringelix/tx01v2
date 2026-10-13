@@ -1,0 +1,76 @@
+# alert-sink: the local twin of the Slack channel of v1. Alertmanager posts every notification here and
+# the probes read its log (it prints each request with its JSON body). Namespace monitoring only.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: alert-sink
+  namespace: monitoring
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: alert-sink
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: alert-sink
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: alert-sink
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: alert-sink
+    spec:
+      serviceAccountName: alert-sink
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: alert-sink
+          # mendhak/http-https-echo 42 (MIT), pinned by digest (verified 2026-10-12)
+          image: docker.io/mendhak/http-https-echo:42@sha256:a265f55c86cb3baead76fdf379dc8e9e6440ed121874e101e60b833e05bce8d4
+          env:
+            - name: HTTP_PORT
+              value: "8080"
+            - name: HTTPS_PORT
+              value: "8443"
+            - name: LOG_IGNORE_PATH
+              value: /healthz
+          ports:
+            - name: http
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+          resources:
+            requests:
+              cpu: 5m
+              memory: 48Mi
+            limits:
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alert-sink
+  namespace: monitoring
+spec:
+  selector:
+    app.kubernetes.io/name: alert-sink
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
