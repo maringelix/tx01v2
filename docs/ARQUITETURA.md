@@ -51,6 +51,36 @@ Camadas: `terraform/bootstrap` (uma vez, por um humano) → `terraform/envs/lab`
 `network`, `eks`, `rds`, `ecr`, `waf`) → `platform/` (Helm e manifests, nunca pelo Terraform) →
 app do `dx01v2`. O contrato entre as camadas está em `docs/CONTRATO.md`.
 
+## Lab local
+
+A mesma arquitetura emulada no Docker (`terraform/envs/local` + `platform/local`), com a plataforma
+completa do v1 por cima. Detalhes, sondas e limites: `docs/LAB_LOCAL.md`.
+
+```mermaid
+flowchart LR
+  dev["sua máquina / runner do CI"] -->|terraform apply| net
+  subgraph net["rede Docker tx01v2-local 10.250.0.0/24"]
+    reg["registry (ECR)"]
+    db[("PostgreSQL 17, só TLS (RDS)")]
+    s3["Versity S3 Gateway (S3)"]
+    git["Soft Serve (origem do GitOps)"]
+    lb["cloud-provider-kind (ALB)"]
+    subgraph kind["kind tx01v2-local 1.36 (EKS)"]
+      gw["Gateway istio + cert-manager lab-ca"]
+      mesh["Istio ambient: ztunnel, mTLS STRICT"]
+      obs["Prometheus, Alertmanager, Grafana, Loki, Alloy"]
+      ops["Argo CD, Gatekeeper, Trivy Operator, Velero, Chaos Mesh"]
+      eso["ESO local-secrets"]
+      app["namespace dx01v2"]
+    end
+  end
+  lb --> gw --> app
+  app -->|TLS verify-full| db
+  ops -->|backups| s3
+  ops -->|sync| git
+  kind -->|pull| reg
+```
+
 ## Decisões (ADRs curtos)
 
 | # | Decisão | Motivo | Alternativa descartada |
@@ -71,6 +101,13 @@ app do `dx01v2`. O contrato entre as camadas está em `docs/CONTRATO.md`.
 | 14 | `AmazonEKS_CNI_Policy` no papel do nó | padrão do EKS; a rede do nó não depende do agente de Pod Identity no bootstrap; com hop limit 1 só pods hostNetwork alcançam essas credenciais | papel de Pod Identity para o aws-node |
 | 15 | Volume raiz gp3 com a chave EBS gerenciada pela AWS | uma CMK no launch template exigiria grant para o service-linked role do Auto Scaling, senão as instâncias não sobem | CMK do lab no EBS |
 | 16 | Usuário master do RDS usado pelo app | o lab não roda SQL de provisionamento; menos peças | usuário de app separado (precisaria de provider PostgreSQL ou job) |
+| 17 | Lab local com Terraform + provider Docker e kind por CLI (`terraform_data` + `local-exec`) | o mesmo fluxo apply/destroy da nuvem, sem conta; o provider `tehcyx/kind` embute uma versão antiga do kind | LocalStack (AWS emulada parcialmente, imagem Pro para EKS); minikube |
+| 18 | Istio ambient no lab local | mTLS e autorização por identidade sem sidecar; roda no kind (no v1 o Autopilot recusou sidecar e ambient) | sidecar (mais memória por pod); Linkerd |
+| 19 | GitOps com Argo CD lendo um servidor git do lab | um único dono do namespace do app (v1 tinha dois); o push usa a chave do state, a leitura é anônima | Flux; apontar para o GitHub (exigiria credenciais e internet no caminho do deploy) |
+| 20 | Gatekeeper com políticas próprias testadas no `gator` | as regras do v1, em `deny`, com casos que provam aceitação e recusa | gatekeeper-library inteira (mais regras do que o lab explica); Kyverno |
+| 21 | Alertmanager → `alert-sink` dentro do cluster | entrega de alerta provada sem credencial externa (v1 dependia de um webhook do Slack nunca testado) | Slack/e-mail reais |
+| 22 | Velero no S3 emulado; backup por recursos, sem snapshots | o ensaio de restore roda em minutos e sem nuvem (v1 nunca restaurou nada) | `pg_dump` sozinho; snapshots CSI |
+| 23 | Perfis `core`/`observability`/`operations`/`full` | máquinas com pouca memória validam uma camada por vez; o CI roda `full` | um único perfil |
 
 Detalhes do LBC v3: desde a v3.0.0 o chart tem a mesma versão do app (chart 3.6.0); o Gateway API
 vem habilitado por padrão e é desligado explicitamente (o lab usa Ingress); o service mutator webhook

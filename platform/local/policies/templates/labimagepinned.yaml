@@ -1,0 +1,42 @@
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: labimagepinned
+  annotations:
+    description: Images need an explicit tag other than latest, or a digest (v1 tx03 block-latest-image).
+spec:
+  crd:
+    spec:
+      names:
+        kind: LabImagePinned
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package labimagepinned
+
+        containers[c] {
+          c := input.review.object.spec.containers[_]
+        }
+        containers[c] {
+          c := input.review.object.spec.initContainers[_]
+        }
+
+        violation[{"msg": msg}] {
+          c := containers[_]
+          not contains(c.image, "@sha256:")
+          not has_tag(c.image)
+          msg := sprintf("container <%v> image <%v> has no tag or digest", [c.name, c.image])
+        }
+
+        violation[{"msg": msg}] {
+          c := containers[_]
+          not contains(c.image, "@sha256:")
+          endswith(c.image, ":latest")
+          msg := sprintf("container <%v> image <%v> uses the latest tag", [c.name, c.image])
+        }
+
+        # A tag is a ':' after the last '/' (the registry port, as in localhost:5001/x, is not a tag).
+        has_tag(image) {
+          parts := split(image, "/")
+          contains(parts[count(parts) - 1], ":")
+        }

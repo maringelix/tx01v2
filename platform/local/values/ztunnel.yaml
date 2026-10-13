@@ -1,0 +1,7 @@
+# istio/ztunnel 1.31.1 (namespace istio-system): the per-node L4 proxy of ambient mode (mTLS with
+# SPIFFE identities between ambient pods, L4 AuthorizationPolicy).
+image: docker.io/istio/ztunnel:1.31.1@sha256:dc8d3dfe8b17680a7df2b7176d68caba220bfc88ecfaf349cde4bc56da3cf459
+resources:
+  requests:
+    cpu: 20m
+    memory: 48Mi

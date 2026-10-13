@@ -1,0 +1,7 @@
+# The constraints select namespaces by label: gator needs the namespace in its inventory.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dx01v2
+  labels:
+    policy.lab/enforce: "true"

@@ -1,0 +1,22 @@
+# A host whose name only starts like the lab registry must be refused.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: lookalike
+  namespace: dx01v2
+  labels:
+    app.kubernetes.io/name: lookalike
+spec:
+  containers:
+    - name: main
+      image: registry.tx01v2.local.example.com/dx01v2/api:1.0.0
+      readinessProbe:
+        httpGet:
+          path: /
+          port: 8080
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+        limits:
+          memory: 32Mi

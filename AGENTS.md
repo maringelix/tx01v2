@@ -9,10 +9,16 @@ is the source of truth. The full rule list (pt-BR) is [docs/GUARDRAILS.md](docs/
   `dx01v2` on AWS, `tx02v2` + `dx02v2` on Azure, `tx03v2` + `dx03v2` on Google Cloud).
 - It must stay healthy without any cloud account: every claim is backed by the local harness or
   carries a status label (`verified in CI`, `verified locally`, `not run in the cloud (v2)`, `planned`).
-- Current status: the harness (`make verify`) passes locally in a Linux container and in CI (jobs
-  `static`, `test`). **Nothing of v2 has run in AWS** (bootstrap, apply, platform, destroy are
+- Current status: the harness (`make verify`) and the local lab (`make e2e`) pass locally in a Linux
+  container and in CI (jobs `static`, `test`, `e2e`). **Nothing of v2 has run in AWS** (bootstrap, apply, platform, destroy are
   `not run in the cloud (v2)`).
-- The interface with `dx01v2` is [docs/CONTRATO.md](docs/CONTRATO.md) (contract v1, owned here).
+- The local lab ([docs/LAB_LOCAL.md](docs/LAB_LOCAL.md)) rebuilds the whole v1 platform on Docker:
+  `terraform/envs/local` (kind + emulated ECR, RDS, S3, load balancer, git server) and `platform/local`
+  (Istio ambient, cert-manager, ESO, Prometheus/Alertmanager/Grafana, Loki/Alloy, Argo CD, Gatekeeper,
+  Trivy Operator, Velero, Chaos Mesh). `make e2e` proves it with 26 probes (CI job `e2e`). It is not
+  cloud-mutating: agents may run it, one heavy run at a time (8 GB of Docker memory for `full`).
+- The interface with `dx01v2` is [docs/CONTRATO.md](docs/CONTRATO.md) (contract v1, owned here; the
+  local lab has its own local contract, `lab-system/lab-contract`).
 
 ## 2. Non-negotiable rules
 
@@ -37,7 +43,12 @@ is the source of truth. The full rule list (pt-BR) is [docs/GUARDRAILS.md](docs/
 .devcontainer/          Linux environment pinned by digest (runs make tools)
 docs/                   pt-BR docs: architecture, contract, runbook, costs, guardrails, harness, sustainment
 platform/               install.sh / uninstall.sh, versions.env, Helm values, manifests (never Terraform)
-scripts/harness.sh      every check of the harness (stages static, test, all, list)
+platform/local/         local platform: install.sh, check.sh (probes), uninstall.sh, versions.env, values/,
+                        manifests/, policies/ (Gatekeeper templates, constraints, gator tests)
+scripts/harness.sh      every check of the harness (stages static, test, e2e, all, list)
+scripts/local-lab.sh    local lab: up | down | check | e2e | kubeconfig | status (LOCAL_PROFILE)
+scripts/leftovers-local.sh          fails when anything of the local lab survived the destroy
+scripts/local/          kind-cluster.sh (called by terraform/envs/local)
 scripts/install-tools.sh            pinned tools into .tools/ (SHA256-verified)
 scripts/update-tool-checksums.sh    bump a tool: versions.env + checksums.txt from upstream checksums
 scripts/leftovers.sh    read-only scan for billable/orphaned lab resources after a destroy
@@ -45,6 +56,7 @@ scripts/repo-guardrails.sh          repository settings via gh api (run by the m
 scripts/lib/            shared bash helpers (common, tools, aws)
 terraform/bootstrap/    state bucket, GitHub OIDC + 3 roles, budget (local state, applied by a human)
 terraform/envs/lab/     lab root: modules + admin-token secret + contract SSM parameters
+terraform/envs/local/   local lab root (Docker provider, local state outside the repo, kind-config.yaml)
 terraform/modules/      kms, network, eks, rds, ecr, waf
 terraform/tests/mocks/  shared mock data for terraform test
 tools/                  versions.env and checksums.txt of the harness tools
@@ -63,13 +75,16 @@ tools/                  versions.env and checksums.txt of the harness tools
 |---|---|---|
 | `make tools` | `scripts/install-tools.sh` (all pinned tools) | first time, after a tool bump |
 | `make static` | `scripts/harness.sh static`: policies, fmt, validate, lock files, tflint, trivy (x2), actionlint, shellcheck, kubeconform, helm template, gitleaks | every change |
-| `make test` | `scripts/harness.sh test`: `terraform test` for bootstrap and envs/lab (mocked AWS) | every Terraform change |
-| `HARNESS_STRICT=1 make verify` | static + test with SKIP = FAIL (what CI runs) | before every PR |
+| `make test` | `scripts/harness.sh test`: `terraform test` for bootstrap, envs/lab and envs/local (mocked providers) | every Terraform change |
+| `HARNESS_STRICT=1 make verify` | static + test with SKIP = FAIL (CI jobs `static` and `test`) | before every PR |
+| `make e2e` | `scripts/harness.sh e2e`: the local lab end to end, always destroyed (CI job `e2e`) | `platform/local`, `terraform/envs/local` or tool changes |
+| `make local-up` / `local-check` / `local-down` | keep the local lab running between steps (`LOCAL_PROFILE`) | debugging the platform |
 | `scripts/harness.sh list` | lists all checks | any time |
 
 ## 6. Definition of Done
 
-- [ ] `HARNESS_STRICT=1 make verify` green locally; CI green (`static`, `test`).
+- [ ] `HARNESS_STRICT=1 make verify` green locally; CI green (`static`, `test`, `e2e`).
+- [ ] Platform changes: a probe in `platform/local/check.sh` proves the new behaviour.
 - [ ] Docs, README status matrix and `CHANGELOG.md` (`[Unreleased]`) updated in the same PR.
 - [ ] No new unexplained scanner ignores; no weakened checks.
 - [ ] Contract respected (or bumped with a linked `dx01v2` PR).

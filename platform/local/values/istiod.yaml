@@ -1,0 +1,32 @@
+# istio/istiod 1.31.1 in ambient mode (namespace istio-system). Images pinned by digest (verified
+# 2026-10-12): a value with "/" is used verbatim by the chart and by the gateway/waypoint templates.
+profile: ambient
+image: docker.io/istio/pilot:1.31.1@sha256:212ca088ada22f48be1576e6b688972b8aa7495710abb7c5f1febca856a15577
+autoscaleEnabled: false
+replicaCount: 1
+seccompProfile:
+  type: RuntimeDefault
+# Gateways (and waypoints) run in app namespaces with Pod Security "restricted": without an explicit
+# RuntimeDefault seccomp profile their pods are refused there.
+gateways:
+  seccompProfile:
+    type: RuntimeDefault
+resources:
+  requests:
+    cpu: 50m
+    memory: 192Mi
+  limits:
+    memory: 512Mi
+global:
+  proxy:
+    # Envoy of the Gateway API gateways (the local twin of the ALB) and of waypoints.
+    image: docker.io/istio/proxyv2:1.31.1@sha256:d86cba0dd1eb15c00b6901c69ce5ae3d2d5f8427a47751098cf8c3ab2a4a62e9
+    resources:
+      requests:
+        cpu: 20m
+        memory: 64Mi
+      limits:
+        memory: 256Mi
+meshConfig:
+  # Access logs of every gateway on stdout (Loki collects them).
+  accessLogFile: /dev/stdout

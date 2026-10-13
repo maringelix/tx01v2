@@ -1,0 +1,24 @@
+# The ALB passes X-Request-Id through untouched; Envoy at the edge replaces an external one by
+# default. This keeps the local twin of the ALB faithful for every Istio Gateway of the lab (context
+# GATEWAY only: sidecars and waypoints are not touched). The app still decides whether an incoming
+# id is safe (dx01v2 api/src/middleware/request-id.ts).
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: gateway-preserve-request-id
+  namespace: istio-system
+spec:
+  configPatches:
+    - applyTo: NETWORK_FILTER
+      match:
+        context: GATEWAY
+        listener:
+          filterChain:
+            filter:
+              name: envoy.filters.network.http_connection_manager
+      patch:
+        operation: MERGE
+        value:
+          typed_config:
+            "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+            preserve_external_request_id: true

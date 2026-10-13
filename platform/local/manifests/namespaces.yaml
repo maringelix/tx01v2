@@ -1,0 +1,121 @@
+# Namespaces of the local platform (contrato do lab local, docs/CONTRATO.md). Pod Security:
+#   restricted  - lab-system, lab-secrets, cert-manager, external-secrets and the app namespace dx01v2
+#   privileged  - istio-system only (istio-cni and ztunnel change the network of the node and the pods)
+# dx01v2 joins the ambient mesh (istio.io/dataplane-mode=ambient: mTLS between its pods by ztunnel).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lab-system
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+---
+# The local twin of AWS Secrets Manager: only the service account of the ClusterSecretStore reads it.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lab-secrets
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: istio-system
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/enforce-version: latest
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cert-manager
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: external-secrets
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+---
+# Prometheus, Alertmanager, Grafana, Loki and Alloy. Prometheus scrapes the metrics port of dx01v2,
+# whose NetworkPolicy accepts this namespace only. In the ambient mesh (mTLS PERMISSIVE here) so that
+# Prometheus reaches the STRICT dx01v2 pods with its own identity.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    istio.io/dataplane-mode: ambient
+---
+# node-exporter needs hostNetwork, hostPID and hostPath: kept apart from the rest of the monitoring.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring-agents
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/enforce-version: latest
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: argocd
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gatekeeper-system
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+---
+# The scan Jobs of the Trivy Operator do not set every "restricted" field: baseline is enforced and
+# restricted is only reported.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: trivy-system
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: velero
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+---
+# chaos-daemon joins the namespaces of other pods through the containerd socket of the node.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: chaos-mesh
+  labels:
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/enforce-version: latest
+---
+# The app: Pod Security restricted, ambient mesh (mTLS by ztunnel), Gatekeeper constraints in deny.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dx01v2
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    istio.io/dataplane-mode: ambient
+    policy.lab/enforce: "true"
