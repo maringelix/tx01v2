@@ -100,9 +100,14 @@ jobs:
         if: failure()
         env:
           DIAG_DIR: ${{ runner.temp }}/local-lab-diagnostics
+          E2E_LOG: /tmp/tx01v2-harness/logs/local-lab-e2e.log
         run: |
           mkdir -p "$DIAG_DIR"
-          cp /tmp/tx01v2-harness/logs/local-lab-e2e.log "$DIAG_DIR/" 2>/dev/null || echo "no e2e log to keep"
+          if [[ -f "$E2E_LOG" ]]; then
+            cp "$E2E_LOG" "$DIAG_DIR/"
+          else
+            echo "no e2e log to keep"
+          fi
 
       - name: Upload diagnostics
         if: failure()

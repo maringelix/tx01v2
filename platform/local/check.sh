@@ -435,7 +435,9 @@ spec:
         - alert: LabProbeAlwaysFiring
           expr: vector(1)
           labels:
-            severity: info
+            # warning, not info: the default inhibit rules of kube-prometheus-stack mute info alerts
+            # once InfoInhibitor fires in the same namespace (a race the CI lost once).
+            severity: warning
             probe_run: "$run"
           annotations:
             summary: Synthetic alert of platform/local/check.sh
