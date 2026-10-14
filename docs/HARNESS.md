@@ -34,9 +34,8 @@ Ele vive em `scripts/harness.sh`; o `Makefile` e o CI só o chamam. O que passa 
 | `test` | `make tools && make test` | `test` |
 | `e2e` | `make tools && make e2e` | `e2e` (o lab local; diagnósticos como artifact em caso de falha) |
 
-Os ids `static` e `test` são estáveis: são os checks exigidos pelo ruleset (`.github/rulesets/main.json`).
-O `e2e` roda em todo PR e precisa estar verde para o merge (disciplina do mantenedor; ainda não está no
-ruleset).
+Os ids `static`, `test` e `e2e` são estáveis: são os checks exigidos pelo ruleset
+(`.github/rulesets/main.json`; o `e2e`, o lab local, entrou em 2026-10-13).
 
 ## Modo estrito
 

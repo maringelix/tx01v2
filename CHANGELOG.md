@@ -34,6 +34,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- The ruleset requires the CI job `e2e` too (`.github/rulesets/main.json`, applied with
+  `scripts/repo-guardrails.sh`): the local lab is a merge gate, not only maintainer discipline.
 - README status matrix: repository settings as code are applied (read back with `gh api`), no
   longer `planned`.
 
