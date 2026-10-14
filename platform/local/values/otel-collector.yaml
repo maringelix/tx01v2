@@ -55,8 +55,10 @@ serviceMonitor:
   metricsEndpoints:
     - port: metrics
       interval: 30s
+    # An exemplar of spanmetrics is exposed only until the next flush (15 s, the connector resets its
+    # exemplars after each one): Prometheus must scrape more often than that, or it can miss them.
     - port: spanmetrics
-      interval: 30s
+      interval: 10s
 config:
   receivers:
     jaeger: null

@@ -628,7 +628,7 @@ EOF
   body="$(tempo_trace "$gw_trace")" || die "tracing: the Gateway span of trace $gw_trace never reached Tempo"
   services="$(grep -oE '"service.name","value":\{"stringValue":"[^"]+"' <<<"$body" | sed -E 's/.*"stringValue":"//; s/"$//' | sort -u | tr '\n' ' ')"
   pass "tracing: the Gateway span of trace $gw_trace is in Tempo (service ${services% })"
-  # spanmetrics flushes every 15 s and Prometheus scrapes every 30 s.
+  # spanmetrics flushes every 15 s and Prometheus scrapes it every 10 s (an exemplar lives one flush).
   for _ in $(seq 1 40); do
     body="$(in_cluster_get "$PROM/api/v1/query?query=traces_span_metrics_calls_total%7Bservice_name%3D%22lab-probe%22%7D")" &&
       [[ "$body" == *'"result":[{'* ]] && break
