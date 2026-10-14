@@ -5,8 +5,14 @@ Gatekeeper, Trivy Operator, backup, Chaos Mesh — mas só existia na nuvem, e b
 de verdade (`docs/LICOES_APRENDIDAS.md`). O lab local constrói essa plataforma inteira no Docker da sua
 máquina, com Terraform, e prova cada peça com tráfego ou chamadas reais. Nada aqui fala com a AWS.
 
-Status: `verificado no CI` (job `e2e`, 26 sondas, 2026-10-13) e `verificado localmente` (rodada
-completa do zero no mesmo dia).
+Status: `verificado no CI` (job `e2e`, 34 sondas) e `verificado localmente` (2026-10-14: os perfis
+`observability`, 22 sondas, e `operations`, 24 sondas, cada um do zero até o destroy).
+
+O v1 parou nos "próximos passos" (DR multi-região, FinOps, chaos, observabilidade com OpenTelemetry).
+Aqui dois deles existem e são provados: traces com OpenTelemetry (Collector, Tempo, spans dos Gateways
+do Istio, spanmetrics com exemplars, Grafana ligando logs, métricas e traces) e experimentos de chaos
+com hipótese (pod kill, latência de rede, stress de CPU e memória). Os alertas também vão para o
+Slack, como no v1, mas o webhook nunca fica em arquivo versionado.
 
 ## O que é criado
 
@@ -34,7 +40,7 @@ imagens por digest em `platform/local/values/`):
 | Camada | Componentes | Perfil |
 |---|---|---|
 | core | Gateway API 1.6.3 (standard), Istio 1.31.1 ambient (istiod, istio-cni, ztunnel, GatewayClass `istio`), cert-manager 1.21.2 + ClusterIssuer `lab-ca`, External Secrets 2.12.0 + ClusterSecretStore `local-secrets`, metrics-server 0.9.0, contrato `lab-system/lab-contract` | todos |
-| observability | kube-prometheus-stack 92.3.0 (Prometheus 3.15, Alertmanager 0.34 → `alert-sink`, Grafana 13.2 só ClusterIP, kube-state-metrics, node-exporter), Loki 3.6 (single binary), Alloy 1.20 | `observability`, `full` |
+| observability | kube-prometheus-stack 92.3.0 (Prometheus 3.15 com exemplars, Alertmanager 0.34 → `alert-sink` e Slack, Grafana 13.2 só ClusterIP, kube-state-metrics, node-exporter), Loki 3.6 (single binary), Alloy 1.20, Tempo 3.1 (single binary), OpenTelemetry Collector 0.162 (OTLP → Tempo + spanmetrics), `Telemetry` do Istio (spans dos Gateways) | `observability`, `full` |
 | operations | Argo CD 3.5.5, Gatekeeper 3.23.1 + políticas, Trivy Operator 0.35, Velero 1.18 (plugin AWS → S3 emulado), Chaos Mesh 2.8.4 | `operations`, `full` |
 
 Pod Security: `restricted` em todos os namespaces, menos `istio-system`, `monitoring-agents` e
@@ -63,8 +69,16 @@ rede do lab e usa o endereço interno da API.
 
 Para abrir o Grafana: `kubectl -n monitoring port-forward svc/kube-prometheus-stack-grafana 3000:80`,
 usuário `admin`, senha `terraform -chdir=terraform/envs/local output -raw grafana_admin_password` (com o
-`TF_DATA_DIR` de `scripts/local-lab.sh`). O Argo CD não tem usuário admin local: inspecione as
-`Application` com kubectl.
+`TF_DATA_DIR` de `scripts/local-lab.sh`). Em Explore, o datasource Tempo abre um trace pelo id; num
+trace, "Logs for this span" leva às linhas do Loki com o mesmo `trace_id`, e os exemplars dos gráficos
+do Prometheus levam ao trace. O Argo CD não tem usuário admin local: inspecione as `Application` com
+kubectl.
+
+Alertas no Slack: crie um incoming webhook no seu workspace e suba o lab com
+`LOCAL_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/... make local-up`. Os alertas `warning` e
+`critical` vão para o canal; sem a variável, o receptor Slack posta no `alert-sink` (é o que o CI testa).
+O webhook vai para o Secret `monitoring/alertmanager-slack` pelo stdin do kubectl, nunca para arquivos
+ou logs.
 
 ## O que as sondas provam (`platform/local/check.sh`)
 
@@ -72,15 +86,16 @@ usuário `admin`, senha `terraform -chdir=terraform/envs/local output -raw grafa
 |---|---|
 | Banco | conexão `verify-full` com a CA do lab funciona; texto puro é recusado |
 | Mesh | cliente com identidade permitida chega ao serviço (mTLS pelo ztunnel); outra identidade é recusada pela `AuthorizationPolicy`; cliente fora do mesh é recusado pelo `STRICT` |
-| Borda | Gateway `Programmed` com endereço do load balancer emulado; HTTPS verificado contra a CA do lab; um `X-Request-Id` externo chega intacto ao backend (como no ALB; `EnvoyFilter` `gateway-preserve-request-id`); HTTP → 301 |
+| Borda | Gateway `Programmed` com endereço do load balancer emulado; HTTPS verificado contra a CA do lab; um `X-Request-Id` externo (texto livre ou UUID) chega intacto ao backend (como no ALB; `EnvoyFilter` `gateway-preserve-request-id`); HTTP → 301 |
 | Segredos | ExternalSecret no namespace `dx01v2` vira Secret com as cinco chaves do contrato |
 | Métricas | `kubectl top nodes` (metrics-server) |
-| Observabilidade | alvos de kube-state-metrics, node-exporter, apiserver e kubelet coletados; `PrometheusRule` sintética chega ao `alert-sink` pelo Alertmanager; logs do namespace da sonda aparecem no Loki; Grafana saudável e só ClusterIP |
+| Observabilidade | alvos de kube-state-metrics, node-exporter, apiserver e kubelet coletados; `PrometheusRule` sintética chega ao `alert-sink` pelo Alertmanager e ao receptor Slack no formato de mensagem do Slack (com `LOCAL_SLACK_WEBHOOK_URL`: notificações entregues, nenhuma com falha); logs do namespace da sonda aparecem no Loki; Grafana saudável e só ClusterIP |
+| Traces (OpenTelemetry) | um span OTLP/HTTP enviado ao Collector aparece no Tempo; o Gateway continua um `traceparent` W3C de entrada, passa o próprio span ao backend e o reporta ao Tempo; o spanmetrics gera as séries RED no Prometheus com um exemplar que carrega o trace id; o Grafana alcança o Tempo e liga logs → traces (campo derivado do Loki) e métricas → traces (exemplars) |
 | GitOps | commit no servidor git sincronizado pelo Argo CD; segundo commit reconciliado; objeto apagado recriado (self-heal) |
 | Políticas | pod fora das regras recusado pelas cinco constraints de pod; pod conforme aceito; Service NodePort recusado |
 | Registry e scan | imagem enviada ao registry é baixada pelo nó; o Trivy Operator (modo ClientServer, com o Trivy server embutido) gera ConfigAuditReport e VulnerabilityReport |
 | Backup | backup Velero de um namespace, namespace apagado, restore com os dados |
-| Chaos | hipótese: com 2 réplicas, matar um pod não derruba o serviço (pelo menos 38 de 40 requisições) |
+| Chaos | hipóteses: com 2 réplicas, matar um pod não derruba o serviço (pelo menos 38 de 40 requisições); com 100 ms a mais de latência de rede em todos os pods (`NetworkChaos`), pelo menos 19 de 20 requisições passam e a mediana sobe pelo menos 80 ms (a falha é real); com stress de CPU e memória dentro de cada contêiner (`StressChaos`), pelo menos 38 de 40 requisições passam, nenhum contêiner reinicia e o pico de CPU aparece no metrics-server |
 
 ## Limites (o que o lab local não prova)
 
@@ -91,4 +106,6 @@ usuário `admin`, senha `terraform -chdir=terraform/envs/local output -raw grafa
 - O cloud-provider-kind precisa do socket do Docker (cria contêineres Envoy): rode o lab só numa
   máquina descartável ou no CI.
 - O mirror do Trivy Operator e o mapeamento `registry.tx01v2.local` existem só no lab local.
-- Logs, métricas e backups vivem dentro do lab (retenções de horas) e somem no destroy.
+- Logs, métricas, traces e backups vivem dentro do lab (retenções de horas) e somem no destroy.
+- Sem `LOCAL_SLACK_WEBHOOK_URL` o CI prova o receptor Slack e o formato da mensagem, não a entrega a um
+  workspace de verdade.

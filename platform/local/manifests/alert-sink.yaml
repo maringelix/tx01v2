@@ -1,5 +1,6 @@
-# alert-sink: the local twin of the Slack channel of v1. Alertmanager posts every notification here and
-# the probes read its log (it prints each request with its JSON body). Namespace monitoring only.
+# alert-sink: Alertmanager posts every notification here (webhook, path /alertmanager) and, without
+# LOCAL_SLACK_WEBHOOK_URL, also the Slack messages of the v1 channels (path /slack); the probes read its
+# log (one JSON line per request, with the body). Namespace monitoring only.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -43,6 +44,8 @@ spec:
               value: "8443"
             - name: LOG_IGNORE_PATH
               value: /healthz
+            - name: LOG_WITHOUT_NEWLINE
+              value: "true"
           ports:
             - name: http
               containerPort: 8080

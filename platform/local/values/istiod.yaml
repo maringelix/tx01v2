@@ -30,3 +30,10 @@ global:
 meshConfig:
   # Access logs of every gateway on stdout (Loki collects them).
   accessLogFile: /dev/stdout
+  # Spans of the gateways (Envoy) to the OpenTelemetry Collector of the observability layer, turned on
+  # by the Telemetry resource of platform/local/manifests/tracing.yaml (W3C traceparent in and out).
+  extensionProviders:
+    - name: otel-tracing
+      opentelemetry:
+        service: opentelemetry-collector.monitoring.svc.cluster.local
+        port: 4317

@@ -11,10 +11,11 @@ Cobre o código (Terraform, scripts, workflows), as ferramentas do harness, as v
 ## 2. Estado atual
 
 - Harness completo (`make verify`) `verificado no CI` (jobs `static` e `test`).
-- Lab local (`docs/LAB_LOCAL.md`): `make e2e` com o perfil `full` (26 sondas) `verificado no CI`
-  (job `e2e`) e `verificado localmente` em 2026-10-13.
+- Lab local (`docs/LAB_LOCAL.md`): `make e2e` com o perfil `full` (34 sondas) `verificado no CI`
+  (job `e2e`); `verificado localmente` em 2026-10-13 (`full`) e 2026-10-14 (`observability` e
+  `operations`, com traces, Slack e os novos experimentos de chaos).
 - Bootstrap, apply, plataforma e destroy: `não executado em nuvem (v2)`.
-- Contrato com o dx01v2: versão 1 (`docs/CONTRATO.md`).
+- Contrato com o dx01v2: versão 2 de 2026-10-14, com o endpoint OTLP do Collector (`docs/CONTRATO.md`).
 
 ## 3. Rotinas
 
@@ -44,7 +45,7 @@ Cobre o código (Terraform, scripts, workflows), as ferramentas do harness, as v
 | Runners e devcontainer | Ubuntu 24.04 LTS | suporte padrão de 5 anos (até 2029-04) | ubuntu.com | Trocar antes do fim |
 | Exceções do trivy | 4 entradas | 2027-04-30 | `.trivyignore.yaml` | Revisar até 2027-04 (5.9) |
 | Istio (lab local) | 1.31.1 | ~2027-02 (6 semanas depois da 1.33) | [releases suportadas](https://istio.io/latest/docs/releases/supported-releases/) | Trimestral (5.12); a 1.29 sai de suporte em 2026-10-12 |
-| Demais charts do lab local | `platform/local/versions.env` (cert-manager 1.21.2, kube-prometheus-stack 92.3.0, Loki 7.3.0, Alloy 1.13.1, Argo CD 10.10.3, Gatekeeper 3.23.1, Trivy Operator 0.37.0, Velero 12.2.1, Chaos Mesh 2.8.4, metrics-server 3.14.0) | cada projeto mantém as versões recentes | releases de cada projeto | Trimestral (5.12) |
+| Demais charts do lab local | `platform/local/versions.env` (cert-manager 1.21.2, kube-prometheus-stack 92.3.0, Loki 7.3.0, Alloy 1.13.1, Tempo 3.1.0, OpenTelemetry Collector 0.176.0, Argo CD 10.10.3, Gatekeeper 3.23.1, Trivy Operator 0.37.0, Velero 12.2.1, Chaos Mesh 2.8.4, metrics-server 3.14.0) | cada projeto mantém as versões recentes | releases de cada projeto | Trimestral (5.12); vários charts da Grafana migraram para `grafana-community/helm-charts` (o do Tempo já vem de lá): confira o repositório de cada um antes do bump |
 | Imagens dos serviços emulados | registry 3.1.2, Versity S3 Gateway 1.8.0, Soft Serve 0.12.3, cloud-provider-kind 0.12.0, PostgreSQL 17 | sem data fixa | `terraform/envs/local/images.tf` | Trimestral (5.12) |
 
 ## 5. Procedimentos
@@ -112,6 +113,15 @@ do EKS para a versão escolhida (`data.aws_eks_addon_version`, `most_recent = fa
 
 `ESO_CHART_VERSION`, digest da imagem (usada também pelo webhook e pelo cert controller) e a versão de
 API dos CRDs (`external-secrets.io/v1` hoje). Se a API mudar, é mudança de contrato.
+
+### 5.6.1 OpenTelemetry Collector (nuvem e lab local)
+
+O lab local e a camada de plataforma em nuvem usam o mesmo chart (`OTEL_COLLECTOR_CHART_VERSION` em
+`platform/versions.env`) e o mesmo digest de `otel/opentelemetry-collector-contrib` (o `helm-template`
+recusa digests diferentes). Na troca: leia as notas da release do Collector (componentes renomeados,
+como `otlp_grpc` e `k8s_attributes`), atualize o digest em `platform/values/otel-collector.yaml`
+e em `platform/local/values/otel-collector.yaml`, o SHA256 do chart em `platform/local/versions.env` e
+rode `make verify` e `make e2e` (o lab local prova o pipeline; o exporter do X-Ray só roda em nuvem).
 
 ### 5.7 Schemas do kubeconform
 

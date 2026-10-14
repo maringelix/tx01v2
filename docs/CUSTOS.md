@@ -22,6 +22,7 @@ páginas oficiais de preço da AWS antes de cada rodada; impostos e transferênc
 | KMS | 1 chave | US$1/mês + requisições | 0,001 | 0,03 |
 | Secrets Manager | 2 segredos | US$0,40/segredo-mês + chamadas | 0,001 | 0,03 |
 | CloudWatch Logs (EKS control plane, flow logs, RDS, WAF) | volume baixo | US$0,50/GB ingerido + US$0,03/GB-mês | ~0,005 | ~0,05–0,25 |
+| X-Ray (traces do app pelo OpenTelemetry Collector) | volume do lab | 100.000 traces gravados por mês sem custo; depois US$5 por milhão ([preços do X-Ray](https://aws.amazon.com/xray/pricing/), verificado em 2026-10-14) | ~0 | ~0 |
 | ECR, SSM (Standard), S3 do state, budget sem actions | — | centavos por mês ou sem custo | ~0 | ~0 |
 | **Total com SPOT (padrão)** | | | **~0,26** | **~6,3–6,5** |
 | **Total com ON_DEMAND** | | | **~0,32** | **~7,6–7,8** |

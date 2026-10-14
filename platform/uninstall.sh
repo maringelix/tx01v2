@@ -4,7 +4,8 @@
 #   1. delete every Ingress (and Service of type LoadBalancer) in the cluster
 #   2. wait until no load balancer, target group or security group tagged
 #      elbv2.k8s.aws/cluster=<cluster> exists (the controller deletes them)
-#   3. uninstall the External Secrets Operator and the AWS Load Balancer Controller releases
+#   3. uninstall the OpenTelemetry Collector, the External Secrets Operator and the AWS Load
+#      Balancer Controller releases
 # CLOUD-MUTATING. Fails loudly on any error or timeout. Needs the same tools as platform/install.sh.
 set -euo pipefail
 
@@ -72,6 +73,7 @@ main() {
   wait_for_controller_resources "$cluster"
 
   log "uninstalling the platform releases"
+  helm uninstall opentelemetry-collector --namespace observability --ignore-not-found --wait=watcher --timeout 10m
   helm uninstall external-secrets --namespace external-secrets --ignore-not-found --wait=watcher --timeout 10m
   helm uninstall aws-load-balancer-controller --namespace kube-system --ignore-not-found --wait=watcher --timeout 10m
   log "platform removed from $cluster"

@@ -69,7 +69,7 @@ of the ruleset. On Windows, run it from WSL or Git Bash.
 ```bash
 make tools                     # the pinned tools into .tools/, each one SHA256-verified
 HARNESS_STRICT=1 make verify   # static checks and terraform test: what the CI jobs static and test run
-make e2e                       # the whole local lab: apply, platform, 26 probes, destroy
+make e2e                       # the whole local lab: apply, platform, 34 probes, destroy
 ```
 
 `make e2e` builds the platform of [docs/LAB_LOCAL.md](docs/LAB_LOCAL.md) on Docker: a kind cluster

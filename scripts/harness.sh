@@ -64,6 +64,8 @@ LOCAL_CHARTS=(
   "KPS_REPO KPS_VERSION KPS_SHA256 kube-prometheus-stack kube-prometheus-stack"
   "GRAFANA_REPO LOKI_VERSION LOKI_SHA256 loki loki"
   "GRAFANA_REPO ALLOY_VERSION ALLOY_SHA256 alloy alloy"
+  "GRAFANA_COMMUNITY_REPO TEMPO_VERSION TEMPO_SHA256 tempo tempo"
+  "OTEL_COLLECTOR_REPO OTEL_COLLECTOR_CHART_VERSION OTEL_COLLECTOR_SHA256 opentelemetry-collector otel-collector"
   "ARGOCD_REPO ARGOCD_VERSION ARGOCD_SHA256 argo-cd argo-cd"
   "GATEKEEPER_REPO GATEKEEPER_VERSION GATEKEEPER_SHA256 gatekeeper gatekeeper"
   "TRIVY_OPERATOR_REPO TRIVY_OPERATOR_VERSION TRIVY_OPERATOR_SHA256 trivy-operator trivy-operator"
@@ -573,6 +575,14 @@ check_contract_platform() {
     echo "ESO service account must be external-secrets (Pod Identity association)"
     rc=1
   }
+  grep -qE '^  name: observability$' <<<"$m" || {
+    echo "platform/manifests: missing the namespace observability of the OpenTelemetry Collector (docs/CONTRATO.md)"
+    rc=1
+  }
+  grep -qE '^  name: opentelemetry-collector$' platform/values/otel-collector.yaml || {
+    echo "the OpenTelemetry Collector service account must be opentelemetry-collector (Pod Identity association)"
+    rc=1
+  }
   return "$rc"
 }
 
@@ -580,7 +590,7 @@ check_contract_platform() {
 # values are consumed as intended: images by digest, Pod Identity service accounts, feature gates,
 # default tags, no service mutator webhook.
 check_helm_template() {
-  local rc=0 lbc eso key value want e
+  local rc=0 lbc eso otel key value want e
   declare -A pv=()
   need helm
   while IFS='=' read -r key value; do
@@ -594,6 +604,28 @@ check_helm_template() {
   eso="$(helm template external-secrets external-secrets \
     --repo https://charts.external-secrets.io --version "${pv[ESO_CHART_VERSION]}" --namespace external-secrets \
     --values platform/values/external-secrets.yaml)"
+  otel="$(helm template opentelemetry-collector opentelemetry-collector \
+    --repo https://open-telemetry.github.io/opentelemetry-helm-charts --version "${pv[OTEL_COLLECTOR_CHART_VERSION]}" \
+    --namespace observability --values platform/values/otel-collector.yaml \
+    --set-string config.exporters.awsxray.region=us-east-1)"
+  want="$(sed -n 's/^  digest: //p' platform/values/otel-collector.yaml)"
+  local -a expect_otel=(
+    "image: \"otel/opentelemetry-collector-contrib@$want\""
+    "serviceAccountName: opentelemetry-collector"
+    "awsxray:"
+    "region: us-east-1"
+    "- awsxray"
+  )
+  for e in "${expect_otel[@]}"; do
+    grep -qF -- "$e" <<<"$otel" || {
+      echo "opentelemetry-collector chart: missing '$e'"
+      rc=1
+    }
+  done
+  [[ "$want" == "$(sed -n 's/^  digest: //p' platform/local/values/otel-collector.yaml)" ]] || {
+    echo "the cloud and the local OpenTelemetry Collector must run the same image digest"
+    rc=1
+  }
   want="$(sed -n 's/^  tag: //p' platform/values/aws-load-balancer-controller.yaml)"
   local -a expect=(
     "image: \"public.ecr.aws/eks/aws-load-balancer-controller:$want\""
@@ -622,7 +654,7 @@ check_helm_template() {
     echo "external-secrets chart: the controller must run as the service account external-secrets"
     rc=1
   }
-  echo "rendered aws-load-balancer-controller ${pv[LBC_CHART_VERSION]} ($(wc -l <<<"$lbc") lines) and external-secrets ${pv[ESO_CHART_VERSION]} ($(wc -l <<<"$eso") lines)"
+  echo "rendered aws-load-balancer-controller ${pv[LBC_CHART_VERSION]} ($(wc -l <<<"$lbc") lines), external-secrets ${pv[ESO_CHART_VERSION]} ($(wc -l <<<"$eso") lines) and opentelemetry-collector ${pv[OTEL_COLLECTOR_CHART_VERSION]} ($(wc -l <<<"$otel") lines)"
   return "$rc"
 }
 

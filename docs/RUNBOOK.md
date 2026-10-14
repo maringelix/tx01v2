@@ -86,9 +86,16 @@ Dispare `platform` com `action=install` (aprovação do environment `lab`). Loca
 
 ```bash
 export AWS_REGION=us-east-1
-platform/install.sh        # LBC, ESO e platform/manifests; termina com ClusterSecretStore Ready
+platform/install.sh        # LBC, ESO, platform/manifests e o OpenTelemetry Collector; termina com ClusterSecretStore Ready
 kubectl get ingressclass alb && kubectl get clustersecretstore aws-secrets-manager
+kubectl -n observability rollout status deployment/opentelemetry-collector
 ```
+
+Os traces do app (contrato v2) passam pelo Collector e chegam ao AWS X-Ray da mesma região. Depois do
+deploy do app e de algumas requisições, confira no console do CloudWatch (X-Ray traces) ou com
+`aws xray get-trace-summaries --start-time <INÍCIO> --end-time <FIM>`; nenhum trace em alguns minutos:
+`kubectl -n observability logs deployment/opentelemetry-collector` (erros do exporter `awsxray` ou do
+Pod Identity).
 
 ## 6. Deploy do app (dx01v2)
 
