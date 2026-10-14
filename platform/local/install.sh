@@ -316,14 +316,32 @@ install_chaos() {
     --values "$HERE/values/chaos-mesh.yaml"
 }
 
+# On a failed install, the same diagnostics as the probes (CI uploads LOCAL_DIAGNOSTICS_DIR as an
+# artifact; get/describe only, never Secret values), plus the node conditions and allocations (memory
+# pressure, evictions).
+on_exit() {
+  local rc=$?
+  if ((rc != 0)) && [[ -n "${LOCAL_DIAGNOSTICS_DIR:-}" ]]; then
+    mkdir -p "$LOCAL_DIAGNOSTICS_DIR"
+    kubectl get pods --all-namespaces -o wide >"$LOCAL_DIAGNOSTICS_DIR/pods.txt" 2>&1 || true
+    kubectl get events --all-namespaces --sort-by=.lastTimestamp >"$LOCAL_DIAGNOSTICS_DIR/events.txt" 2>&1 || true
+    kubectl describe pods --all-namespaces >"$LOCAL_DIAGNOSTICS_DIR/describe-pods.txt" 2>&1 || true
+    kubectl describe nodes >"$LOCAL_DIAGNOSTICS_DIR/describe-nodes.txt" 2>&1 || true
+    helm list --all-namespaces --all >"$LOCAL_DIAGNOSTICS_DIR/helm.txt" 2>&1 || true
+    kubectl top pods --all-namespaces >"$LOCAL_DIAGNOSTICS_DIR/top.txt" 2>&1 || true
+    log "install failed: diagnostics in $LOCAL_DIAGNOSTICS_DIR"
+  fi
+  [[ -z "$WORK_DIR" ]] || rm -rf "$WORK_DIR"
+  return "$rc"
+}
+
 main() {
   require_cmd kubectl helm terraform curl
   kubectl version >/dev/null 2>&1 || die "the lab cluster is not reachable (run: scripts/local-lab.sh up)"
   local_load_versions
   WORK_DIR="$(mktemp -d)"
   chmod 700 "$WORK_DIR"
-  # shellcheck disable=SC2064 # expand WORK_DIR now
-  trap "rm -rf '$WORK_DIR'" EXIT
+  trap on_exit EXIT
   prepare_cluster
   install_gateway_api
   install_istio
