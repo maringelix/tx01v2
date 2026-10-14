@@ -40,7 +40,8 @@ git clone https://github.com/<you>/dx01v2.git
 
 You need Linux or WSL 2 (Ubuntu) with bash >= 4.4, curl, unzip, xz, git, make, Docker and the GitHub
 CLI signed in as yourself (`gh auth login`). On Windows or macOS you can open each clone in its
-devcontainer instead (VS Code with Docker Desktop): it has Docker-in-Docker and installs the tools.
+devcontainer instead (VS Code with Docker Desktop): it has Docker-in-Docker and installs the tools,
+and `make e2e` runs inside it (verified locally with `LOCAL_PROFILE=core`).
 
 ## 2. Enable Actions
 
@@ -168,7 +169,7 @@ request. Run `scripts/repo-guardrails.sh` again when `.github/rulesets/main.json
 |---|---|
 | A pull request waits forever for `static`, `test` or `e2e` | Actions are still disabled in the fork: step 2 |
 | `repo-guardrails.sh` fails with "the workflows of this fork are not enabled yet" | step 2, then run it again |
-| `make e2e` gets killed or Docker freezes | give Docker about 8 GB of memory and run one lab at a time |
+| `make e2e` gets killed or Docker freezes | give Docker about 8 GB of memory (Docker Desktop on WSL 2: `memory=8GB` under `[wsl2]` in `%UserProfile%\.wslconfig`, then `wsl --shutdown`) and run one lab at a time; with less memory, `LOCAL_PROFILE=core make e2e` proves the base layers |
 | Port 5001 is already in use | another local lab or registry is running: `make local-down`, `docker ps` |
 | Something of the local lab is left after an interruption | `make local-down` (destroy and leftover check) |
 | Bootstrap: `Set github_owner ...` or `Replace the placeholder ...` | put your values in `terraform/bootstrap/terraform.tfvars` |

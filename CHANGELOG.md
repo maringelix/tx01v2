@@ -19,8 +19,9 @@ All notable changes to this project are documented here. The format follows
 - `FORK.md`: forking the lab step by step (what GitHub does not copy to a fork, the repository
   settings, the local lab, your own cloud account, troubleshooting), linked from both READMEs and
   CONTRIBUTING.md; the harness requires it.
-- The devcontainer has Docker-in-Docker, so `make e2e` runs inside it, and declares 4 CPUs and 8 GB;
-  the harness checks that devcontainer features are pinned by digest.
+- The devcontainer has Docker-in-Docker, so `make e2e` runs inside it (verified locally with
+  `LOCAL_PROFILE=core`), and declares 4 CPUs and 8 GB; the harness checks that devcontainer features
+  are pinned by digest.
 - `terraform/bootstrap` outputs `github_variables_tx01v2` and `github_variables_dx01v2` (the
   repository variables it knows, as in the other pairs), ready for `gh variable set -f`.
 - The local lab (docs/LAB_LOCAL.md): the whole v1 platform on Docker, with no cloud account.
@@ -52,7 +53,8 @@ All notable changes to this project are documented here. The format follows
 - `scripts/repo-guardrails.sh` also turns issues on (the issue forms) and requires approval for
   workflow runs from forks of external contributors; the reviewer of the `lab` environment is the gh
   user that runs it. It fails while the workflows of a fork are still disabled and notes a renamed
-  repository or a CODEOWNERS that names someone else (tested against a stub gh).
+  repository or a CODEOWNERS that names someone else (tested against a stub gh, then applied to the
+  original repository and read back with `gh api` on 2026-10-14).
 - The ruleset requires the CI job `e2e` too (`.github/rulesets/main.json`, applied with
   `scripts/repo-guardrails.sh`): the local lab is a merge gate, not only maintainer discipline.
 - README status matrix: repository settings as code are applied (read back with `gh api`), no
