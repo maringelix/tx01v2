@@ -6,6 +6,8 @@ AWS infrastructure half of a DevOps lab: Terraform, EKS, RDS, ALB + WAF and GitH
 
 [Português](README.pt-BR.md)
 
+**Fork this lab:** [FORK.md](FORK.md) takes you from a fork to a running lab, on your machine first, then in your own cloud account.
+
 ## What is this
 
 A public, educational lab you can clone or fork to learn how a small EKS platform is built, tested
@@ -38,7 +40,7 @@ The lab family (v2):
 | Plan on pull requests | `not run in the cloud (v2)` | `.github/workflows/terraform-plan.yml` |
 | Platform layer (AWS Load Balancer Controller v3.6.0, External Secrets Operator 2.12.0) | `not run in the cloud (v2)` | `.github/workflows/platform.yml`, `platform/install.sh` |
 | Destroy + leftover check | `not run in the cloud (v2)` | `.github/workflows/terraform-destroy.yml`, `scripts/leftovers.sh` |
-| Repository settings as code (ruleset, environment `lab`) | `verified locally` | `scripts/repo-guardrails.sh` applied; read back with `gh api` on 2026-10-13 (`docs/PUBLICACAO.md`) |
+| Repository settings as code (ruleset, environment `lab`) | `verified locally` | `scripts/repo-guardrails.sh` applied; read back with `gh api` on 2026-10-14 (`docs/PUBLICACAO.md`) |
 | **Local lab** (Terraform on Docker): kind cluster + emulated ECR, RDS (TLS only), S3, load balancer, git server; destroy + leftover check | `verified in CI` | `make e2e` (`terraform/envs/local`, `scripts/local-lab.sh`); `terraform-test:envs/local` |
 | Service mesh: Istio 1.31 ambient, mTLS `STRICT`, identity-based `AuthorizationPolicy` | `verified in CI` | `make e2e` (`platform/local/check.sh`: allowed, other identity and plaintext probes) |
 | Gateway API on Istio behind the emulated load balancer, HTTPS with cert-manager (lab CA), HTTP → HTTPS | `verified in CI` | `make e2e` |
@@ -150,6 +152,7 @@ All docs are in Brazilian Portuguese.
 
 | Doc | Content |
 |---|---|
+| [FORK.md](FORK.md) | fork the lab: what GitHub does not copy, the local lab, your own cloud account |
 | [docs/ARQUITETURA.md](docs/ARQUITETURA.md) | diagram, ADRs, v1 → v2 |
 | [docs/CONTRATO.md](docs/CONTRATO.md) | tx01v2 ⇄ dx01v2 contract v1 (source of truth) |
 | [docs/RUNBOOK.md](docs/RUNBOOK.md) | full cloud round |

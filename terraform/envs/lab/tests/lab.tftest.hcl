@@ -6,6 +6,7 @@ mock_provider "aws" {
 }
 
 variables {
+  github_owner                 = "maringelix"
   endpoint_public_access_cidrs = ["203.0.113.10/32", "198.51.100.0/24"]
   cluster_admin_principal_arns = ["arn:aws:iam::123456789012:role/tx01v2-gha-apply"]
   app_deployer_principal_arns  = ["arn:aws:iam::123456789012:role/dx01v2-gha-deploy"]

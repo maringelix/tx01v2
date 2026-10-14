@@ -1,9 +1,12 @@
 # Copy to terraform.tfvars (git-ignored). Placeholder values only.
 
-aws_region   = "us-east-1"
-github_owner = "maringelix"
+aws_region = "us-east-1"
 
-# Required: who receives the cost alerts (ACTUAL 50/80/100 %, FORECASTED 100 %).
+# Required: your GitHub user, the owner of your forks of tx01v2 and dx01v2 (the roles trust only their
+# workflows). The placeholder is refused, so is the e-mail below.
+github_owner = "your-github-user"
+
+# Required: who receives the cost alerts (ACTUAL 50/80/100 %, FORECASTED 100 %). Use an address you read.
 budget_alert_emails = ["you@example.com"]
 monthly_budget_usd  = 25
 

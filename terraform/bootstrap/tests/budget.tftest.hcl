@@ -5,7 +5,8 @@ mock_provider "aws" {
 }
 
 variables {
-  budget_alert_emails = ["you@example.com", "ops@example.org"]
+  github_owner        = "maringelix"
+  budget_alert_emails = ["lab-alerts@example.org", "ops@example.org"]
 }
 
 run "monthly_cost_budget_with_four_alerts" {
@@ -35,7 +36,7 @@ run "monthly_cost_budget_with_four_alerts" {
     condition = alltrue([
       for n in aws_budgets_budget.monthly.notification :
       n.threshold_type == "PERCENTAGE" && n.comparison_operator == "GREATER_THAN" &&
-      n.subscriber_email_addresses == toset(["you@example.com", "ops@example.org"])
+      n.subscriber_email_addresses == toset(["lab-alerts@example.org", "ops@example.org"])
     ])
     error_message = "Every notification must be a percentage threshold sent to all budget_alert_emails."
   }
@@ -87,4 +88,14 @@ run "rejects_a_non_positive_budget" {
   }
 
   expect_failures = [var.monthly_budget_usd]
+}
+
+run "placeholder_alert_email_is_refused" {
+  command = plan
+
+  variables {
+    budget_alert_emails = ["YOU@example.com"]
+  }
+
+  expect_failures = [var.budget_alert_emails]
 }

@@ -6,6 +6,7 @@ mock_provider "aws" {
 }
 
 variables {
+  github_owner                 = "maringelix"
   name                         = "tx01v2-lab"
   cluster_version              = "1.36"
   private_subnet_ids           = ["subnet-0aaaaaaaaaaaaaaa1", "subnet-0aaaaaaaaaaaaaaa2"]

@@ -4,6 +4,9 @@
 
 aws_region = "us-east-1"
 
+# Your GitHub user (the owner of your fork). The workflows pass github.repository_owner instead.
+github_owner = "your-github-user"
+
 # Your public IP as /32. GitHub-hosted runners need 0.0.0.0/0 plus
 # allow_endpoint_from_anywhere = true for the platform/deploy workflows (docs/ARQUITETURA.md).
 endpoint_public_access_cidrs = ["203.0.113.10/32"]

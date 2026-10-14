@@ -13,13 +13,17 @@ variable "aws_region" {
 }
 
 variable "github_owner" {
-  description = "GitHub owner of this repository; used in the Repository default tag."
+  description = "GitHub owner of this repository; used in the Repository default tag. The workflows pass github.repository_owner."
   type        = string
-  default     = "maringelix"
 
   validation {
     condition     = can(regex("^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$", var.github_owner))
     error_message = "The github_owner must be a valid GitHub user or organization name."
+  }
+
+  validation {
+    condition     = lower(var.github_owner) != "your-github-user"
+    error_message = "Set github_owner to the GitHub user that owns your forks (terraform.tfvars.example holds a placeholder)."
   }
 }
 

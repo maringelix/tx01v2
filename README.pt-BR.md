@@ -6,6 +6,8 @@ Metade de infraestrutura AWS de um lab de DevOps: Terraform, EKS, RDS, ALB + WAF
 
 [English](README.md)
 
+**Fork do lab:** o [FORK.md](FORK.md) (em inglês) leva você do fork ao lab rodando, primeiro na sua máquina, depois na sua conta de nuvem.
+
 ## O que é
 
 Um lab público e educacional para clonar ou fazer fork e aprender como uma plataforma EKS pequena é
@@ -38,7 +40,7 @@ A família do lab (v2):
 | Plan em pull requests | `não executado em nuvem (v2)` | `.github/workflows/terraform-plan.yml` |
 | Camada de plataforma (AWS Load Balancer Controller v3.6.0, External Secrets Operator 2.12.0) | `não executado em nuvem (v2)` | `.github/workflows/platform.yml`, `platform/install.sh` |
 | Destroy + checagem de sobras | `não executado em nuvem (v2)` | `.github/workflows/terraform-destroy.yml`, `scripts/leftovers.sh` |
-| Configurações do repositório como código (ruleset, environment `lab`) | `verificado localmente` | `scripts/repo-guardrails.sh` aplicado; conferido com `gh api` em 2026-10-13 (`docs/PUBLICACAO.md`) |
+| Configurações do repositório como código (ruleset, environment `lab`) | `verificado localmente` | `scripts/repo-guardrails.sh` aplicado; conferido com `gh api` em 2026-10-14 (`docs/PUBLICACAO.md`) |
 | **Lab local** (Terraform no Docker): cluster kind + ECR, RDS (só TLS), S3, load balancer e servidor git emulados; destroy + checagem de sobras | `verificado no CI` | `make e2e` (`terraform/envs/local`, `scripts/local-lab.sh`); `terraform-test:envs/local` |
 | Service mesh: Istio 1.31 ambient, mTLS `STRICT`, `AuthorizationPolicy` por identidade | `verificado no CI` | `make e2e` (`platform/local/check.sh`: sondas permitida, de outra identidade e em texto puro) |
 | Gateway API no Istio atrás do load balancer emulado, HTTPS com cert-manager (CA do lab), HTTP → HTTPS | `verificado no CI` | `make e2e` |
@@ -147,6 +149,7 @@ deploy do dx01v2 → smoke test → destroy → checagem de sobras → issue `cl
 
 | Documento | Conteúdo |
 |---|---|
+| [FORK.md](FORK.md) | fork do lab (em inglês): o que o GitHub não copia, o lab local, a sua conta de nuvem |
 | [docs/ARQUITETURA.md](docs/ARQUITETURA.md) | diagrama, ADRs, v1 → v2 |
 | [docs/CONTRATO.md](docs/CONTRATO.md) | contrato tx01v2 ⇄ dx01v2 v1 (fonte da verdade) |
 | [docs/RUNBOOK.md](docs/RUNBOOK.md) | rodada completa na nuvem |
