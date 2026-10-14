@@ -19,6 +19,7 @@ The lab family (v2):
 
 | Repository | Cloud | Role | Status |
 |---|---|---|---|
+| [`tx00v2`](https://github.com/maringelix/tx00v2) | all three | family hub: roadmap, family guardrails, cross-repo checks | see its status matrix |
 | `tx01v2` (this repo) | AWS | infrastructure (Terraform, platform layer) | see status matrix |
 | [`dx01v2`](https://github.com/maringelix/dx01v2) | AWS | application (built against `docs/CONTRATO.md`) | see its status matrix |
 | [`tx02v2`](https://github.com/maringelix/tx02v2) | Azure | infrastructure (Terraform, AKS, PostgreSQL Flexible Server, Application Gateway for Containers) | see its status matrix |

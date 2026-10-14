@@ -8,6 +8,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- The family table of both READMEs links the family hub `tx00v2` (roadmap, family guardrails,
+  cross-repo checks).
 - The edge of the local lab keeps a UUID-shaped external `X-Request-Id` as it came (EnvoyFilter
   `gateway-preserve-request-id`: `pack_trace_reason: false`); with tracing on, Envoy would otherwise
   rewrite one character of it. The probe now sends a UUID too.
