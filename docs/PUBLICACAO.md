@@ -31,7 +31,7 @@ tem o comando ou o lugar onde é verificado.
 
 - Bloqueia deleção e force-push; exige PR (0 aprovações para mantenedor solo, `dismiss_stale_reviews_on_push`,
   `required_review_thread_resolution`), merge só squash.
-- Checks obrigatórios (modo estrito, app GitHub Actions): `static` e `test`.
+- Checks obrigatórios (modo estrito, app GitHub Actions): `static`, `test` e `e2e` (o lab local).
 - Bypass: papel de admin do repositório, modo `pull_request` — **só para emergência** (por exemplo,
   um check quebrado por fator externo bloqueando uma correção de segurança). Registre o motivo no PR.
 
