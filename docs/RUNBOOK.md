@@ -26,6 +26,9 @@ terraform output                               # guarde os valores para a seçã
 terraform output -raw backend_hcl > ../envs/lab/backend.hcl
 ```
 
+- `github_owner` não tem padrão: use o seu usuário do GitHub, o dono dos repositórios `tx01v2` e
+  `dx01v2` (ou dos seus forks). O placeholder do exemplo (`your-github-user`) e o e-mail
+  `you@example.com` são recusados.
 - O state do bootstrap fica **local** (`terraform.tfstate`, ignorado pelo git). Faça backup dele.
 - Já existe um provider OIDC do GitHub na conta? Use `create_github_oidc_provider = false` e
   `existing_github_oidc_provider_arn`.
@@ -38,7 +41,9 @@ terraform output -raw backend_hcl > ../envs/lab/backend.hcl
 ## 3. Variáveis do GitHub
 
 Settings > Secrets and variables > Actions > **Variables** (variáveis de repositório; elas aparecem
-nos logs, então não coloque nada privado). Depois, `scripts/repo-guardrails.sh <owner>/tx01v2` cria
+nos logs, então não coloque nada privado). Os outputs `github_variables_tx01v2` e
+`github_variables_dx01v2` do bootstrap trazem as que ele já conhece; o `FORK.md` (passo 7) as grava
+com `gh variable set -f`. Depois, `scripts/repo-guardrails.sh <owner>/tx01v2` cria
 o environment `lab` (revisor obrigatório, deploy só de `main`) — exige repositório público.
 
 | Variável | Exemplo | Usada por | Vem de |

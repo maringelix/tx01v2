@@ -5,7 +5,8 @@ mock_provider "aws" {
 }
 
 variables {
-  budget_alert_emails = ["you@example.com"]
+  github_owner        = "maringelix"
+  budget_alert_emails = ["lab-alerts@example.org"]
 }
 
 run "trust_policies_allow_exactly_the_contract_subjects" {
@@ -63,6 +64,23 @@ run "trust_policies_allow_exactly_the_contract_subjects" {
   assert {
     condition     = length(aws_iam_openid_connect_provider.github) == 1 && aws_iam_openid_connect_provider.github[0].url == "https://token.actions.githubusercontent.com" && aws_iam_openid_connect_provider.github[0].client_id_list == toset(["sts.amazonaws.com"])
     error_message = "The GitHub OIDC provider must be created by default with the sts.amazonaws.com client ID."
+  }
+
+  assert {
+    condition = output.github_variables_tx01v2 == {
+      AWS_REGION                       = "us-east-1"
+      TF_STATE_BUCKET                  = "tx01v2-tfstate-123456789012-us-east-1"
+      AWS_PLAN_ROLE_ARN                = aws_iam_role.plan.arn
+      AWS_APPLY_ROLE_ARN               = aws_iam_role.apply.arn
+      LAB_CLUSTER_ADMIN_PRINCIPAL_ARNS = jsonencode([aws_iam_role.apply.arn])
+      LAB_APP_DEPLOYER_PRINCIPAL_ARNS  = jsonencode([aws_iam_role.deploy.arn])
+    }
+    error_message = "github_variables_tx01v2 must hold the repository variables of docs/RUNBOOK.md known after the bootstrap."
+  }
+
+  assert {
+    condition     = output.github_variables_dx01v2 == { AWS_REGION = "us-east-1", AWS_DEPLOY_ROLE_ARN = aws_iam_role.deploy.arn }
+    error_message = "github_variables_dx01v2 must hold the region and the deploy role of the dx01v2 workflow."
   }
 }
 
@@ -199,4 +217,14 @@ run "role_permissions_follow_the_contract" {
     ]
     error_message = "dx01v2-gha-deploy permissions must match contract v1 exactly."
   }
+}
+
+run "placeholder_owner_is_refused" {
+  command = plan
+
+  variables {
+    github_owner = "your-github-user"
+  }
+
+  expect_failures = [var.github_owner]
 }

@@ -21,7 +21,7 @@ mudança exige PRs coordenados nos dois repositórios e incremento da versão.
 |---|---|
 | Região AWS | variável Terraform `aws_region`, padrão `us-east-1` |
 | Projeto / ambiente / prefixo | `tx01v2` / `lab` / `tx01v2-lab` |
-| Tags padrão (`default_tags` do provider) | `Project=tx01v2`, `Environment=lab`, `ManagedBy=terraform`, `Repository=maringelix/tx01v2` |
+| Tags padrão (`default_tags` do provider) | `Project=tx01v2`, `Environment=lab`, `ManagedBy=terraform`, `Repository=<owner>/tx01v2` |
 | Cluster EKS | `tx01v2-lab`, Kubernetes `1.36` (suporte padrão do EKS até 2027-08-02), `upgrade_policy.support_type = "STANDARD"` |
 | Namespace do app | `dx01v2` — criado pela camada de plataforma do tx01v2 com os labels `pod-security.kubernetes.io/enforce=restricted`, `pod-security.kubernetes.io/enforce-version=latest`, `elbv2.k8s.aws/pod-readiness-gate-inject=enabled` |
 | Grupo Kubernetes do deployer | `dx01v2-deployers`, ligado no namespace `dx01v2` (RoleBinding `dx01v2-deployers`) à Role `dx01v2-deployer` |
@@ -41,7 +41,7 @@ Regras da Role `dx01v2-deployer` (namespace `dx01v2`):
 ## Confiança OIDC do GitHub
 
 `sub` exato (StringEquals, sem curingas), audience `sts.amazonaws.com`, dono configurável
-(`github_owner`, padrão `maringelix`).
+(`github_owner`, sem padrão: o dono do repositório ou do seu fork).
 
 | Papel | `sub` permitido |
 |---|---|

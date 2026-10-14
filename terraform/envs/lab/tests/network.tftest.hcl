@@ -5,8 +5,9 @@ mock_provider "aws" {
 }
 
 variables {
-  name        = "tx01v2-lab"
-  kms_key_arn = "arn:aws:kms:us-east-1:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab"
+  github_owner = "maringelix"
+  name         = "tx01v2-lab"
+  kms_key_arn  = "arn:aws:kms:us-east-1:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab"
 }
 
 run "defaults" {

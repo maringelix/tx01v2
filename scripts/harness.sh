@@ -33,7 +33,7 @@ CRD_SCHEMA_REF="f3e4382095909ac60000da025f323ba44d4c738a"
 TRIVYIGNORE_MAX_DAYS=214
 
 REQUIRED_FILES=(
-  README.md README.pt-BR.md AGENTS.md CLAUDE.md CONTRIBUTING.md SECURITY.md CHANGELOG.md LICENSE
+  README.md README.pt-BR.md AGENTS.md CLAUDE.md CONTRIBUTING.md SECURITY.md CHANGELOG.md LICENSE FORK.md
   .editorconfig .gitattributes .gitignore .pre-commit-config.yaml Makefile .tflint.hcl .trivyignore.yaml
   .devcontainer/devcontainer.json
   .github/CODEOWNERS .github/dependabot.yml .github/pull_request_template.md
@@ -210,6 +210,20 @@ check_repo_structure() {
   if [[ -f README.md ]] && (($(wc -l <README.md) > 250)); then
     echo "README.md: more than 250 lines"
     rc=1
+  fi
+  if [[ -f .devcontainer/devcontainer.json ]]; then
+    grep -qE '"image": "[^"]+@sha256:[0-9a-f]{64}"' .devcontainer/devcontainer.json || {
+      echo ".devcontainer/devcontainer.json: the base image must be pinned by digest (@sha256:...)"
+      rc=1
+    }
+    grep -qE '"postCreateCommand":[[:space:]]*"make tools"' .devcontainer/devcontainer.json || {
+      echo ".devcontainer/devcontainer.json: postCreateCommand must be \"make tools\""
+      rc=1
+    }
+    if grep -nE '"ghcr.io/devcontainers/features/[^"@]+"' .devcontainer/devcontainer.json | grep -v '@sha256:'; then
+      echo ".devcontainer/devcontainer.json: features must be pinned by digest"
+      rc=1
+    fi
   fi
   forbid 'production-grade|production-ready|enterprise|best-in-class|world-class' "self-ratings in the READMEs" '*' README.md README.pt-BR.md || rc=1
   grep -qF 'not run in the cloud (v2)' README.md || {

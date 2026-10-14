@@ -5,6 +5,7 @@ mock_provider "aws" {
 }
 
 variables {
+  github_owner                 = "maringelix"
   endpoint_public_access_cidrs = ["203.0.113.10/32"]
   cluster_admin_principal_arns = ["arn:aws:iam::123456789012:role/tx01v2-gha-apply"]
   app_deployer_principal_arns  = ["arn:aws:iam::123456789012:role/dx01v2-gha-deploy"]
@@ -152,4 +153,14 @@ run "rejects_a_short_secret_recovery_window" {
   }
 
   expect_failures = [var.secret_recovery_window_days]
+}
+
+run "placeholder_owner_is_refused" {
+  command = plan
+
+  variables {
+    github_owner = "your-github-user"
+  }
+
+  expect_failures = [var.github_owner]
 }

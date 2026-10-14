@@ -6,8 +6,23 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Security
+
+- `github_owner` has no default any more (`terraform/bootstrap` and `terraform/envs/lab`): a fork that
+  kept the default would have created CI identities that trust the workflows of another owner. The
+  bootstrap refuses the placeholders of `terraform.tfvars.example` (`your-github-user` and the alert
+  e-mail `you@example.com`); the workflows pass `github.repository_owner` to the lab root. New tests
+  `placeholder_owner_is_refused` and `placeholder_alert_email_is_refused`.
+
 ### Added
 
+- `FORK.md`: forking the lab step by step (what GitHub does not copy to a fork, the repository
+  settings, the local lab, your own cloud account, troubleshooting), linked from both READMEs and
+  CONTRIBUTING.md; the harness requires it.
+- The devcontainer has Docker-in-Docker, so `make e2e` runs inside it, and declares 4 CPUs and 8 GB;
+  the harness checks that devcontainer features are pinned by digest.
+- `terraform/bootstrap` outputs `github_variables_tx01v2` and `github_variables_dx01v2` (the
+  repository variables it knows, as in the other pairs), ready for `gh variable set -f`.
 - The local lab (docs/LAB_LOCAL.md): the whole v1 platform on Docker, with no cloud account.
   - `terraform/envs/local` (providers docker 4.6.0, tls 4.4.1, random 3.9.1): network
     `tx01v2-local`, kind 1.36 cluster, emulated ECR (registry 3.1.2), RDS (PostgreSQL 17, TLS only,
@@ -34,6 +49,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- `scripts/repo-guardrails.sh` also turns issues on (the issue forms) and requires approval for
+  workflow runs from forks of external contributors; the reviewer of the `lab` environment is the gh
+  user that runs it. It fails while the workflows of a fork are still disabled and notes a renamed
+  repository or a CODEOWNERS that names someone else (tested against a stub gh).
 - The ruleset requires the CI job `e2e` too (`.github/rulesets/main.json`, applied with
   `scripts/repo-guardrails.sh`): the local lab is a merge gate, not only maintainer discipline.
 - README status matrix: repository settings as code are applied (read back with `gh api`), no
