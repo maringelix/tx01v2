@@ -8,11 +8,14 @@
 #   5. External Secrets Operator + ClusterSecretStore local-secrets (Secrets of lab-secrets)
 #   6. contract of the local lab: ConfigMaps lab-contract and lab-ca (namespace lab-system)
 #   7. metrics-server
-#   8. observability: kube-prometheus-stack (Prometheus, Alertmanager -> alert-sink, Grafana), Loki, Alloy
+#   8. observability: kube-prometheus-stack (Prometheus with exemplars, Alertmanager -> alert-sink and
+#      Slack, Grafana), Loki, Alloy, Tempo, OpenTelemetry Collector, Istio tracing (Telemetry)
 #   9. operations: Argo CD, Gatekeeper + policies, Trivy Operator, Velero (S3 emulator), Chaos Mesh
 # LOCAL_PROFILE selects the layers (default full): core = 1-7, observability = 1-8,
 # operations = 1-7 + 9, full = 1-9. The CI runs full; a laptop with little free memory can validate
 # one layer per round (scripts/local-lab.sh e2e destroys the lab at the end).
+# LOCAL_SLACK_WEBHOOK_URL (optional, an https Slack incoming webhook): Alertmanager also posts warning
+# and critical alerts there; without it the Slack receiver posts to the in-cluster sink.
 # LOCAL ONLY: it never talks to AWS. Needs kubectl, helm, terraform and curl (scripts/install-tools.sh),
 # the KUBECONFIG and TF_DATA_DIR exported by scripts/local-lab.sh. Secret values come from the local
 # Terraform state and go to kubectl through stdin, never through arguments or logs.
@@ -153,7 +156,7 @@ metadata:
   name: lab-contract
   namespace: lab-system
 data:
-  version: "1"
+  version: "2"
   cluster-name: "$(tf_out cluster_name)"
   network-cidr: "$(tf_out subnet_cidr)"
   registry: "$(tf_out registry)"
@@ -172,6 +175,7 @@ data:
   gitops.push-key-secret: lab-secrets/gitops-push-key
   argocd.project: dx01v2
   monitoring.prometheus-service-account: monitoring/kube-prometheus-stack-prometheus
+  tracing.otlp-endpoint: http://opentelemetry-collector.monitoring.svc:4318
 EOF
 }
 
@@ -181,8 +185,23 @@ install_metrics_server() {
     --values "$HERE/values/metrics-server.yaml"
 }
 
-# Prometheus, Alertmanager (-> alert-sink), Grafana (admin password from the local state, Secret
-# grafana-admin), kube-state-metrics and node-exporter.
+# The webhook of the Slack receiver of Alertmanager (Secret alertmanager-slack, key webhook-url):
+# LOCAL_SLACK_WEBHOOK_URL when set, else the Slack path of the in-cluster sink (the probes read it).
+write_slack_webhook() {
+  local url="${LOCAL_SLACK_WEBHOOK_URL:-}"
+  if [[ -n "$url" ]]; then
+    [[ "$url" =~ ^https://[A-Za-z0-9.-]+/[A-Za-z0-9/_-]+$ ]] ||
+      die "LOCAL_SLACK_WEBHOOK_URL must be an https URL of a Slack incoming webhook"
+    log "Alertmanager: warning and critical alerts also go to the Slack webhook of LOCAL_SLACK_WEBHOOK_URL"
+  else
+    url=http://alert-sink.monitoring.svc:8080/slack
+  fi
+  printf '%s' "$url" | kubectl -n monitoring create secret generic alertmanager-slack \
+    --from-file=webhook-url=/dev/stdin --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+}
+
+# Prometheus, Alertmanager (-> alert-sink and Slack), Grafana (admin password from the local state,
+# Secret grafana-admin), kube-state-metrics and node-exporter.
 install_monitoring() {
   local charts="$WORK_DIR/charts" password tgz
   password="$(tf_out grafana_admin_password)"
@@ -197,6 +216,7 @@ stringData:
   admin-user: admin
   admin-password: "$password"
 EOF
+  write_slack_webhook
   kubectl apply -f "$HERE/manifests/alert-sink.yaml" >/dev/null
   tgz="$(pull_chart "$charts" "$KPS_REPO" kube-prometheus-stack "$KPS_VERSION" "$KPS_SHA256")"
   # The operator validates PrometheusRules with an admission webhook (failurePolicy Fail) that is part
@@ -223,6 +243,19 @@ install_logging() {
     --values "$HERE/values/loki.yaml"
   helm_install alloy monitoring "$(pull_chart "$charts" "$GRAFANA_REPO" alloy "$ALLOY_VERSION" "$ALLOY_SHA256")" \
     --values "$HERE/values/alloy.yaml"
+}
+
+# Traces: Tempo (store), the OpenTelemetry Collector (OTLP in, Tempo and spanmetrics out; its
+# ServiceMonitor needs the CRDs of kube-prometheus-stack) and the mesh-wide Telemetry that makes every
+# Istio Gateway report its spans to the Collector.
+install_tracing() {
+  local charts="$WORK_DIR/charts"
+  helm_install tempo monitoring "$(pull_chart "$charts" "$GRAFANA_COMMUNITY_REPO" tempo "$TEMPO_VERSION" "$TEMPO_SHA256")" \
+    --values "$HERE/values/tempo.yaml"
+  helm_install opentelemetry-collector monitoring "$(pull_chart "$charts" "$OTEL_COLLECTOR_REPO" opentelemetry-collector "$OTEL_COLLECTOR_CHART_VERSION" "$OTEL_COLLECTOR_SHA256")" \
+    --values "$HERE/values/otel-collector.yaml"
+  retry 10 6 kubectl apply -f "$HERE/manifests/tracing.yaml" >/dev/null ||
+    die "could not apply the Telemetry mesh-default (istiod webhook not ready?)"
 }
 
 install_gitops() {
@@ -283,14 +316,32 @@ install_chaos() {
     --values "$HERE/values/chaos-mesh.yaml"
 }
 
+# On a failed install, the same diagnostics as the probes (CI uploads LOCAL_DIAGNOSTICS_DIR as an
+# artifact; get/describe only, never Secret values), plus the node conditions and allocations (memory
+# pressure, evictions).
+on_exit() {
+  local rc=$?
+  if ((rc != 0)) && [[ -n "${LOCAL_DIAGNOSTICS_DIR:-}" ]]; then
+    mkdir -p "$LOCAL_DIAGNOSTICS_DIR"
+    kubectl get pods --all-namespaces -o wide >"$LOCAL_DIAGNOSTICS_DIR/pods.txt" 2>&1 || true
+    kubectl get events --all-namespaces --sort-by=.lastTimestamp >"$LOCAL_DIAGNOSTICS_DIR/events.txt" 2>&1 || true
+    kubectl describe pods --all-namespaces >"$LOCAL_DIAGNOSTICS_DIR/describe-pods.txt" 2>&1 || true
+    kubectl describe nodes >"$LOCAL_DIAGNOSTICS_DIR/describe-nodes.txt" 2>&1 || true
+    helm list --all-namespaces --all >"$LOCAL_DIAGNOSTICS_DIR/helm.txt" 2>&1 || true
+    kubectl top pods --all-namespaces >"$LOCAL_DIAGNOSTICS_DIR/top.txt" 2>&1 || true
+    log "install failed: diagnostics in $LOCAL_DIAGNOSTICS_DIR"
+  fi
+  [[ -z "$WORK_DIR" ]] || rm -rf "$WORK_DIR"
+  return "$rc"
+}
+
 main() {
   require_cmd kubectl helm terraform curl
   kubectl version >/dev/null 2>&1 || die "the lab cluster is not reachable (run: scripts/local-lab.sh up)"
   local_load_versions
   WORK_DIR="$(mktemp -d)"
   chmod 700 "$WORK_DIR"
-  # shellcheck disable=SC2064 # expand WORK_DIR now
-  trap "rm -rf '$WORK_DIR'" EXIT
+  trap on_exit EXIT
   prepare_cluster
   install_gateway_api
   install_istio
@@ -301,6 +352,7 @@ main() {
   if [[ "$LOCAL_PROFILE" == observability || "$LOCAL_PROFILE" == full ]]; then
     install_monitoring
     install_logging
+    install_tracing
   fi
   if [[ "$LOCAL_PROFILE" == operations || "$LOCAL_PROFILE" == full ]]; then
     install_gitops

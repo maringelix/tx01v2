@@ -1,0 +1,72 @@
+# open-telemetry/opentelemetry-collector (chart OTEL_COLLECTOR_CHART_VERSION of platform/versions.env),
+# namespace observability: the entry point of the traces of the lab in the cloud, the same Collector as
+# the local lab (platform/local/values/otel-collector.yaml, same image digest). The dx01v2 API sends
+# OTLP/HTTP to opentelemetry-collector.observability.svc:4318 (docs/CONTRATO.md); the Collector adds the
+# Kubernetes attributes of the sender and writes the spans to AWS X-Ray (W3C trace ids are converted to
+# the X-Ray format) with the EKS Pod Identity role tx01v2-lab-otel-collector (AWSXRayDaemonWriteAccess).
+# platform/install.sh sets the region (config.exporters.awsxray.region). Image pinned by digest
+# (verified 2026-10-14).
+mode: deployment
+replicaCount: 1
+image:
+  repository: otel/opentelemetry-collector-contrib
+  digest: sha256:39923a8e431bd1f57be82411999d389fcfe40857492e4365456d97a4c1f74be6
+serviceAccount:
+  # Pod Identity association of terraform/modules/eks/pod_identity.tf.
+  name: opentelemetry-collector
+presets:
+  kubernetesAttributes:
+    enabled: true
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    memory: 256Mi
+ports:
+  jaeger-compact:
+    enabled: false
+  jaeger-thrift:
+    enabled: false
+  jaeger-grpc:
+    enabled: false
+  zipkin:
+    enabled: false
+config:
+  receivers:
+    jaeger: null
+    zipkin: null
+    prometheus: null
+  processors:
+    resource/lab:
+      attributes:
+        - key: cloud.provider
+          value: aws
+          action: upsert
+        - key: k8s.cluster.name
+          value: tx01v2-lab
+          action: upsert
+  exporters:
+    debug: null
+    awsxray:
+      region: us-east-1
+      indexed_attributes: [http.route, http.response.status_code]
+  service:
+    pipelines:
+      logs: null
+      metrics: null
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, resource/lab, batch]
+        exporters: [awsxray]

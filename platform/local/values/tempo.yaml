@@ -1,0 +1,58 @@
+# grafana-community/tempo 3.1.0 (Tempo 3.1.0, single binary, namespace monitoring): the trace store of
+# the lab. It receives OTLP only from the OpenTelemetry Collector (values/otel-collector.yaml) and
+# Grafana queries it on port 3200. Monolithic mode needs no Kafka. Traces live 6 hours on an emptyDir
+# and die with the cluster. v1 had no traces at all (docs/LICOES_APRENDIDAS.md). Image pinned by digest
+# (verified 2026-10-14).
+tempo:
+  registry: docker.io
+  repository: grafana/tempo
+  tag: 3.1.0@sha256:3076b8dcdfb32fd6bc5ccef85e7b7313e6199b9cb84366257fc17ecb696db5fd
+  reportingEnabled: false
+  retention: 6h
+  # Only OTLP: the Collector is the single entry point of every span.
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+  storage:
+    trace:
+      backend: local
+      local:
+        path: /var/tempo/traces
+      wal:
+        path: /var/tempo/wal
+  resources:
+    requests:
+      cpu: 20m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: [ALL]
+  extraVolumeMounts:
+    - name: data
+      mountPath: /var/tempo
+    - name: tmp
+      mountPath: /tmp
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+serviceAccount:
+  automountServiceAccountToken: false
+persistence:
+  enabled: false
+extraVolumes:
+  - name: data
+    emptyDir: {}
+  - name: tmp
+    emptyDir: {}
+tempoQuery:
+  enabled: false

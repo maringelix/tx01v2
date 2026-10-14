@@ -201,14 +201,21 @@ run "pod_identity" {
       aws_eks_pod_identity_association.load_balancer_controller.namespace == "kube-system" &&
       aws_eks_pod_identity_association.load_balancer_controller.service_account == "aws-load-balancer-controller" &&
       aws_eks_pod_identity_association.external_secrets.namespace == "external-secrets" &&
-      aws_eks_pod_identity_association.external_secrets.service_account == "external-secrets"
+      aws_eks_pod_identity_association.external_secrets.service_account == "external-secrets" &&
+      aws_eks_pod_identity_association.otel_collector.namespace == "observability" &&
+      aws_eks_pod_identity_association.otel_collector.service_account == "opentelemetry-collector"
     )
     error_message = "Pod Identity associations must target the contract service accounts."
   }
 
   assert {
+    condition     = aws_iam_role_policy_attachment.otel_collector_xray.policy_arn == "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess"
+    error_message = "The OpenTelemetry Collector may only write to X-Ray (AWSXRayDaemonWriteAccess)."
+  }
+
+  assert {
     condition = alltrue([
-      for r in [aws_iam_role.load_balancer_controller, aws_iam_role.external_secrets] :
+      for r in [aws_iam_role.load_balancer_controller, aws_iam_role.external_secrets, aws_iam_role.otel_collector] :
       jsondecode(r.assume_role_policy).Statement == [{
         Sid       = "EksPodIdentityOfThisCluster"
         Effect    = "Allow"

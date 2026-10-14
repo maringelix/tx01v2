@@ -1,4 +1,7 @@
-# Contrato tx01v2 <-> dx01v2 — versão 1 (2026-10-10)
+# Contrato tx01v2 <-> dx01v2 — versão 2 (2026-10-14)
+
+Versão 2: o OpenTelemetry Collector da camada de plataforma (namespace `observability`, traces para o
+AWS X-Ray). A versão 1 (2026-10-10) não tinha traces.
 
 Interface entre a infraestrutura (este repositório) e a aplicação (`dx01v2`). Esta é a fonte da
 verdade: `dx01v2/docs/CONTRATO.md` repete a parte relevante para o app e aponta para cá. Qualquer
@@ -10,7 +13,8 @@ mudança exige PRs coordenados nos dois repositórios e incremento da versão.
 |---|---|---|
 | Papéis OIDC, `sub` exatos, permissões do deploy | `terraform/bootstrap/tests/oidc_roles.tftest.hcl` | `verificado localmente` |
 | Parâmetros SSM (nomes, tipo, valores fixos), tags padrão | `terraform/envs/lab/tests/lab.tftest.hcl` | `verificado localmente` |
-| Política do ESO, Pod Identity, access entries | `terraform/envs/lab/tests/eks.tftest.hcl` | `verificado localmente` |
+| Política do ESO, Pod Identity (LBC, ESO, OpenTelemetry Collector), access entries | `terraform/envs/lab/tests/eks.tftest.hcl` | `verificado localmente` |
+| Namespace `observability`, Collector com exporter do X-Ray, mesmo digest do lab local | checks `contract-platform` e `helm-template` do harness | `verificado localmente` |
 | ECR imutável, segredos write-only, RDS | `terraform/envs/lab/tests/*.tftest.hcl` | `verificado localmente` |
 | Namespace, Role/RoleBinding, ClusterSecretStore | checks `kubeconform` e `contract-platform` do harness | `verificado localmente` |
 | Comportamento real na AWS | `docs/RUNBOOK.md` | `não executado em nuvem (v2)` |
@@ -25,6 +29,7 @@ mudança exige PRs coordenados nos dois repositórios e incremento da versão.
 | Cluster EKS | `tx01v2-lab`, Kubernetes `1.36` (suporte padrão do EKS até 2027-08-02), `upgrade_policy.support_type = "STANDARD"` |
 | Namespace do app | `dx01v2` — criado pela camada de plataforma do tx01v2 com os labels `pod-security.kubernetes.io/enforce=restricted`, `pod-security.kubernetes.io/enforce-version=latest`, `elbv2.k8s.aws/pod-readiness-gate-inject=enabled` |
 | Grupo Kubernetes do deployer | `dx01v2-deployers`, ligado no namespace `dx01v2` (RoleBinding `dx01v2-deployers`) à Role `dx01v2-deployer` |
+| Traces (OpenTelemetry) | `http://opentelemetry-collector.observability.svc:4318` (OTLP/HTTP), Collector instalado pela camada de plataforma no namespace `observability` (Pod Identity `tx01v2-lab-otel-collector`, só `AWSXRayDaemonWriteAccess`); os spans vão para o AWS X-Ray da região do lab |
 | Repositórios ECR | `dx01v2/api`, `dx01v2/web` — tags IMMUTABLE, scan on push; imagens com a tag do SHA git completo (40 caracteres) do dx01v2 |
 | Papéis OIDC do GitHub (bootstrap do tx01v2) | `tx01v2-gha-plan`, `tx01v2-gha-apply`, `dx01v2-gha-deploy` |
 
@@ -107,7 +112,7 @@ final), que casa com o recurso `parameter/tx01v2/lab/*`; ou leia os nomes com `G
 - RDS PostgreSQL 17, porta 5432, acessível só a partir do security group do cluster EKS,
   `rds.force_ssl = 1`.
 
-## Lab local (contrato local, versão 1)
+## Lab local (contrato local, versão 2)
 
 O lab local (`docs/LAB_LOCAL.md`) é um contrato à parte, com versão própria (chave `version`), lido
 pelo deploy local do dx01v2. Ele espelha o contrato da nuvem com nomes do lab local; não muda nada
@@ -115,7 +120,7 @@ acima. Publicado por `platform/local/install.sh` no ConfigMap `lab-system/lab-co
 
 | Chave | Valor | Equivale na nuvem |
 |---|---|---|
-| `version` | `1` | versão deste arquivo |
+| `version` | `2` (2026-10-14: `tracing.otlp-endpoint`; a versão 1 não tinha traces) | versão deste arquivo |
 | `cluster-name` | `tx01v2-local` | `cluster-name` |
 | `network-cidr` | `10.250.0.0/24` (ou `subnet_cidr`) | `vpc-cidr` |
 | `registry` | `registry.tx01v2.local` (nome das imagens no cluster) | `ecr/api-url`, `ecr/web-url` (prefixo) |
@@ -131,6 +136,7 @@ acima. Publicado por `platform/local/install.sh` no ConfigMap `lab-system/lab-co
 | `gitops.push-key-secret` | `lab-secrets/gitops-push-key` (chave SSH do push, `kubernetes.io/ssh-auth`) | papel `dx01v2-gha-deploy` |
 | `argocd.project` | `dx01v2` (AppProject: só o repositório GitOps, só o namespace `dx01v2`, só os kinds do deploy, nada de Secret ou recurso de cluster) | Role `dx01v2-deployer` |
 | `monitoring.prometheus-service-account` | `monitoring/kube-prometheus-stack-prometheus` (identidade do Prometheus no mesh) | — |
+| `tracing.otlp-endpoint` | `http://opentelemetry-collector.monitoring.svc:4318` (OTLP/HTTP do OpenTelemetry Collector; o app manda os spans por ele, pelo mesh, e os Gateways mandam os deles em OTLP/gRPC na porta 4317) | — |
 
 Regras do namespace `dx01v2` no lab local: Pod Security `restricted`, mesh ambient (`istio.io/dataplane-mode:
 ambient`), constraints do Gatekeeper em `deny` (`policy.lab/enforce: "true"`; imagens só de

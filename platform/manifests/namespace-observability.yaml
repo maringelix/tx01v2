@@ -1,0 +1,9 @@
+# Namespace of the OpenTelemetry Collector (contract v2, docs/CONTRATO.md): the dx01v2 API sends its
+# traces to opentelemetry-collector.observability.svc:4318.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Probes of the local platform (scripts/local-lab.sh check; harness stage e2e). Each probe proves a
 # property with real traffic or a real API call and prints PASS <what>; the first failure stops the
-# script (exit 1) after dumping diagnostics. Throwaway resources live in the namespaces lab-probe and
+# script (exit 1) after dumping diagnostics. The probes of a layer run only when it is installed. Throwaway resources live in the namespaces lab-probe and
 # lab-probe-outside and are deleted at the end. Needs kubectl, docker, curl, terraform and the
 # KUBECONFIG/TF_DATA_DIR of scripts/local-lab.sh; the curl calls to the load balancer need this
 # machine (or container) on the lab network, which scripts/local-lab.sh arranges.
@@ -312,11 +312,15 @@ EOF
   done
   [[ "$body" == echo-* ]] || die "gateway: HTTPS through $ip failed (got '${body:-nothing}')"
   pass "gateway: https://$PROBE_HOST via $ip verified against the lab CA -> echo pod $body"
-  # Like the ALB, the edge passes an external X-Request-Id through (EnvoyFilter gateway-preserve-request-id).
-  body="$(curl -sS -m 5 --cacert "$WORK_DIR/ca.pem" --resolve "$PROBE_HOST:443:$ip" \
-    -H 'X-Request-Id: lab-probe-request-id' "https://$PROBE_HOST/header?key=X-Request-Id")"
-  [[ "$body" == lab-probe-request-id ]] || die "gateway: the edge replaced an external X-Request-Id (upstream got '${body:-nothing}')"
-  pass "gateway: an external X-Request-Id reaches the backend unchanged (ALB behaviour)"
+  # Like the ALB, the edge passes an external X-Request-Id through (EnvoyFilter gateway-preserve-request-id),
+  # also a UUID-shaped one, which Envoy would otherwise rewrite to mark its tracing decision.
+  local id
+  for id in lab-probe-request-id 9f3c2a71-5b8e-4d2a-9c41-7e6f0b1d2c3a; do
+    body="$(curl -sS -m 5 --cacert "$WORK_DIR/ca.pem" --resolve "$PROBE_HOST:443:$ip" \
+      -H "X-Request-Id: $id" "https://$PROBE_HOST/header?key=X-Request-Id")"
+    [[ "$body" == "$id" ]] || die "gateway: the edge changed the external X-Request-Id $id (upstream got '${body:-nothing}')"
+  done
+  pass "gateway: external X-Request-Ids (free text and UUID) reach the backend unchanged (ALB behaviour)"
   code="$(curl -sS -m 5 -o /dev/null -w '%{http_code}' --resolve "$PROBE_HOST:80:$ip" "http://$PROBE_HOST/hostname")"
   [[ "$code" == 301 ]] || die "gateway: HTTP must redirect to HTTPS (got $code)"
   pass "gateway: http://$PROBE_HOST -> 301 to HTTPS"
@@ -384,12 +388,15 @@ check_metrics_server() {
   die "metrics-server: kubectl top nodes failed for 3 minutes"
 }
 
-# in_cluster_get URL -> body of an HTTP GET made from a throwaway curl pod in lab-probe-outside (the
-# monitoring Services are ClusterIP only, like the v2 rule "no public UI").
+# in_cluster_get URL [USER:PASSWORD] -> body of an HTTP GET made from a throwaway curl pod in
+# lab-probe-outside (the monitoring Services are ClusterIP only, like the v2 rule "no public UI"),
+# with basic authentication when given.
 in_cluster_get() {
-  local url=$1 name phase="" i
+  local url=$1 name phase="" i args
   name="get-$RANDOM"
-  restricted_pod "$name" client "$CURL_IMAGE" "[\"-sS\", \"-m\", \"10\", \"--fail\", \"$url\"]" |
+  args="\"-sS\", \"-m\", \"10\", \"--fail\""
+  [[ -z "${2:-}" ]] || args+=", \"-u\", \"$2\""
+  restricted_pod "$name" client "$CURL_IMAGE" "[$args, \"$url\"]" |
     kubectl -n lab-probe-outside apply -f - >/dev/null
   for i in $(seq 1 90); do
     phase="$(kubectl -n lab-probe-outside get pod "$name" -o jsonpath='{.status.phase}' 2>/dev/null)" || phase=""
@@ -442,15 +449,47 @@ spec:
           annotations:
             summary: Synthetic alert of platform/local/check.sh
 EOF
+  local logs="" webhook=0 slack=0
   for i in $(seq 1 120); do
-    if kubectl -n monitoring logs deployment/alert-sink --since=15m 2>/dev/null | grep -qF "$run"; then
-      pass "alerting: PrometheusRule LabProbeAlwaysFiring -> Alertmanager -> alert-sink"
-      kubectl -n lab-probe delete prometheusrule lab-probe >/dev/null
-      return 0
-    fi
+    logs="$(kubectl -n monitoring logs deployment/alert-sink --since=15m 2>/dev/null)" || logs=""
+    grep -F '"path":"/alertmanager"' <<<"$logs" | grep -qF "$run" && webhook=1
+    grep -F '"path":"/slack"' <<<"$logs" | grep -qF "$run" && slack=1
+    ((webhook == 1)) && break
     sleep 5
   done
-  die "alerting: LabProbeAlwaysFiring (probe_run $run) never reached alert-sink in 10 minutes"
+  ((webhook == 1)) || die "alerting: LabProbeAlwaysFiring (probe_run $run) never reached alert-sink in 10 minutes"
+  pass "alerting: PrometheusRule LabProbeAlwaysFiring -> Alertmanager -> alert-sink"
+  check_slack "$run" "$slack"
+  kubectl -n lab-probe delete prometheusrule lab-probe >/dev/null
+}
+
+# The Slack receiver (the v1 channels): without LOCAL_SLACK_WEBHOOK_URL it posts to the Slack path of
+# the sink, which must have received the alert in Slack's message format; with a real webhook,
+# Alertmanager must count successful Slack notifications and no failed one.
+check_slack() {
+  local run=$1 seen=$2 webhook i body sent failed
+  webhook="$(kubectl -n monitoring get secret alertmanager-slack -o jsonpath='{.data.webhook-url}' | base64 -d)"
+  if [[ "$webhook" == http://alert-sink.monitoring.svc:8080/slack ]]; then
+    for i in $(seq 1 24); do
+      ((seen == 1)) && break
+      kubectl -n monitoring logs deployment/alert-sink --since=15m 2>/dev/null | grep -F '"path":"/slack"' |
+        grep -F '\"attachments\"' | grep -qF "$run" && seen=1
+      sleep 5
+    done
+    ((seen == 1)) || die "alerting: the Slack receiver never posted LabProbeAlwaysFiring (probe_run $run)"
+    pass "alerting: the Slack receiver posts the alert as a Slack message (to the sink; LOCAL_SLACK_WEBHOOK_URL sends it to a real channel)"
+    return 0
+  fi
+  for i in $(seq 1 24); do
+    body="$(in_cluster_get http://kube-prometheus-stack-alertmanager.monitoring.svc:9093/metrics)" || body=""
+    sent="$(awk '/^alertmanager_notifications_total\{.*integration="slack"/ { n += $NF } END { print n + 0 }' <<<"$body")"
+    failed="$(awk '/^alertmanager_notifications_failed_total\{.*integration="slack"/ { n += $NF } END { print n + 0 }' <<<"$body")"
+    ((sent > 0)) && break
+    sleep 5
+  done
+  ((sent > 0)) || die "alerting: Alertmanager sent no Slack notification to LOCAL_SLACK_WEBHOOK_URL"
+  ((failed == 0)) || die "alerting: $failed Slack notifications failed (check the webhook of LOCAL_SLACK_WEBHOOK_URL)"
+  pass "alerting: $sent Slack notifications delivered to the webhook of LOCAL_SLACK_WEBHOOK_URL, none failed"
 }
 
 check_loki() {
@@ -474,6 +513,144 @@ check_grafana() {
   [[ "$(kubectl -n monitoring get service kube-prometheus-stack-grafana -o jsonpath='{.spec.type}')" == ClusterIP ]] ||
     die "grafana: the Service must stay ClusterIP (no public UI)"
   pass "grafana: healthy, ClusterIP only, admin password from the local state"
+}
+
+TEMPO=http://tempo.monitoring.svc:3200
+COLLECTOR=http://opentelemetry-collector.monitoring.svc:4318
+GRAFANA=http://kube-prometheus-stack-grafana.monitoring.svc
+
+# hex BYTES -> random lowercase hex (W3C trace and span ids).
+hex() { od -An -N"$1" -tx1 /dev/urandom | tr -d ' \n'; }
+
+# in_cluster_post_json URL FILE -> HTTP code of a POST of the JSON FILE, made from a throwaway curl pod
+# in lab-probe-outside (the payload travels in a ConfigMap; nothing is in the mesh there).
+in_cluster_post_json() {
+  local url=$1 file=$2 name phase="" i
+  name="post-$RANDOM"
+  kubectl -n lab-probe-outside create configmap "$name" --from-file=payload.json="$file" --dry-run=client -o yaml |
+    kubectl apply -f - >/dev/null
+  kubectl -n lab-probe-outside apply -f - >/dev/null <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: $name
+  labels:
+    app.kubernetes.io/name: $name
+spec:
+  serviceAccountName: client
+  restartPolicy: Never
+  terminationGracePeriodSeconds: 1
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: main
+      image: $CURL_IMAGE
+      args: ["-sS", "-m", "10", "-o", "/dev/null", "-w", "%{http_code}", "-H", "Content-Type: application/json",
+             "--data-binary", "@/payload/payload.json", "$url"]
+      volumeMounts:
+        - name: payload
+          mountPath: /payload
+          readOnly: true
+      resources:
+        requests:
+          cpu: 10m
+          memory: 32Mi
+        limits:
+          memory: 64Mi
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+  volumes:
+    - name: payload
+      configMap:
+        name: $name
+EOF
+  for i in $(seq 1 90); do
+    phase="$(kubectl -n lab-probe-outside get pod "$name" -o jsonpath='{.status.phase}' 2>/dev/null)" || phase=""
+    [[ "$phase" == Succeeded || "$phase" == Failed ]] && break
+    sleep 1
+  done
+  kubectl -n lab-probe-outside logs "$name" 2>&1 | tail -n 1
+  kubectl -n lab-probe-outside delete pod "$name" --wait=false >/dev/null 2>&1
+  kubectl -n lab-probe-outside delete configmap "$name" >/dev/null 2>&1
+  [[ "$phase" == Succeeded ]]
+}
+
+# tempo_trace TRACE_ID -> the trace as Tempo returns it (OTLP JSON), polled for up to 2 minutes (the
+# Collector batches, Tempo flushes); fails when it never shows up.
+tempo_trace() {
+  local body="" i
+  for i in $(seq 1 40); do
+    body="$(in_cluster_get "$TEMPO/api/traces/$1")" && [[ "$body" == *'"spanId"'* ]] && {
+      printf '%s' "$body"
+      return 0
+    }
+    sleep 3
+  done
+  return 1
+}
+
+# Observability 2.0: one OpenTelemetry pipeline. A span sent over OTLP reaches Tempo through the
+# Collector; an Istio Gateway continues an incoming W3C trace, hands its own span to the backend and
+# reports it; the spanmetrics connector turns spans into RED series in Prometheus with exemplars that
+# carry the trace id; Grafana reaches Tempo and links logs, traces and metrics.
+check_tracing() {
+  local trace span now body code ip gw_trace gw_parent got services start auth
+  trace="$(hex 16)"
+  span="$(hex 8)"
+  now=$(($(date +%s) * 1000000000))
+  cat >"$WORK_DIR/span.json" <<EOF
+{"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"lab-probe"}}]},
+"scopeSpans":[{"scope":{"name":"platform/local/check.sh"},"spans":[{"traceId":"$trace","spanId":"$span",
+"name":"lab-probe-span","kind":2,"startTimeUnixNano":"$((now - 50000000))","endTimeUnixNano":"$now",
+"status":{"code":1}}]}]}]}
+EOF
+  code="$(in_cluster_post_json "$COLLECTOR/v1/traces" "$WORK_DIR/span.json")" ||
+    die "tracing: the OTLP/HTTP request to the OpenTelemetry Collector failed (${code:-no answer})"
+  [[ "$code" == 200 ]] || die "tracing: the OpenTelemetry Collector refused an OTLP/HTTP span (HTTP $code)"
+  body="$(tempo_trace "$trace")" || die "tracing: the span of trace $trace never reached Tempo"
+  [[ "$body" == *lab-probe-span* ]] || die "tracing: Tempo returned trace $trace without the span lab-probe-span"
+  pass "tracing: an OTLP/HTTP span sent to the OpenTelemetry Collector is stored in Tempo (trace $trace)"
+  ip="$(kubectl -n lab-probe get gateway probe -o jsonpath='{.status.addresses[0].value}')"
+  gw_trace="$(hex 16)"
+  gw_parent="$(hex 8)"
+  got="$(curl -sS -m 5 --cacert "$WORK_DIR/ca.pem" --resolve "$PROBE_HOST:443:$ip" \
+    -H "traceparent: 00-$gw_trace-$gw_parent-01" "https://$PROBE_HOST/header?key=traceparent")"
+  [[ "$got" =~ ^00-$gw_trace-[0-9a-f]{16}-01$ && "$got" != "00-$gw_trace-$gw_parent-01" ]] ||
+    die "tracing: the Gateway did not continue the incoming trace (the backend got traceparent '${got:-nothing}')"
+  pass "tracing: the Istio Gateway continues an incoming W3C trace and passes its own span id to the backend"
+  body="$(tempo_trace "$gw_trace")" || die "tracing: the Gateway span of trace $gw_trace never reached Tempo"
+  services="$(grep -oE '"service.name","value":\{"stringValue":"[^"]+"' <<<"$body" | sed -E 's/.*"stringValue":"//; s/"$//' | sort -u | tr '\n' ' ')"
+  pass "tracing: the Gateway span of trace $gw_trace is in Tempo (service ${services% })"
+  # spanmetrics flushes every 15 s and Prometheus scrapes it every 10 s (an exemplar lives one flush).
+  for _ in $(seq 1 40); do
+    body="$(in_cluster_get "$PROM/api/v1/query?query=traces_span_metrics_calls_total%7Bservice_name%3D%22lab-probe%22%7D")" &&
+      [[ "$body" == *'"result":[{'* ]] && break
+    sleep 5
+  done
+  [[ "$body" == *'"result":[{'* ]] || die "tracing: no spanmetrics series (traces_span_metrics_calls_total) of service lab-probe in Prometheus"
+  start=$(($(date +%s) - 900))
+  for _ in $(seq 1 20); do
+    body="$(in_cluster_get "$PROM/api/v1/query_exemplars?query=traces_span_metrics_duration_seconds_bucket%7Bservice_name%3D%22lab-probe%22%7D&start=$start&end=$(($(date +%s) + 60))")" &&
+      [[ "$body" == *"$trace"* ]] && break
+    sleep 5
+  done
+  [[ "$body" == *"$trace"* ]] || die "tracing: Prometheus has no exemplar with the trace id $trace (spanmetrics, exemplar storage)"
+  pass "tracing: spanmetrics (RED) of the span are in Prometheus, with an exemplar that carries its trace id"
+  auth="admin:$(tf_out grafana_admin_password)"
+  body="$(in_cluster_get "$GRAFANA/api/datasources/uid/tempo/health" "$auth")" ||
+    die "grafana: the health check of the Tempo datasource failed"
+  [[ "$body" == *'"status":"OK"'* ]] || die "grafana: the Tempo datasource is not healthy ($body)"
+  body="$(in_cluster_get "$GRAFANA/api/datasources/uid/loki" "$auth")" ||
+    die "grafana: the Loki datasource is missing"
+  [[ "$body" == *'"datasourceUid":"tempo"'* ]] || die "grafana: the Loki datasource has no derived field to Tempo"
+  pass "grafana: Tempo datasource healthy; logs -> traces (Loki derived field) and metrics -> traces (exemplars) linked"
 }
 
 installed() { helm -n "$2" status "$1" >/dev/null 2>&1; }
@@ -838,6 +1015,208 @@ EOF
   kubectl -n lab-probe delete podchaos kill-one-echo >/dev/null
 }
 
+# echo_client NAME COUNT -> a client pod in lab-probe (allowed identity) sends COUNT requests to echo,
+# 2 s timeout each, and prints "ok=<successes> median_ms=<median latency of the successes>".
+echo_client() {
+  local name=$1 count=$2 phase="" i
+  kubectl -n lab-probe apply -f - >/dev/null <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: $name
+  labels:
+    app.kubernetes.io/name: $name
+spec:
+  serviceAccountName: client
+  restartPolicy: Never
+  terminationGracePeriodSeconds: 1
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: main
+      image: $CURL_IMAGE
+      command: ["sh", "-c"]
+      args:
+        - |
+          sleep 2; ok=0; times=""
+          for i in \$(seq 1 $count); do
+            out=\$(curl -s -m 2 -o /dev/null -w '%{http_code} %{time_total}' http://echo.lab-probe:8080/hostname) || out="000 0"
+            set -- \$out
+            if [ "\$1" = 200 ]; then ok=\$((ok + 1)); times="\$times \$2"; fi
+            sleep 0.3
+          done
+          median=\$(printf '%s\n' \$times | sort -n | awk 'NF { a[++n] = \$1 } END { if (n) printf "%d", a[int((n + 1) / 2)] * 1000; else print 0 }')
+          echo "ok=\$ok median_ms=\$median"
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+        limits:
+          memory: 32Mi
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+EOF
+  for i in $(seq 1 120); do
+    phase="$(kubectl -n lab-probe get pod "$name" -o jsonpath='{.status.phase}' 2>/dev/null)" || phase=""
+    [[ "$phase" == Succeeded || "$phase" == Failed ]] && break
+    sleep 1
+  done
+  kubectl -n lab-probe logs "$name" 2>&1 | tail -n 1
+  kubectl -n lab-probe delete pod "$name" --wait=false >/dev/null 2>&1
+  [[ "$phase" == Succeeded ]]
+}
+
+# chaos_injected KIND NAME -> waits until Chaos Mesh reports the experiment injected on every target.
+chaos_injected() {
+  local i status
+  for i in $(seq 1 60); do
+    status="$(kubectl -n lab-probe get "$1" "$2" -o jsonpath='{.status.conditions[?(@.type=="AllInjected")].status}' 2>/dev/null)" || status=""
+    [[ "$status" == True ]] && return 0
+    sleep 2
+  done
+  return 1
+}
+
+# Hypothesis: with 100 ms of extra network latency on every echo pod, at least 19 of 20 requests still
+# succeed within the 2 s timeout, and the median latency grows by at least 80 ms (the fault is real).
+check_chaos_latency() {
+  local out ok base chaos
+  out="$(echo_client latency-before 10)" || die "chaos: the baseline client failed ($out)"
+  base="$(sed -n 's/.*median_ms=//p' <<<"$out")"
+  kubectl -n lab-probe apply -f - >/dev/null <<EOF
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: delay-echo
+spec:
+  action: delay
+  mode: all
+  selector:
+    namespaces: [lab-probe]
+    labelSelectors:
+      app.kubernetes.io/name: echo
+  delay:
+    latency: 100ms
+    jitter: 0ms
+    correlation: "0"
+  direction: to
+  duration: 180s
+EOF
+  chaos_injected networkchaos delay-echo || die "chaos: the NetworkChaos delay-echo was not injected"
+  out="$(echo_client latency-during 20)" || die "chaos: the client under latency failed ($out)"
+  kubectl -n lab-probe delete networkchaos delay-echo >/dev/null
+  ok="$(sed -n 's/^ok=\([0-9]*\).*/\1/p' <<<"$out")"
+  chaos="$(sed -n 's/.*median_ms=//p' <<<"$out")"
+  [[ "$ok" =~ ^[0-9]+$ && "$base" =~ ^[0-9]+$ && "$chaos" =~ ^[0-9]+$ ]] || die "chaos: unexpected client output '$out'"
+  ((ok >= 19)) || die "chaos: hypothesis refuted, only $ok/20 requests succeeded with 100 ms of extra latency"
+  ((chaos >= base + 80)) || die "chaos: the latency was not injected (median $base ms -> $chaos ms)"
+  pass "chaos: 100 ms of network latency on every echo pod (NetworkChaos): $ok/20 requests succeeded, median $base -> $chaos ms (hypothesis held)"
+}
+
+# restarts_of_echo -> total container restarts of the echo pods.
+restarts_of_echo() {
+  kubectl -n lab-probe get pods -l app.kubernetes.io/name=echo \
+    -o jsonpath='{range .items[*]}{.status.containerStatuses[0].restartCount}{"\n"}{end}' | awk '{ n += $1 } END { print n + 0 }'
+}
+
+# Hypothesis: with a CPU and a memory stressor inside every echo container (StressChaos), at least 38
+# of 40 requests succeed and no container is killed (the memory stays under the 64 Mi limit); the peak
+# CPU that metrics-server reports proves the stress ran.
+check_chaos_stress() {
+  local before name=stress-client out ok cpu mem peak_cpu=0 peak_mem=0 phase="" i
+  before="$(restarts_of_echo)"
+  kubectl -n lab-probe apply -f - >/dev/null <<EOF
+apiVersion: chaos-mesh.org/v1alpha1
+kind: StressChaos
+metadata:
+  name: stress-echo
+spec:
+  mode: all
+  selector:
+    namespaces: [lab-probe]
+    labelSelectors:
+      app.kubernetes.io/name: echo
+  stressors:
+    cpu:
+      workers: 1
+      load: 100
+    memory:
+      workers: 1
+      size: 24MB
+  duration: 120s
+EOF
+  chaos_injected stresschaos stress-echo || die "chaos: the StressChaos stress-echo was not injected"
+  kubectl -n lab-probe apply -f - >/dev/null <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: $name
+  labels:
+    app.kubernetes.io/name: $name
+spec:
+  serviceAccountName: client
+  restartPolicy: Never
+  terminationGracePeriodSeconds: 1
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: main
+      image: $CURL_IMAGE
+      command: ["sh", "-c"]
+      args:
+        - |
+          ok=0
+          for i in \$(seq 1 40); do
+            curl -s -m 2 -o /dev/null -w '%{http_code}' http://echo.lab-probe:8080/hostname | grep -q 200 && ok=\$((ok + 1))
+            sleep 1
+          done
+          echo "ok=\$ok"
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+        limits:
+          memory: 32Mi
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+EOF
+  # metrics-server refreshes every 15 s: sample the peak while the client runs (about 45 s).
+  for i in $(seq 1 90); do
+    while read -r _ cpu mem; do
+      cpu="${cpu%m}"
+      mem="${mem%Mi}"
+      [[ "$cpu" =~ ^[0-9]+$ ]] && ((cpu > peak_cpu)) && peak_cpu=$cpu
+      [[ "$mem" =~ ^[0-9]+$ ]] && ((mem > peak_mem)) && peak_mem=$mem
+    done < <(kubectl -n lab-probe top pods -l app.kubernetes.io/name=echo --no-headers 2>/dev/null || :)
+    phase="$(kubectl -n lab-probe get pod "$name" -o jsonpath='{.status.phase}' 2>/dev/null)" || phase=""
+    [[ "$phase" == Succeeded || "$phase" == Failed ]] && break
+    sleep 1
+  done
+  out="$(kubectl -n lab-probe logs "$name" 2>&1 | tail -n 1)"
+  kubectl -n lab-probe delete pod "$name" --wait=false >/dev/null 2>&1
+  kubectl -n lab-probe delete stresschaos stress-echo >/dev/null
+  ok="$(sed -n 's/^ok=//p' <<<"$out")"
+  [[ "$ok" =~ ^[0-9]+$ ]] || die "chaos: unexpected client output under stress '$out'"
+  ((ok >= 38)) || die "chaos: hypothesis refuted, only $ok/40 requests succeeded under CPU and memory stress"
+  ((peak_cpu >= 200)) || die "chaos: the stress did not show in metrics-server (peak CPU ${peak_cpu}m)"
+  [[ "$(restarts_of_echo)" == "$before" ]] || die "chaos: an echo container restarted under stress (OOM kill?)"
+  pass "chaos: CPU and memory stress in every echo pod (StressChaos, peak ${peak_cpu}m CPU, ${peak_mem}Mi): $ok/40 requests succeeded, no restart (hypothesis held)"
+}
+
 main() {
   require_cmd kubectl docker curl terraform helm git ssh
   kubectl version >/dev/null 2>&1 || die "the lab cluster is not reachable (run: scripts/local-lab.sh up)"
@@ -855,12 +1234,17 @@ main() {
     check_alerting
     check_loki
     check_grafana
+    check_tracing
   fi
   installed argocd argocd && check_gitops
   installed gatekeeper gatekeeper-system && check_policies
   installed trivy-operator trivy-system && check_trivy
   installed velero velero && check_backup
-  installed chaos-mesh chaos-mesh && check_chaos
+  if installed chaos-mesh chaos-mesh; then
+    check_chaos
+    check_chaos_latency
+    check_chaos_stress
+  fi
   printf 'SUMMARY: local platform probes: %d passed\n' "$PASSED"
 }
 

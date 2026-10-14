@@ -1,0 +1,14 @@
+# Mesh-wide tracing (installed with the observability layer, after the OpenTelemetry Collector): every
+# Istio Gateway reports a span per request to the provider otel-tracing of values/istiod.yaml. A request
+# that arrives with a W3C traceparent continues that trace, and the backend receives the gateway's span
+# as its parent. ztunnel (ambient L4) produces no spans; the dx01v2 API adds its own.
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: mesh-default
+  namespace: istio-system
+spec:
+  tracing:
+    - providers:
+        - name: otel-tracing
+      randomSamplingPercentage: 100

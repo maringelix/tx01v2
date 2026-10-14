@@ -58,6 +58,11 @@ prometheus:
     podMonitorSelectorNilUsesHelmValues: false
     ruleSelectorNilUsesHelmValues: false
     probeSelectorNilUsesHelmValues: false
+    # Exemplars: a histogram sample keeps the trace_id of a request it measured (the dx01v2 API and
+    # the spanmetrics of the OpenTelemetry Collector), and Grafana links it to the trace in Tempo.
+    enableFeatures: [exemplar-storage]
+    exemplars:
+      maxSize: 100000
     resources:
       requests:
         cpu: 50m
@@ -70,14 +75,19 @@ alertmanager:
     image:
       sha: e9733bafb1bdef9b00e25a21f8f99dc26a22224bf16641ad754d1649f4c3357a
     retention: 24h
+    # Secret alertmanager-slack (key webhook-url), written by install.sh: LOCAL_SLACK_WEBHOOK_URL when
+    # it is set, else the Slack path of the in-cluster sink. Mounted under
+    # /etc/alertmanager/secrets/alertmanager-slack/.
+    secrets: [alertmanager-slack]
     resources:
       requests:
         cpu: 10m
         memory: 48Mi
       limits:
         memory: 128Mi
-  # v1 routed to Slack with the webhook in versioned values; here every alert goes to the in-cluster
-  # sink (platform/local/manifests/alert-sink.yaml) and the probes read what it received.
+  # Every alert goes to the in-cluster sink (platform/local/manifests/alert-sink.yaml), whose log the
+  # probes read. Warnings and critical alerts also go to Slack, like the channels of v1, but the
+  # webhook is never in versioned values (v1 put it there): it comes from the Secret above.
   config:
     global:
       resolve_timeout: 5m
@@ -91,11 +101,21 @@ alertmanager:
         - receiver: "null"
           matchers:
             - alertname = "Watchdog"
+        - receiver: slack
+          matchers:
+            - severity =~ "warning|critical"
+          continue: true
+        - receiver: alert-sink
     receivers:
       - name: "null"
       - name: alert-sink
         webhook_configs:
           - url: http://alert-sink.monitoring.svc:8080/alertmanager
+            send_resolved: true
+      - name: slack
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/alertmanager-slack/webhook-url
+            channel: "#lab-alerts"
             send_resolved: true
 
 grafana:
@@ -119,12 +139,47 @@ grafana:
       label: grafana_dashboard
       labelValue: "1"
       searchNamespace: ALL
+    datasources:
+      # metrics -> traces: an exemplar of the Prometheus datasource opens its trace in Tempo.
+      exemplarTraceIdDestinations:
+        datasourceUid: tempo
+        traceIdLabelName: trace_id
+  # The three signals linked to each other: logs -> traces (the trace_id field of a JSON log line),
+  # traces -> logs (the lines of the same trace_id in Loki) and metrics -> traces (above).
   additionalDataSources:
     - name: Loki
       type: loki
       uid: loki
       url: http://loki.monitoring.svc:3100
       access: proxy
+      jsonData:
+        derivedFields:
+          - name: trace_id
+            matcherType: regex
+            matcherRegex: '"trace_id":"([0-9a-f]{32})"'
+            datasourceUid: tempo
+            url: "$${__value.raw}"
+            urlDisplayLabel: Trace in Tempo
+    - name: Tempo
+      type: tempo
+      uid: tempo
+      url: http://tempo.monitoring.svc:3200
+      access: proxy
+      jsonData:
+        nodeGraph:
+          enabled: true
+        lokiSearch:
+          datasourceUid: loki
+        tracesToLogsV2:
+          datasourceUid: loki
+          filterByTraceID: true
+          spanStartTimeShift: "-5m"
+          spanEndTimeShift: "5m"
+          tags:
+            - key: k8s.namespace.name
+              value: namespace
+        tracesToMetrics:
+          datasourceUid: prometheus
   # Grafana 13 was OOMKilled at 256Mi while starting its app platform.
   resources:
     requests:

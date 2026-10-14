@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- The edge of the local lab keeps a UUID-shaped external `X-Request-Id` as it came (EnvoyFilter
+  `gateway-preserve-request-id`: `pack_trace_reason: false`); with tracing on, Envoy would otherwise
+  rewrite one character of it. The probe now sends a UUID too.
+
 ### Security
 
 - `github_owner` has no default any more (`terraform/bootstrap` and `terraform/envs/lab`): a fork that
@@ -16,6 +22,25 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Local lab, "Observability 2.0" (the last step of the v1 roadmap, never started there): Tempo 3.1.0
+  (grafana-community chart 3.1.0) and the OpenTelemetry Collector contrib 0.162.0 (chart 0.176.0) in the
+  observability layer; every Istio Gateway reports its spans (Telemetry `mesh-default`, provider
+  `otel-tracing`); the spanmetrics connector feeds Prometheus with RED series and exemplars (exemplar
+  storage on); Grafana links logs, metrics and traces (Tempo datasource, Loki derived field, exemplar
+  destinations). Probes: an OTLP span reaches Tempo, the Gateway continues an incoming W3C trace and
+  reports it, spanmetrics with an exemplar of the trace, Grafana datasource health and links.
+- Alertmanager also posts warning and critical alerts to Slack, like the v1 channels, with the webhook
+  in the Secret `monitoring/alertmanager-slack` (`LOCAL_SLACK_WEBHOOK_URL`, never in versioned values);
+  without it the Slack receiver posts to the sink and a probe checks the Slack message.
+- Chaos experiments with hypotheses: 100 ms of network latency (NetworkChaos) and CPU + memory stress
+  (StressChaos) on the probe workload, next to the pod kill. The local lab has 34 probes (was 26).
+- Local contract version 2: key `tracing.otlp-endpoint` (the OTLP/HTTP endpoint of the Collector).
+- Contract version 2 (`not run in the cloud (v2)`): the cloud platform layer installs the same
+  OpenTelemetry Collector (same chart and image digest, namespace `observability`), which sends the
+  traces of the app to AWS X-Ray. New Pod Identity role `tx01v2-lab-otel-collector` with only the AWS
+  managed policy `AWSXRayDaemonWriteAccess` (an IAM addition for the traces, tested in
+  `eks.tftest.hcl`); `platform/uninstall.sh` removes the release; the `contract-platform` and
+  `helm-template` checks assert the namespace, the service account, the exporter and the digest.
 - `FORK.md`: forking the lab step by step (what GitHub does not copy to a fork, the repository
   settings, the local lab, your own cloud account, troubleshooting), linked from both READMEs and
   CONTRIBUTING.md; the harness requires it.

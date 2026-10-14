@@ -1,0 +1,101 @@
+# open-telemetry/opentelemetry-collector 0.176.0 (Collector contrib 0.162.0, namespace monitoring): the
+# single entry point of the traces of the lab (OpenTelemetry, "Observability 2.0"). Receivers: OTLP
+# gRPC 4317 (the Istio Gateways) and OTLP HTTP 4318 (the dx01v2 API, contract key
+# tracing.otlp-endpoint). Every span gets the Kubernetes attributes of its pod, goes to Tempo and
+# feeds the spanmetrics connector, whose request, error and duration (RED) series Prometheus scrapes
+# with exemplars that point back to the traces. In the cloud the same Collector would export to the
+# trace service of the provider instead of Tempo. Image pinned by digest (verified 2026-10-14).
+mode: deployment
+replicaCount: 1
+image:
+  repository: otel/opentelemetry-collector-contrib
+  digest: sha256:39923a8e431bd1f57be82411999d389fcfe40857492e4365456d97a4c1f74be6
+# k8s_attributes: k8s.namespace.name, k8s.pod.name, k8s.deployment.name of the sender (ClusterRole
+# with get/list/watch on pods, namespaces and replicasets, created by the chart).
+presets:
+  kubernetesAttributes:
+    enabled: true
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+resources:
+  requests:
+    cpu: 20m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
+ports:
+  jaeger-compact:
+    enabled: false
+  jaeger-thrift:
+    enabled: false
+  jaeger-grpc:
+    enabled: false
+  zipkin:
+    enabled: false
+  # Internal telemetry of the Collector (otelcol_receiver_accepted_spans, otelcol_exporter_sent_spans).
+  metrics:
+    enabled: true
+  # The RED series of the spanmetrics connector (traces_span_metrics_*), with exemplars.
+  spanmetrics:
+    enabled: true
+    containerPort: 8889
+    servicePort: 8889
+    protocol: TCP
+serviceMonitor:
+  enabled: true
+  metricsEndpoints:
+    - port: metrics
+      interval: 30s
+    # An exemplar of spanmetrics is exposed only until the next flush (15 s, the connector resets its
+    # exemplars after each one): Prometheus must scrape more often than that, or it can miss them.
+    - port: spanmetrics
+      interval: 10s
+config:
+  receivers:
+    jaeger: null
+    zipkin: null
+    prometheus: null
+  connectors:
+    spanmetrics:
+      namespace: traces.span.metrics
+      metrics_flush_interval: 15s
+      histogram:
+        unit: s
+        explicit:
+          buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s]
+      dimensions:
+        - name: http.request.method
+        - name: http.response.status_code
+        - name: http.route
+      exemplars:
+        enabled: true
+  exporters:
+    debug: null
+    otlp_grpc/tempo:
+      endpoint: tempo.monitoring.svc:4317
+      tls:
+        insecure: true
+    prometheus:
+      endpoint: ${env:MY_POD_IP}:8889
+      enable_open_metrics: true
+  service:
+    pipelines:
+      logs: null
+      metrics: null
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, batch]
+        exporters: [otlp_grpc/tempo, spanmetrics]
+      metrics/spanmetrics:
+        receivers: [spanmetrics]
+        processors: [batch]
+        exporters: [prometheus]

@@ -68,7 +68,7 @@ flowchart LR
     subgraph kind["kind tx01v2-local 1.36 (EKS)"]
       gw["Gateway istio + cert-manager lab-ca"]
       mesh["Istio ambient: ztunnel, mTLS STRICT"]
-      obs["Prometheus, Alertmanager, Grafana, Loki, Alloy"]
+      obs["Prometheus, Alertmanager, Grafana, Loki, Alloy, Tempo, OpenTelemetry Collector"]
       ops["Argo CD, Gatekeeper, Trivy Operator, Velero, Chaos Mesh"]
       eso["ESO local-secrets"]
       app["namespace dx01v2"]
@@ -85,7 +85,7 @@ flowchart LR
 
 | # | Decisão | Motivo | Alternativa descartada |
 |---|---|---|---|
-| 1 | EKS Pod Identity para LBC e ESO | sem provider OIDC por cluster; trust simples (`pods.eks.amazonaws.com`) limitado por `aws:SourceAccount` e `aws:SourceArn` | IRSA (provider OIDC, trust por `sub` do service account) |
+| 1 | EKS Pod Identity para LBC, ESO e o OpenTelemetry Collector | sem provider OIDC por cluster; trust simples (`pods.eks.amazonaws.com`) limitado por `aws:SourceAccount` e `aws:SourceArn` | IRSA (provider OIDC, trust por `sub` do service account) |
 | 2 | Nada de provider `kubernetes`/`helm` no Terraform | o state não depende da API do cluster; destroy não trava em recursos Kubernetes; camadas separadas | Helm via Terraform (acoplamento e destroy frágil) |
 | 3 | External Secrets Operator lê o Secrets Manager | segredos ficam na AWS; o deployer nunca escreve Secrets | Secrets criados por pipeline ou CSI driver |
 | 4 | Segredos `ephemeral` + argumentos write-only | senha do RDS e token do admin nunca no plan ou no state; rotação por `*_version` | `random_password` (fica no state) ou `manage_master_user_password` (formato de segredo fora do contrato) |
@@ -105,9 +105,10 @@ flowchart LR
 | 18 | Istio ambient no lab local | mTLS e autorização por identidade sem sidecar; roda no kind (no v1 o Autopilot recusou sidecar e ambient) | sidecar (mais memória por pod); Linkerd |
 | 19 | GitOps com Argo CD lendo um servidor git do lab | um único dono do namespace do app (v1 tinha dois); o push usa a chave do state, a leitura é anônima | Flux; apontar para o GitHub (exigiria credenciais e internet no caminho do deploy) |
 | 20 | Gatekeeper com políticas próprias testadas no `gator` | as regras do v1, em `deny`, com casos que provam aceitação e recusa | gatekeeper-library inteira (mais regras do que o lab explica); Kyverno |
-| 21 | Alertmanager → `alert-sink` dentro do cluster | entrega de alerta provada sem credencial externa (v1 dependia de um webhook do Slack nunca testado) | Slack/e-mail reais |
+| 21 | Alertmanager → `alert-sink` dentro do cluster; receiver do Slack com o webhook num Secret opcional | entrega de alerta provada sem credencial externa (v1 dependia de um webhook do Slack nunca testado); sem webhook, a mensagem no formato do Slack vai para o sink e a sonda confere o conteúdo | webhook do Slack nos values versionados (v1) |
 | 22 | Velero no S3 emulado; backup por recursos, sem snapshots | o ensaio de restore roda em minutos e sem nuvem (v1 nunca restaurou nada) | `pg_dump` sozinho; snapshots CSI |
 | 23 | Perfis `core`/`observability`/`operations`/`full` | máquinas com pouca memória validam uma camada por vez; o CI roda `full` | um único perfil |
+| 24 | Traces: o OpenTelemetry Collector como único destino OTLP; Tempo no lab local, X-Ray na nuvem | o app e os Gateways falam só OTLP; trocar o backend não muda o app; Tempo monolítico (chart grafana-community) cabe no kind; o spanmetrics do Collector liga métricas a traces por exemplars | SDK do X-Ray no app (prende o app à AWS); Jaeger; Tempo distribuído |
 
 Detalhes do LBC v3: desde a v3.0.0 o chart tem a mesma versão do app (chart 3.6.0); o Gateway API
 vem habilitado por padrão e é desligado explicitamente (o lab usa Ingress); o service mutator webhook

@@ -2,7 +2,8 @@
 # Installs the platform layer on the lab cluster (never done by Terraform):
 #   1. AWS Load Balancer Controller (kube-system, IngressClass alb)
 #   2. External Secrets Operator (external-secrets)
-#   3. platform/manifests (namespace dx01v2, deployer RBAC, ClusterSecretStore)
+#   3. platform/manifests (namespaces dx01v2 and observability, deployer RBAC, ClusterSecretStore)
+#   4. OpenTelemetry Collector (observability): OTLP from the app, traces to AWS X-Ray
 # CLOUD-MUTATING: run it only when you mean to (docs/RUNBOOK.md). Needs AWS CLI v2, kubectl and helm
 # (scripts/install-tools.sh kubectl helm), AWS_REGION and credentials of a principal listed in
 # cluster_admin_principal_arns. Re-running it upgrades in place.
@@ -56,7 +57,8 @@ main() {
 
   helm repo add eks https://aws.github.io/eks-charts --force-update
   helm repo add external-secrets https://charts.external-secrets.io --force-update
-  helm repo update eks external-secrets
+  helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts --force-update
+  helm repo update eks external-secrets open-telemetry
 
   log "installing aws-load-balancer-controller chart $LBC_CHART_VERSION"
   helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller \
@@ -78,10 +80,18 @@ main() {
   log "applying platform/manifests"
   apply_manifests "$region"
 
+  log "installing opentelemetry-collector chart $OTEL_COLLECTOR_CHART_VERSION (traces to X-Ray in $region)"
+  helm upgrade --install opentelemetry-collector open-telemetry/opentelemetry-collector \
+    --namespace observability \
+    --version "$OTEL_COLLECTOR_CHART_VERSION" \
+    --values "$HERE/values/otel-collector.yaml" \
+    --set-string config.exporters.awsxray.region="$region" \
+    --wait=watcher --rollback-on-failure --timeout 10m
+
   # Ready means ESO reached Secrets Manager with its Pod Identity credentials.
   kubectl wait --for=condition=Ready "clustersecretstore/$store" --timeout=180s
   kubectl get ingressclass alb >/dev/null
-  log "platform ready: IngressClass alb, ClusterSecretStore $store, namespace dx01v2"
+  log "platform ready: IngressClass alb, ClusterSecretStore $store, namespace dx01v2, OTLP endpoint opentelemetry-collector.observability.svc:4318"
 }
 
 main "$@"

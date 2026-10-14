@@ -1,5 +1,5 @@
-# EKS Pod Identity (no IRSA OIDC provider) for the two platform controllers installed by
-# platform/install.sh. Both trust policies are limited to this account and this cluster.
+# EKS Pod Identity (no IRSA OIDC provider) for the platform components installed by
+# platform/install.sh. Every trust policy is limited to this account and this cluster.
 
 locals {
   # Must match LBC_CHART_VERSION in platform/versions.env (checked by the harness).
@@ -85,4 +85,26 @@ resource "aws_eks_pod_identity_association" "external_secrets" {
   namespace       = "external-secrets"
   service_account = "external-secrets"
   role_arn        = aws_iam_role.external_secrets.arn
+}
+
+# --- OpenTelemetry Collector: observability/opentelemetry-collector (traces to AWS X-Ray) ---
+
+resource "aws_iam_role" "otel_collector" {
+  name               = "${var.name}-otel-collector"
+  description        = "OpenTelemetry Collector of ${var.name}: writes traces to AWS X-Ray (EKS Pod Identity)."
+  assume_role_policy = local.pod_identity_trust_policy
+}
+
+# X-Ray has no resource-level permissions: PutTraceSegments, PutTelemetryRecords and the sampling
+# reads of the AWS managed policy for the X-Ray daemon, nothing else.
+resource "aws_iam_role_policy_attachment" "otel_collector_xray" {
+  role       = aws_iam_role.otel_collector.name
+  policy_arn = "arn:${local.partition}:iam::aws:policy/AWSXRayDaemonWriteAccess"
+}
+
+resource "aws_eks_pod_identity_association" "otel_collector" {
+  cluster_name    = aws_eks_cluster.this.name
+  namespace       = "observability"
+  service_account = "opentelemetry-collector"
+  role_arn        = aws_iam_role.otel_collector.arn
 }
