@@ -56,7 +56,8 @@ All notable changes to this project are documented here. The format follows
   `terraform/envs/local/kind-config-small.yaml` (`GOMEMLIMIT` for the API server, the controller
   manager and etcd). The components stay the same. The full platform with the app of dx01v2 needs
   more than 7 GB at the default size; at the small size it passes in 7 GB (18 probes in about 14
-  minutes, 4.4 GiB of anonymous memory, no OOM kill), while in 6 GB, the goal of the roadmap, the
+  minutes, 4.4 GiB of anonymous memory; in one of four runs the kernel killed the plugin copy of Velero,
+  an init container the kubelet runs again), while in 6 GB, the goal of the roadmap, the
   rollout probe loses requests: the size stays at 7 GB (CI job `e2e-platform-small` of dx01v2). The
   `helm-template-local` check renders every chart with an overlay a second time and fails when the
   overlay changes an image or names a chart that does not exist.

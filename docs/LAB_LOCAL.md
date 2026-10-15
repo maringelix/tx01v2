@@ -120,7 +120,7 @@ Quanto a plataforma `full` com o app do dx01v2 precisa (memória do Docker, sem 
 | `default` | 7 GB (local, 2026-10-15) | falha: a memória bateu no limite cerca de 825 mil vezes (thrashing), o apiserver reiniciou e os controllers entraram em CrashLoop; nenhum OOM kill |
 | `default` | runner do CI, 16 GB | passa (jobs `e2e` daqui e `e2e-platform` do dx01v2) |
 | `small` | 6 GB (CI, Docker-in-Docker, 2026-10-15) | falha: 14 das 18 sondas passam, e a de rollout perde 7 de 376 requisições; memória anônima de 4,25 GiB, limite atingido 468 mil vezes, 4 OOM kills (a cópia do plugin do Velero) |
-| `small` | 7 GB (CI, Docker-in-Docker, 2026-10-15) | passa: as 18 sondas em 14 minutos, memória anônima de 4,38 GiB, nenhum OOM kill |
+| `small` | 7 GB (CI, Docker-in-Docker, 2026-10-15) | passa: as 18 sondas em cerca de 14 minutos, memória anônima de 4,4 GiB. Em uma das quatro rodadas dos três pares, o kernel matou duas vezes a cópia do plugin do Velero na instalação (init container BestEffort, que o kubelet roda de novo) |
 | `small` | 8 GB (CI, Docker-in-Docker, 2026-10-15) | passa no mesmo tempo, memória anônima de 4,37 GiB |
 
 O tamanho `small` fica em 7 GB, decisão do Bruno em 2026-10-15 (a meta da R1.8 era 6 GB): abaixo dos
