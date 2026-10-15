@@ -1,4 +1,4 @@
-# The three GitHub Actions roles of contract v1 (docs/CONTRATO.md).
+# The three GitHub Actions roles of the contract (docs/CONTRATO.md).
 
 locals {
   iam_arn_prefix   = "arn:${local.partition}:iam::${local.account_id}"

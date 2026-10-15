@@ -98,7 +98,7 @@ install_cert_manager() {
   kubectl wait --for=condition=Ready clusterissuer/lab-ca --timeout=120s >/dev/null
 }
 
-# The local twin of the Secrets Manager secrets of contract v1: same keys, Kubernetes-safe names.
+# The local twin of the Secrets Manager secrets of the contract: same keys, Kubernetes-safe names.
 write_lab_secrets() {
   local db_ip db_port db_name db_user db_password admin_token
   db_ip="$(tf_out db_ip)"
@@ -252,7 +252,7 @@ install_tracing() {
   local charts="$WORK_DIR/charts"
   helm_install tempo monitoring "$(pull_chart "$charts" "$GRAFANA_COMMUNITY_REPO" tempo "$TEMPO_VERSION" "$TEMPO_SHA256")" \
     --values "$HERE/values/tempo.yaml"
-  helm_install opentelemetry-collector monitoring "$(pull_chart "$charts" "$OTEL_COLLECTOR_REPO" opentelemetry-collector "$OTEL_COLLECTOR_CHART_VERSION" "$OTEL_COLLECTOR_SHA256")" \
+  helm_install opentelemetry-collector monitoring "$(pull_chart "$charts" "$OTEL_COLLECTOR_REPO" opentelemetry-collector "$OTEL_COLLECTOR_CHART_VERSION" "$OTEL_COLLECTOR_CHART_SHA256")" \
     --values "$HERE/values/otel-collector.yaml"
   retry 10 6 kubectl apply -f "$HERE/manifests/tracing.yaml" >/dev/null ||
     die "could not apply the Telemetry mesh-default (istiod webhook not ready?)"

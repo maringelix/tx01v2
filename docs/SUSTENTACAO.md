@@ -116,11 +116,13 @@ API dos CRDs (`external-secrets.io/v1` hoje). Se a API mudar, é mudança de con
 
 ### 5.6.1 OpenTelemetry Collector (nuvem e lab local)
 
-O lab local e a camada de plataforma em nuvem usam o mesmo chart (`OTEL_COLLECTOR_CHART_VERSION` em
-`platform/versions.env`) e o mesmo digest de `otel/opentelemetry-collector-contrib` (o `helm-template`
-recusa digests diferentes). Na troca: leia as notas da release do Collector (componentes renomeados,
-como `otlp_grpc` e `k8s_attributes`), atualize o digest em `platform/values/otel-collector.yaml`
-e em `platform/local/values/otel-collector.yaml`, o SHA256 do chart em `platform/local/versions.env` e
+O lab local e a camada de plataforma em nuvem usam o mesmo chart (`OTEL_COLLECTOR_CHART_VERSION` e
+`OTEL_COLLECTOR_CHART_SHA256` em `platform/versions.env`) e o mesmo digest de
+`otel/opentelemetry-collector-contrib` (o `helm-template` recusa digests diferentes). O
+`platform/install.sh`, o harness e o lab local recusam um arquivo do chart com outro SHA256. Na troca:
+leia as notas da release do Collector (componentes renomeados, como `otlp_grpc` e `k8s_attributes`),
+atualize o digest em `platform/values/otel-collector.yaml` e em
+`platform/local/values/otel-collector.yaml`, a versão e o SHA256 do chart em `platform/versions.env` e
 rode `make verify` e `make e2e` (o lab local prova o pipeline; o exporter do X-Ray só roda em nuvem).
 
 ### 5.7 Schemas do kubeconform

@@ -246,7 +246,7 @@ run "pod_identity" {
         Condition = { StringEquals = { "kms:ViaService" = "secretsmanager.us-east-1.amazonaws.com" } }
       },
     ]
-    error_message = "The ESO policy must match contract v1."
+    error_message = "The ESO policy must match the contract."
   }
 
   assert {
