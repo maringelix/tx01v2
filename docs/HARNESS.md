@@ -16,6 +16,7 @@ Ele vive em `scripts/harness.sh`; o `Makefile` e o CI só o chamam. O que passa 
 | Lock de providers | `terraform-lockfiles` | hashes para linux_amd64, linux_arm64, darwin_arm64, windows_amd64 | — | local, CI |
 | Lint | `tflint` | preset recommended + regras AWS sem issues | regras que dependem de chamadas à AWS (deep check desligado) | local, CI |
 | Segurança da IaC | `trivy-config`, `trivy-config-tfvars` | sem HIGH/CRITICAL fora das exceções documentadas | configuração em runtime, IAM efetivo | local, CI |
+| Fluxos dos scripts, offline | `destroy-flow`, `local-preflight` | um uninstall que falha ainda leva à limpeza pela API, ao `terraform destroy` e à checagem de sobras; o lab local recusa uma máquina com daemons diferentes, rede ou rota sobreposta ou porta ocupada, e nunca age num lab de outro `LOCAL_STATE_DIR` | comportamento contra a AWS ou o Docker de verdade (CLIs simuladas) | local, CI |
 | Workflows e scripts | `actionlint` (com shellcheck), `shellcheck` | YAML e bash corretos | comportamento contra a nuvem | local, CI |
 | Manifests | `kubeconform` | manifests renderizados válidos (estrito) para Kubernetes 1.36 e CRDs do ESO | admission e comportamento no cluster | local, CI (rede) |
 | Charts da plataforma | `helm-template` | os charts fixados (LBC 3.6.0, ESO 2.12.0) aceitam `platform/values` e renderizam imagens por digest, service accounts do Pod Identity, feature gates e tags | instalação real e comportamento dos controllers | local, CI (rede) |

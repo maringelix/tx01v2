@@ -24,24 +24,40 @@ variable "github_owner" {
   }
 }
 
-variable "create_github_oidc_provider" {
-  description = "Create the GitHub OIDC provider (one per account). Set false to reuse an existing one."
-  type        = bool
-  default     = true
-}
-
-variable "existing_github_oidc_provider_arn" {
-  description = "ARN of an existing token.actions.githubusercontent.com provider (required when create_github_oidc_provider = false)."
+variable "github_owner_id" {
+  description = "Numeric GitHub ID of github_owner (gh api users/<owner> --jq .id; it works for organizations too). GitHub writes it, and the ID of the repository, into the OIDC sub claim of every repository created after 2026-07-15 (immutable subject claims). The trust policies pin both, so a deleted and re-registered account name does not inherit the lab."
   type        = string
-  default     = null
 
   validation {
-    condition = var.create_github_oidc_provider ? var.existing_github_oidc_provider_arn == null : (
-      var.existing_github_oidc_provider_arn != null &&
-      can(regex("^arn:aws:iam::[0-9]{12}:oidc-provider/token\\.actions\\.githubusercontent\\.com$", coalesce(var.existing_github_oidc_provider_arn, "-")))
-    )
-    error_message = "Set existing_github_oidc_provider_arn (arn:aws:iam::<ACCOUNT_ID>:oidc-provider/token.actions.githubusercontent.com) only when create_github_oidc_provider = false."
+    condition     = can(regex("^[1-9][0-9]{0,15}$", var.github_owner_id))
+    error_message = "The github_owner_id must be the numeric GitHub ID of the owner: gh api users/<owner> --jq .id"
   }
+}
+
+variable "tx01v2_repository_id" {
+  description = "Numeric GitHub ID of your tx01v2 repository (gh api repos/<owner>/tx01v2 --jq .id)."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[1-9][0-9]{0,15}$", var.tx01v2_repository_id))
+    error_message = "The tx01v2_repository_id must be the numeric ID of the repository: gh api repos/<owner>/tx01v2 --jq .id"
+  }
+}
+
+variable "dx01v2_repository_id" {
+  description = "Numeric GitHub ID of your dx01v2 repository (gh api repos/<owner>/dx01v2 --jq .id)."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[1-9][0-9]{0,15}$", var.dx01v2_repository_id))
+    error_message = "The dx01v2_repository_id must be the numeric ID of the repository: gh api repos/<owner>/dx01v2 --jq .id"
+  }
+}
+
+variable "create_github_oidc_provider" {
+  description = "Create the GitHub OIDC provider (one per account). Set false when the account already has it: it is then read by URL and never changed here. A provider created here belongs to the whole account, so take it out of the state before the teardown (docs/RUNBOOK.md, section 10)."
+  type        = bool
+  default     = true
 }
 
 variable "state_bucket_force_destroy" {

@@ -4,6 +4,8 @@ SHELL := bash
 .DEFAULT_GOAL := help
 
 HARNESS := bash scripts/harness.sh
+# The directory of this Makefile: `clean` removes things under it, wherever make was started from.
+ROOT := $(patsubst %/,%,$(dir $(abspath $(firstword $(MAKEFILE_LIST)))))
 
 .PHONY: help tools static test verify e2e all local-up local-check local-down clean
 
@@ -38,7 +40,7 @@ local-down: ## Destroy the local lab and check for leftovers
 	@bash scripts/local-lab.sh down
 
 clean: ## Remove installed tools, harness scratch data and local Terraform working dirs
-	@rm -rf .tools .cache
-	@find terraform -type d -name .terraform -prune -exec rm -rf {} +
-	@find terraform/modules -name .terraform.lock.hcl -delete
+	@cd "$(ROOT)" && rm -rf .tools .cache
+	@cd "$(ROOT)" && find terraform -type d -name .terraform -prune -exec rm -rf {} +
+	@cd "$(ROOT)" && find terraform/modules -name .terraform.lock.hcl -delete
 	@rm -rf "$${TMPDIR:-/tmp}/tx01v2-harness"

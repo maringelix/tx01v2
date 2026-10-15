@@ -6,13 +6,21 @@ aws_region = "us-east-1"
 # workflows). The placeholder is refused, so is the e-mail below.
 github_owner = "your-github-user"
 
+# Required: the numeric GitHub IDs that the OIDC subject carries (scripts/repo-guardrails.sh prints
+# them for a repository):
+#   gh api users/<owner> --jq .id          -> github_owner_id
+#   gh api repos/<owner>/tx01v2 --jq .id   -> tx01v2_repository_id
+#   gh api repos/<owner>/dx01v2 --jq .id   -> dx01v2_repository_id
+github_owner_id      = "1000000"
+tx01v2_repository_id = "2000000"
+dx01v2_repository_id = "3000000"
+
 # Required: who receives the cost alerts (ACTUAL 50/80/100 %, FORECASTED 100 %). Use an address you read.
 budget_alert_emails = ["you@example.com"]
 monthly_budget_usd  = 25
 
-# One GitHub OIDC provider per account: reuse it if it already exists.
-# create_github_oidc_provider       = false
-# existing_github_oidc_provider_arn = "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
+# One GitHub OIDC provider per account: when the account already has it, read it instead of creating it.
+# create_github_oidc_provider = false
 
 # Only for the final teardown (deletes every state version):
 # state_bucket_force_destroy = true

@@ -9,8 +9,8 @@ locals {
   ]
 
   # IAM write actions the apply role may use on tx01v2-* roles, policies and instance profiles.
+  # iam:CreateRole is not here: it is allowed only with the permissions boundary (boundary.tf).
   lab_iam_write_actions = [
-    "iam:CreateRole",
     "iam:DeleteRole",
     "iam:UpdateRole",
     "iam:UpdateRoleDescription",
@@ -36,6 +36,41 @@ locals {
     "iam:UntagInstanceProfile",
   ]
 
+  # What `terraform plan` reads while it refreshes the lab: service-level Describe/Get/List of the
+  # services of terraform/envs/lab, in place of ReadOnlyAccess (every service of the account, so
+  # the data of any other workload). Reading a secret value, an object or a log event is not here.
+  plan_read_actions = [
+    "autoscaling:Describe*",
+    "ec2:Describe*",
+    "ec2:Get*",
+    "ecr:BatchGet*",
+    "ecr:Describe*",
+    "ecr:Get*",
+    "ecr:List*",
+    "eks:Describe*",
+    "eks:List*",
+    "elasticloadbalancing:Describe*",
+    "iam:Get*",
+    "iam:List*",
+    "kms:Describe*",
+    "kms:Get*",
+    "kms:List*",
+    "logs:Describe*",
+    "logs:List*",
+    "rds:Describe*",
+    "rds:List*",
+    "secretsmanager:Describe*",
+    "secretsmanager:GetResourcePolicy",
+    "secretsmanager:List*",
+    "ssm:Describe*",
+    "ssm:Get*",
+    "ssm:List*",
+    "tag:Get*",
+    "wafv2:Describe*",
+    "wafv2:Get*",
+    "wafv2:List*",
+  ]
+
   ecr_repository_arns = [
     for repo in ["dx01v2/api", "dx01v2/web"] : "arn:${local.partition}:ecr:${local.region}:${local.account_id}:repository/${repo}"
   ]
@@ -45,14 +80,24 @@ locals {
 
 resource "aws_iam_role" "plan" {
   name                 = "tx01v2-gha-plan"
-  description          = "GitHub Actions (tx01v2 PRs and main): terraform plan of the lab, read-only, -lock=false."
+  description          = "GitHub Actions (tx01v2 PRs and main): terraform plan of the lab, read-only on the services of the lab, -lock=false."
   assume_role_policy   = local.github_trust_policies["plan"]
   max_session_duration = 3600
 }
 
-resource "aws_iam_role_policy_attachment" "plan_read_only" {
-  role       = aws_iam_role.plan.name
-  policy_arn = "arn:${local.partition}:iam::aws:policy/ReadOnlyAccess"
+resource "aws_iam_role_policy" "plan_read_lab" {
+  name = "read-lab-services"
+  role = aws_iam_role.plan.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "DescribeTheServicesOfTheLab"
+      Effect   = "Allow"
+      Action   = local.plan_read_actions
+      Resource = "*"
+    }]
+  })
 }
 
 resource "aws_iam_role_policy" "plan_state" {
@@ -110,6 +155,18 @@ resource "aws_iam_role_policy" "apply_lab" {
         ]
       },
       {
+        # A lab role is created, or given another boundary, only with the lab boundary.
+        Sid      = "CreateLabRolesOnlyWithTheBoundary"
+        Effect   = "Allow"
+        Action   = ["iam:CreateRole", "iam:PutRolePermissionsBoundary"]
+        Resource = "${local.iam_arn_prefix}:role/tx01v2-*"
+        Condition = {
+          StringEquals = {
+            "iam:PermissionsBoundary" = local.lab_boundary_arn
+          }
+        }
+      },
+      {
         Sid      = "PassLabRolesOnly"
         Effect   = "Allow"
         Action   = "iam:PassRole"
@@ -125,8 +182,20 @@ resource "aws_iam_role_policy" "apply_lab" {
         # The CI identities created here are out of reach of the lab apply.
         Sid      = "ProtectBootstrapRoles"
         Effect   = "Deny"
-        Action   = concat(local.lab_iam_write_actions, ["iam:PassRole"])
+        Action   = concat(local.lab_iam_write_actions, ["iam:CreateRole", "iam:PutRolePermissionsBoundary", "iam:DeleteRolePermissionsBoundary", "iam:PassRole"])
         Resource = "${local.iam_arn_prefix}:role/tx01v2-gha-*"
+      },
+      {
+        Sid      = "KeepTheBoundaryOnLabRoles"
+        Effect   = "Deny"
+        Action   = "iam:DeleteRolePermissionsBoundary"
+        Resource = "${local.iam_arn_prefix}:role/tx01v2-*"
+      },
+      {
+        Sid      = "KeepTheBoundaryPolicyAsIs"
+        Effect   = "Deny"
+        Action   = ["iam:CreatePolicyVersion", "iam:DeletePolicy", "iam:DeletePolicyVersion", "iam:SetDefaultPolicyVersion", "iam:TagPolicy", "iam:UntagPolicy"]
+        Resource = local.lab_boundary_arn
       },
       {
         Sid      = "ListStateBucket"

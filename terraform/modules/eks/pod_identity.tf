@@ -23,9 +23,10 @@ locals {
 # --- AWS Load Balancer Controller: kube-system/aws-load-balancer-controller ---
 
 resource "aws_iam_role" "load_balancer_controller" {
-  name               = "${var.name}-aws-load-balancer-controller"
-  description        = "AWS Load Balancer Controller of ${var.name} (EKS Pod Identity)."
-  assume_role_policy = local.pod_identity_trust_policy
+  name                 = "${var.name}-aws-load-balancer-controller"
+  description          = "AWS Load Balancer Controller of ${var.name} (EKS Pod Identity)."
+  assume_role_policy   = local.pod_identity_trust_policy
+  permissions_boundary = var.permissions_boundary_arn
 }
 
 resource "aws_iam_policy" "load_balancer_controller" {
@@ -49,9 +50,10 @@ resource "aws_eks_pod_identity_association" "load_balancer_controller" {
 # --- External Secrets Operator: external-secrets/external-secrets ---
 
 resource "aws_iam_role" "external_secrets" {
-  name               = "${var.name}-external-secrets"
-  description        = "External Secrets Operator of ${var.name} (EKS Pod Identity)."
-  assume_role_policy = local.pod_identity_trust_policy
+  name                 = "${var.name}-external-secrets"
+  description          = "External Secrets Operator of ${var.name} (EKS Pod Identity)."
+  assume_role_policy   = local.pod_identity_trust_policy
+  permissions_boundary = var.permissions_boundary_arn
 }
 
 resource "aws_iam_role_policy" "external_secrets" {
@@ -90,9 +92,10 @@ resource "aws_eks_pod_identity_association" "external_secrets" {
 # --- OpenTelemetry Collector: observability/opentelemetry-collector (traces to AWS X-Ray) ---
 
 resource "aws_iam_role" "otel_collector" {
-  name               = "${var.name}-otel-collector"
-  description        = "OpenTelemetry Collector of ${var.name}: writes traces to AWS X-Ray (EKS Pod Identity)."
-  assume_role_policy = local.pod_identity_trust_policy
+  name                 = "${var.name}-otel-collector"
+  description          = "OpenTelemetry Collector of ${var.name}: writes traces to AWS X-Ray (EKS Pod Identity)."
+  assume_role_policy   = local.pod_identity_trust_policy
+  permissions_boundary = var.permissions_boundary_arn
 }
 
 # X-Ray has no resource-level permissions: PutTraceSegments, PutTelemetryRecords and the sampling

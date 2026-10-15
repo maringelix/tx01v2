@@ -4,8 +4,9 @@
 # and the node group sets NO disk_size (the root volume comes from the block device mapping).
 
 resource "aws_iam_role" "node" {
-  name        = "${var.name}-node"
-  description = "EC2 role of the ${var.name} managed node group."
+  name                 = "${var.name}-node"
+  description          = "EC2 role of the ${var.name} managed node group."
+  permissions_boundary = var.permissions_boundary_arn
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"

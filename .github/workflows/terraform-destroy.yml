@@ -1,6 +1,7 @@
 # Destroys the lab. CLOUD-MUTATING: requires the typed confirmation "destroy tx01v2-lab" and the `lab`
-# environment approval. Order: platform/uninstall.sh (if the cluster exists) -> terraform destroy ->
-# scripts/leftovers.sh. Every step fails loudly; nothing is ignored.
+# environment approval. scripts/destroy.sh runs platform/uninstall.sh (if the cluster exists), falls
+# back to the AWS API for the load balancers when it fails, runs terraform destroy and always ends
+# with scripts/leftovers.sh. Every step fails loudly; nothing is ignored.
 name: terraform-destroy
 
 on:
@@ -9,6 +10,11 @@ on:
       confirm:
         description: 'Type exactly: destroy tx01v2-lab'
         required: true
+        type: string
+      force_unlock_id:
+        description: 'Only after an interrupted apply or destroy: the lock ID of the Terraform error message (docs/RUNBOOK.md, section 8)'
+        required: false
+        default: ''
         type: string
 
 permissions:
@@ -33,11 +39,24 @@ jobs:
       TF_INPUT: "0"
       TF_VAR_aws_region: ${{ vars.AWS_REGION }}
       TF_VAR_github_owner: ${{ github.repository_owner }}
-      TF_VAR_endpoint_public_access_cidrs: ${{ vars.LAB_ENDPOINT_PUBLIC_ACCESS_CIDRS }}
+      # A secret, not a variable: the logs of a public repository are public, and a secret is masked.
+      TF_VAR_endpoint_public_access_cidrs: ${{ secrets.LAB_ENDPOINT_PUBLIC_ACCESS_CIDRS }}
       TF_VAR_allow_endpoint_from_anywhere: ${{ vars.LAB_ALLOW_ENDPOINT_FROM_ANYWHERE || 'false' }}
       TF_VAR_cluster_admin_principal_arns: ${{ vars.LAB_CLUSTER_ADMIN_PRINCIPAL_ARNS }}
       TF_VAR_app_deployer_principal_arns: ${{ vars.LAB_APP_DEPLOYER_PRINCIPAL_ARNS || '[]' }}
     steps:
+      - name: Mask the addresses of the operator in the logs
+        env:
+          CIDRS: ${{ secrets.LAB_ENDPOINT_PUBLIC_ACCESS_CIDRS }}
+        run: |
+          if [[ -n "$CIDRS" ]]; then
+            addresses="$(jq -r '.[]' <<<"$CIDRS")"
+            while IFS= read -r cidr; do
+              echo "::add-mask::$cidr"
+              echo "::add-mask::${cidr%%/*}"
+            done <<<"$addresses"
+          fi
+
       - name: Check the confirmation and repository variables
         env:
           CONFIRM: ${{ inputs.confirm }}
@@ -52,7 +71,7 @@ jobs:
             [[ -n "${!v}" ]] || missing+=("$v")
           done
           if ((${#missing[@]} > 0)); then
-            echo "::error::Missing repository variables for: ${missing[*]}. See docs/RUNBOOK.md (section 'Variáveis do GitHub')."
+            echo "::error::Missing repository variables or secrets for: ${missing[*]}. See docs/RUNBOOK.md (section 'Variáveis do GitHub')."
             exit 1
           fi
 
@@ -73,20 +92,14 @@ jobs:
           bash scripts/install-tools.sh terraform kubectl helm
           echo "$GITHUB_WORKSPACE/.tools/bin" >> "$GITHUB_PATH"
 
-      - name: Remove the platform layer (deletes the ALBs created by the controller)
+      # One step on purpose: the script keeps going after a failed uninstall and always ends with the
+      # leftover check (the order and the fallback are tested offline: check destroy-flow).
+      - name: Destroy the platform layer and the lab, then check for leftovers
+        env:
+          FORCE_UNLOCK_ID: ${{ inputs.force_unlock_id }}
         run: |
-          exists="$(aws eks list-clusters --query "contains(clusters, 'tx01v2-lab')" --output text)"
-          if [[ "$exists" == "True" ]]; then
-            bash platform/uninstall.sh
-          else
-            echo "cluster tx01v2-lab not found: nothing to uninstall"
+          args=()
+          if [[ -n "$FORCE_UNLOCK_ID" ]]; then
+            args=(--force-unlock "$FORCE_UNLOCK_ID")
           fi
-
-      - name: terraform init
-        run: terraform -chdir=terraform/envs/lab init -input=false -lockfile=readonly -backend-config="bucket=$TF_STATE_BUCKET" -backend-config="region=$AWS_REGION"
-
-      - name: terraform destroy
-        run: terraform -chdir=terraform/envs/lab destroy -auto-approve -input=false -no-color
-
-      - name: Leftover check (must find nothing billable)
-        run: bash scripts/leftovers.sh --retry-for 900
+          bash scripts/destroy.sh "${args[@]}"

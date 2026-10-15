@@ -22,6 +22,7 @@ variables {
   cluster_admin_principal_arns = ["arn:aws:iam::123456789012:role/tx01v2-gha-apply", "arn:aws:iam::123456789012:role/Admin"]
   app_deployer_principal_arns  = ["arn:aws:iam::123456789012:role/dx01v2-gha-deploy"]
   tags                         = { Project = "tx01v2", Environment = "lab" }
+  permissions_boundary_arn     = "arn:aws:iam::123456789012:policy/tx01v2-lab-boundary"
 }
 
 run "control_plane" {
@@ -29,6 +30,19 @@ run "control_plane" {
 
   module {
     source = "../../modules/eks"
+  }
+
+  assert {
+    condition = alltrue([
+      for r in [
+        aws_iam_role.cluster,
+        aws_iam_role.node,
+        aws_iam_role.load_balancer_controller,
+        aws_iam_role.external_secrets,
+        aws_iam_role.otel_collector,
+      ] : r.permissions_boundary == "arn:aws:iam::123456789012:policy/tx01v2-lab-boundary"
+    ])
+    error_message = "Every IAM role of the cluster must carry the permissions boundary of the lab (SEC-11): the apply role cannot create one without it."
   }
 
   assert {

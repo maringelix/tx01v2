@@ -5,9 +5,10 @@ mock_provider "aws" {
 }
 
 variables {
-  github_owner = "maringelix"
-  name         = "tx01v2-lab"
-  kms_key_arn  = "arn:aws:kms:us-east-1:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab"
+  github_owner             = "maringelix"
+  name                     = "tx01v2-lab"
+  kms_key_arn              = "arn:aws:kms:us-east-1:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab"
+  permissions_boundary_arn = "arn:aws:iam::123456789012:policy/tx01v2-lab-boundary"
 }
 
 run "defaults" {
@@ -15,6 +16,11 @@ run "defaults" {
 
   module {
     source = "../../modules/network"
+  }
+
+  assert {
+    condition     = aws_iam_role.flow_logs.permissions_boundary == "arn:aws:iam::123456789012:policy/tx01v2-lab-boundary"
+    error_message = "The flow logs role must carry the permissions boundary of the lab (SEC-11)."
   }
 
   assert {

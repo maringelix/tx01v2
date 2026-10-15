@@ -33,9 +33,9 @@ A família do lab (v2):
 |---|---|---|
 | Formatação, validação, lock files de providers (4 plataformas) | `verificado no CI` | `make static` (`terraform-fmt`, `terraform-validate:*`, `terraform-lockfiles`); job `static` do CI |
 | Lint e scan de segurança da IaC (tflint, trivy HIGH/CRITICAL) | `verificado no CI` | `make static` (`tflint`, `trivy-config`, `trivy-config-tfvars`) |
-| Workflows, scripts, manifests Kubernetes e values do Helm (actionlint, shellcheck, kubeconform, helm template) | `verificado no CI` | `make static` |
+| Workflows, scripts, manifests Kubernetes e values do Helm (actionlint, shellcheck, kubeconform, helm template) | `verificado no CI` | `make static` (inclui `destroy-flow`, `local-preflight`) |
 | Scan de segredos e políticas do repositório (sem identificadores reais, actions fixadas, scripts que só agem no lab, regressões do v1) | `verificado no CI` | `make static` (`gitleaks`, `policy-*`, `repo-structure`) |
-| Testes unitários do Terraform com provider AWS mockado (trust OIDC, bucket, budget, EKS, nós, RDS, ECR, WAF, KMS, parâmetros SSM do contrato, validações negativas) | `verificado no CI` | `make test`; job `test` do CI |
+| Testes unitários do Terraform com provider AWS mockado (subjects OIDC imutáveis, permissions boundary do apply, leitura restrita do plan, bucket, budget, EKS, nós, RDS, ECR, WAF, KMS, parâmetros SSM do contrato, validações negativas) | `verificado no CI` | `make test`; job `test` do CI |
 | Bootstrap (bucket de state, papéis OIDC do GitHub, budget) | `não executado em nuvem (v2)` | `terraform/bootstrap`, `docs/RUNBOOK.md` |
 | Apply do lab (VPC, EKS 1.36, RDS PostgreSQL 17, ECR, WAF, contrato no SSM) | `não executado em nuvem (v2)` | `.github/workflows/terraform-apply.yml` |
 | Plan em pull requests | `não executado em nuvem (v2)` | `.github/workflows/terraform-plan.yml` |
@@ -154,7 +154,7 @@ deploy do dx01v2 → smoke test → destroy → checagem de sobras → issue `cl
 |---|---|
 | [FORK.md](FORK.md) | fork do lab (em inglês): o que o GitHub não copia, o lab local, a sua conta de nuvem |
 | [docs/ARQUITETURA.md](docs/ARQUITETURA.md) | diagrama, ADRs, v1 → v2 |
-| [docs/CONTRATO.md](docs/CONTRATO.md) | contrato tx01v2 ⇄ dx01v2 v2 (fonte da verdade) |
+| [docs/CONTRATO.md](docs/CONTRATO.md) | contrato tx01v2 ⇄ dx01v2 v3 (fonte da verdade) |
 | [docs/RUNBOOK.md](docs/RUNBOOK.md) | rodada completa na nuvem |
 | [docs/LAB_LOCAL.md](docs/LAB_LOCAL.md) | o lab local: o que é emulado, como rodar, sondas, limites |
 | [docs/CUSTOS.md](docs/CUSTOS.md) | estimativa de custo por componente |

@@ -18,7 +18,7 @@ is the source of truth. The full rule list (pt-BR) is [docs/GUARDRAILS.md](docs/
   OpenTelemetry Collector, Argo CD, Gatekeeper, Trivy Operator, Velero, Chaos Mesh). `make e2e` proves it
   with 34 probes (CI job `e2e`). It is not
   cloud-mutating: agents may run it, one heavy run at a time (8 GB of Docker memory for `full`, 7 GB with `LOCAL_SIZE=small`).
-- The interface with `dx01v2` is [docs/CONTRATO.md](docs/CONTRATO.md) (contract v2, owned here; the
+- The interface with `dx01v2` is [docs/CONTRATO.md](docs/CONTRATO.md) (contract v3, owned here; the
   local lab has its own local contract, `lab-system/lab-contract`).
 
 ## 2. Non-negotiable rules
@@ -49,7 +49,7 @@ platform/local/         local platform: install.sh, check.sh (probes), uninstall
                         values/small/ (LOCAL_SIZE=small), manifests/, policies/ (Gatekeeper templates,
                         constraints, gator tests)
 scripts/harness.sh      every check of the harness (stages static, test, e2e, all, list)
-scripts/local-lab.sh    local lab: up | down | check | e2e | kubeconfig | status (LOCAL_PROFILE, LOCAL_SIZE)
+scripts/local-lab.sh    local lab: preflight | up | down | check | e2e | kubeconfig | status (LOCAL_PROFILE, LOCAL_SIZE)
 scripts/leftovers-local.sh          fails when anything of the local lab survived the destroy
 scripts/local/          kind-cluster.sh (called by terraform/envs/local)
 scripts/install-tools.sh            pinned tools into .tools/ (SHA256-verified)

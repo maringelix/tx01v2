@@ -5,8 +5,11 @@ mock_provider "aws" {
 }
 
 variables {
-  github_owner        = "maringelix"
-  budget_alert_emails = ["lab-alerts@example.org"]
+  github_owner         = "maringelix"
+  github_owner_id      = "1000000"
+  tx01v2_repository_id = "2000000"
+  dx01v2_repository_id = "3000000"
+  budget_alert_emails  = ["lab-alerts@example.org"]
 }
 
 run "state_bucket_is_hardened" {

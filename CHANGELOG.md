@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- Contract version 3 with dx01v2, coordinated with [dx01v2#14](https://github.com/maringelix/dx01v2/pull/14):
+  the OIDC contract now pins the immutable GitHub owner and repository IDs (roadmap R3.15). The
+  application parameters and tracing requirements from version 2 remain in place.
+- `make clean` removes things only under the directory of the Makefile, wherever make was started
+  from (roadmap R3.18).
 - The cloud platform layer installs the OpenTelemetry Collector from the chart archive checked
   against `OTEL_COLLECTOR_CHART_SHA256`, now in `platform/versions.env` and shared with the local
   lab, as in tx02v2 and tx03v2: before, the key was `OTEL_COLLECTOR_SHA256` in
@@ -23,6 +28,26 @@ All notable changes to this project are documented here. The format follows
 
 ### Security
 
+- The cloud path no longer trusts anyone who registers a deleted account name, and it works for the
+  repositories GitHub creates now (roadmap R3.10, R3.15, R3.16, R3.17):
+  - The OIDC trust of the three roles pins the immutable subject,
+    `repo:<owner>@<owner id>/<repository>@<repository id>:<context>`, which every repository created
+    after 2026-07-15 (a fork too) emits; the name-based subject no longer matched them. New bootstrap
+    variables `github_owner_id`, `tx01v2_repository_id` and `dx01v2_repository_id` (the `gh api`
+    commands are in `docs/RUNBOOK.md`). Only the apply and deploy jobs of the environment `lab` assume
+    their roles, and that environment deploys from `main` only.
+  - `scripts/repo-guardrails.sh` fails, instead of skipping, when it cannot protect the environment
+    `lab`; it removes any branch but `main` from it, reads the environment back, fails when the OIDC
+    subject of the repository is still name-based, prints the IDs of the bootstrap and refuses an
+    argument that is not the repository of the clone.
+  - Permissions boundary `tx01v2-lab-boundary` (bootstrap) on every role the apply creates: no change
+    of IAM, of the organization or of the account, whatever is attached. The apply role creates or
+    re-bounds a role only with it and cannot edit it or take it off. New `boundary.tftest.hcl`.
+  - The plan role reads the services of the lab (Describe, Get and List) instead of `ReadOnlyAccess`
+    of the whole account. An account that already has the GitHub OIDC provider is read by URL
+    (`create_github_oidc_provider = false`, no ARN variable) and never changed.
+  - `LAB_ENDPOINT_PUBLIC_ACCESS_CIDRS` is a secret: the workflows mask each CIDR and its IP, and the
+    job summary and the plan artifact replace them. `policy-workflows` enforces both.
 - Scripts act only on what the lab created, so whoever forks it can run them on a machine and an
   account that also hold other work:
   - `platform/uninstall.sh` (it deletes every Ingress and LoadBalancer Service of the cluster) and
@@ -47,6 +72,19 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- `scripts/destroy.sh` (roadmap R3.14), run by `terraform-destroy`: when `platform/uninstall.sh` fails
+  (cluster API unreachable, controller stopped, timeout) it deletes through the AWS API the load
+  balancers, target groups and security groups tagged `elbv2.k8s.aws/cluster=tx01v2-lab`, runs
+  `terraform destroy` anyway and always ends with `scripts/leftovers.sh`. The workflow has an optional
+  `force_unlock_id` input for the lock of an interrupted apply, and `docs/RUNBOOK.md` documents the
+  recovery. New check `destroy-flow` runs the script with simulated `aws`, `terraform`, `kubectl` and
+  `helm`.
+- Pre-flight of `scripts/local-lab.sh up` (roadmap R3.18): the Docker CLI and the Terraform provider
+  must talk to the same daemon, the lab network must not overlap a Docker network or a route of the
+  machine, the registry port must be free. `down` and `e2e` refuse a lab that their state directory
+  did not create, and `e2e` refuses a lab that is already up (it would destroy it). The pre-flight
+  is also `scripts/local-lab.sh preflight`, and the new check `local-preflight` runs it against a
+  simulated `docker`, `kind` and `ip`.
 - `LOCAL_SIZE=small` for the local platform (roadmap R1.8): `platform/local/values/small/<chart>.yaml`
   goes last in `helm_install`, with smaller memory limits and `GOMEMLIMIT` below them, 2 h of
   retention in Prometheus and 1 h in Tempo, no cAdvisor, kubelet probes or apiserver histogram series

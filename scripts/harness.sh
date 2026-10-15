@@ -43,6 +43,7 @@ REQUIRED_FILES=(
   docs/ARQUITETURA.md docs/PUBLICACAO.md docs/CUSTOS.md
   tools/versions.env tools/checksums.txt
   scripts/install-tools.sh scripts/update-tool-checksums.sh scripts/harness.sh scripts/repo-guardrails.sh scripts/leftovers.sh
+  scripts/destroy.sh scripts/tests/destroy-flow.sh scripts/tests/local-preflight.sh
   platform/install.sh platform/uninstall.sh platform/versions.env
   terraform/bootstrap/.terraform.lock.hcl terraform/envs/lab/.terraform.lock.hcl
   terraform/envs/lab/terraform.tfvars.example terraform/envs/lab/backend.hcl.example
@@ -396,6 +397,19 @@ check_policy_identifiers() {
   return "$rc"
 }
 
+# scripts/destroy.sh with simulated aws, terraform, kubectl and helm: an uninstall that fails still
+# ends in the API cleanup, terraform destroy and the leftover check (docs/GUARDRAILS.md, CUSTO-03).
+check_destroy_flow() {
+  bash scripts/tests/destroy-flow.sh
+}
+
+# The pre-flight of scripts/local-lab.sh with a simulated docker, kind and ip: a machine whose Docker
+# CLI and provider disagree, whose network or route overlaps the lab or whose registry port is taken
+# is refused, and a lab of another state directory is never touched (docs/GUARDRAILS.md, LOC-06).
+check_local_preflight() {
+  bash scripts/tests/local-preflight.sh
+}
+
 # Scripts act only on what the lab created (docs/GUARDRAILS.md, SEC-10): no variable of the caller's
 # shell chooses their target (a forker may have CLUSTER_NAME exported for another cluster), the cloud
 # kubeconfig is a temporary file, and every script of platform/local checks the kind context first.
@@ -404,7 +418,7 @@ check_policy_scripts() {
   local rc=0 out f
   forbid '\$\{(CLUSTER_NAME|RESOURCE_GROUP|LAB_[A-Z_]+|CONTRACT_PARAMETER)(:-|-|:=|=)' \
     "an environment variable must never choose the target of a script of the lab" '*.sh' scripts platform || rc=1
-  out="$(grep -rn --include='*.sh' --exclude=harness.sh -e 'eks update-kubeconfig' scripts platform | grep -v -e '--kubeconfig "\$KUBECONFIG"')" || true
+  out="$(grep -rn --include='*.sh' --exclude=harness.sh --exclude-dir=tests -e 'eks update-kubeconfig' scripts platform | grep -v -e '--kubeconfig "\$KUBECONFIG"')" || true
   [[ -z "$out" ]] || {
     printf 'aws eks update-kubeconfig must write a temporary file (--kubeconfig "$KUBECONFIG"), never ~/.kube/config:\n%s\n' "$out"
     rc=1
@@ -515,7 +529,16 @@ check_policy_workflows() {
       /\|\|[[:space:]]*(true|echo|:)([[:space:]]|$)/ { err("never swallow errors (|| true, || echo, || :)") }
       /aquasecurity\/(trivy-action|setup-trivy)/ { err("trivy-action/setup-trivy are forbidden; trivy comes from scripts/install-tools.sh") }
       /(^|[^A-Za-z])sed[[:space:]].*\.tf([^A-Za-z]|$)/ { err("never edit Terraform files with sed") }
+      # The logs, the job summary and the artifacts of a public repository are public: the CIDRs of
+      # the operator (his home address) come from a secret, which is masked, and every element is
+      # masked on its own because Terraform prints them one by one.
+      /TF_VAR_endpoint_public_access_cidrs:/ {
+        cidrs_env = 1
+        if ($0 !~ /secrets\.LAB_ENDPOINT_PUBLIC_ACCESS_CIDRS/) err("TF_VAR_endpoint_public_access_cidrs must come from secrets.LAB_ENDPOINT_PUBLIC_ACCESS_CIDRS (a variable is printed in clear in the logs)")
+      }
+      /::add-mask::/ { masks = 1 }
       END {
+        if (cidrs_env && !masks) { printf "%s: a workflow that uses the operator CIDRs must mask each of them (::add-mask::) in its first step\n", file; bad = 1 }
         if (!top_perm || !top_read) { printf "%s: top-level permissions must be exactly contents: read\n", file; bad = 1 }
         if (!concurrency) { printf "%s: a top-level concurrency group is required\n", file; bad = 1 }
         for (j in jobs) {
@@ -908,6 +931,8 @@ register_checks() {
   register static policy-identifiers check_policy_identifiers
   register static policy-workflows check_policy_workflows
   register static policy-scripts check_policy_scripts
+  register static destroy-flow check_destroy_flow
+  register static local-preflight check_local_preflight
   register static trivyignore-policy check_trivyignore_policy
   register static contract-platform check_contract_platform
   register static terraform-fmt check_terraform_fmt

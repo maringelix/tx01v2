@@ -1,5 +1,13 @@
-# GitHub Actions OIDC: one provider per account (created here or reused) and exact-match trust
-# policies built with jsonencode, so terraform test can assert every allowed `sub`.
+# GitHub Actions OIDC: one provider per account (created here or read when the account already has
+# it) and exact-match trust policies built with jsonencode, so terraform test can assert every
+# allowed `sub`.
+#
+# The sub is the immutable format of GitHub, used by every repository created after 2026-07-15 and
+# by the ones that opted in: repo:<owner>@<owner id>/<repository>@<repository id>:<context>. The
+# name-based sub (repo:<owner>/<repository>:<context>) is not trusted: it does not match those
+# repositories, and whoever registers a deleted account name again would inherit it. A repository
+# that predates 2026-07-15 must opt in to immutable subject claims (docs/RUNBOOK.md, section 2);
+# scripts/repo-guardrails.sh checks it.
 
 resource "aws_iam_openid_connect_provider" "github" {
   count = var.create_github_oidc_provider ? 1 : 0
@@ -10,17 +18,28 @@ resource "aws_iam_openid_connect_provider" "github" {
   # with its own trusted root CAs.
 }
 
-locals {
-  github_oidc_provider_arn = var.create_github_oidc_provider ? aws_iam_openid_connect_provider.github[0].arn : var.existing_github_oidc_provider_arn
+# The provider of an account that already has one: read by URL, never created or changed here.
+data "aws_iam_openid_connect_provider" "existing" {
+  count = var.create_github_oidc_provider ? 0 : 1
 
-  # The contract (docs/CONTRATO.md): exact sub claims, no wildcards.
+  url = "https://token.actions.githubusercontent.com"
+}
+
+locals {
+  github_oidc_provider_arn = var.create_github_oidc_provider ? aws_iam_openid_connect_provider.github[0].arn : data.aws_iam_openid_connect_provider.existing[0].arn
+
+  tx_subject_prefix = "repo:${var.github_owner}@${var.github_owner_id}/tx01v2@${var.tx01v2_repository_id}"
+  dx_subject_prefix = "repo:${var.github_owner}@${var.github_owner_id}/dx01v2@${var.dx01v2_repository_id}"
+
+  # The contract (docs/CONTRATO.md): exact sub claims, no wildcards. Only the apply and deploy jobs
+  # use the environment lab, whose deployment branches are limited to main (repo-guardrails.sh).
   github_oidc_subjects = {
     plan = [
-      "repo:${var.github_owner}/tx01v2:pull_request",
-      "repo:${var.github_owner}/tx01v2:ref:refs/heads/main",
+      "${local.tx_subject_prefix}:pull_request",
+      "${local.tx_subject_prefix}:ref:refs/heads/main",
     ]
-    apply  = ["repo:${var.github_owner}/tx01v2:environment:lab"]
-    deploy = ["repo:${var.github_owner}/dx01v2:environment:lab"]
+    apply  = ["${local.tx_subject_prefix}:environment:lab"]
+    deploy = ["${local.dx_subject_prefix}:environment:lab"]
   }
 
   github_trust_policies = {
