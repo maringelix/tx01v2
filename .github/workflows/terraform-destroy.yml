@@ -50,7 +50,7 @@ jobs:
           CIDRS: ${{ secrets.LAB_ENDPOINT_PUBLIC_ACCESS_CIDRS }}
         run: |
           if [[ -n "$CIDRS" ]]; then
-            addresses="$(jq -er '.[]' <<<"$CIDRS")"
+            addresses="$(jq -r '.[]' <<<"$CIDRS")"
             while IFS= read -r cidr; do
               echo "::add-mask::$cidr"
               echo "::add-mask::${cidr%%/*}"

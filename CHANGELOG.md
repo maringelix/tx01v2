@@ -79,7 +79,9 @@ All notable changes to this project are documented here. The format follows
 - Pre-flight of `scripts/local-lab.sh up` (roadmap R3.18): the Docker CLI and the Terraform provider
   must talk to the same daemon, the lab network must not overlap a Docker network or a route of the
   machine, the registry port must be free. `down` and `e2e` refuse a lab that their state directory
-  did not create, and `e2e` refuses a lab that is already up (it would destroy it).
+  did not create, and `e2e` refuses a lab that is already up (it would destroy it). The pre-flight
+  is also `scripts/local-lab.sh preflight`, and the new check `local-preflight` runs it against a
+  simulated `docker`, `kind` and `ip`.
 - `LOCAL_SIZE=small` for the local platform (roadmap R1.8): `platform/local/values/small/<chart>.yaml`
   goes last in `helm_install`, with smaller memory limits and `GOMEMLIMIT` below them, 2 h of
   retention in Prometheus and 1 h in Tempo, no cAdvisor, kubelet probes or apiserver histogram series

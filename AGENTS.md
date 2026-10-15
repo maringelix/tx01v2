@@ -49,7 +49,7 @@ platform/local/         local platform: install.sh, check.sh (probes), uninstall
                         values/small/ (LOCAL_SIZE=small), manifests/, policies/ (Gatekeeper templates,
                         constraints, gator tests)
 scripts/harness.sh      every check of the harness (stages static, test, e2e, all, list)
-scripts/local-lab.sh    local lab: up | down | check | e2e | kubeconfig | status (LOCAL_PROFILE, LOCAL_SIZE)
+scripts/local-lab.sh    local lab: preflight | up | down | check | e2e | kubeconfig | status (LOCAL_PROFILE, LOCAL_SIZE)
 scripts/leftovers-local.sh          fails when anything of the local lab survived the destroy
 scripts/local/          kind-cluster.sh (called by terraform/envs/local)
 scripts/install-tools.sh            pinned tools into .tools/ (SHA256-verified)

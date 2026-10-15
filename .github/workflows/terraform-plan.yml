@@ -42,7 +42,7 @@ jobs:
           CIDRS: ${{ secrets.LAB_ENDPOINT_PUBLIC_ACCESS_CIDRS }}
         run: |
           if [[ -n "$CIDRS" ]]; then
-            addresses="$(jq -er '.[]' <<<"$CIDRS")"
+            addresses="$(jq -r '.[]' <<<"$CIDRS")"
             while IFS= read -r cidr; do
               echo "::add-mask::$cidr"
               echo "::add-mask::${cidr%%/*}"
@@ -95,7 +95,7 @@ jobs:
           while IFS= read -r cidr; do
             plan_text="${plan_text//"$cidr"/<CIDR>}"
             plan_text="${plan_text//"${cidr%%/*}"/<IP>}"
-          done < <(jq -er '.[]' <<<"$CIDRS")
+          done < <(jq -r '.[]' <<<"$CIDRS")
           printf '%s\n' "$plan_text" > plan.txt
           {
             echo "## terraform plan: terraform/envs/lab"
