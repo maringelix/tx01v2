@@ -1,0 +1,11 @@
+# Size small (LOCAL_SIZE=small, docs/LAB_LOCAL.md): shorter retention and less memory for Tempo.
+tempo:
+  retention: 1h
+  extraEnv:
+    - name: GOMEMLIMIT
+      value: 256MiB
+  resources:
+    requests:
+      memory: 96Mi
+    limits:
+      memory: 320Mi

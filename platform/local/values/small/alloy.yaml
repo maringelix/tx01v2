@@ -1,0 +1,10 @@
+# Size small (LOCAL_SIZE=small, docs/LAB_LOCAL.md): less memory for Alloy.
+alloy:
+  extraEnv:
+    - name: GOMEMLIMIT
+      value: 160MiB
+  resources:
+    requests:
+      memory: 64Mi
+    limits:
+      memory: 200Mi

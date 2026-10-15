@@ -14,6 +14,9 @@
 # LOCAL_PROFILE selects the layers (default full): core = 1-7, observability = 1-8,
 # operations = 1-7 + 9, full = 1-9. The CI runs full; a laptop with little free memory can validate
 # one layer per round (scripts/local-lab.sh e2e destroys the lab at the end).
+# LOCAL_SIZE sizes every layer (default default): small adds platform/local/values/small/<chart>.yaml
+# (smaller requests and limits, short retention, fewer workers), so the full profile and the app of
+# dx01v2 fit in 6 GB of Docker memory (docs/LAB_LOCAL.md, measured). The components stay the same.
 # LOCAL_SLACK_WEBHOOK_URL (optional, an https Slack incoming webhook): Alertmanager also posts warning
 # and critical alerts there; without it the Slack receiver posts to the in-cluster sink.
 # LOCAL ONLY: it never talks to AWS. Needs kubectl, helm, terraform and curl (scripts/install-tools.sh),
@@ -34,6 +37,12 @@ case "$LOCAL_PROFILE" in
   core | observability | operations | full) ;;
   *) die "LOCAL_PROFILE must be core, observability, operations or full (got '$LOCAL_PROFILE')" ;;
 esac
+LOCAL_SIZE="${LOCAL_SIZE:-default}"
+case "$LOCAL_SIZE" in
+  default | small) ;;
+  *) die "LOCAL_SIZE must be default or small (got '$LOCAL_SIZE')" ;;
+esac
+export LOCAL_SIZE
 
 prepare_cluster() {
   local registry
@@ -362,7 +371,7 @@ main() {
     install_backup
     install_chaos
   fi
-  log "local platform ready (profile $LOCAL_PROFILE): $(helm list --all-namespaces --short | sort | tr '\n' ' ')"
+  log "local platform ready (profile $LOCAL_PROFILE, size $LOCAL_SIZE): $(helm list --all-namespaces --short | sort | tr '\n' ' ')"
 }
 
 main "$@"

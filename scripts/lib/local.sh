@@ -51,9 +51,17 @@ pull_chart() {
 
 # helm_install RELEASE NAMESPACE CHART_ARCHIVE [helm args...] -> upgrade --install and wait.
 helm_install() {
-  local release=$1 ns=$2 tgz=$3
+  local release=$1 ns=$2 tgz=$3 chart small=""
   shift 3
-  log "helm upgrade --install $release ($(basename "$tgz"), namespace $ns)"
+  # LOCAL_SIZE=small: platform/local/values/small/<chart>.yaml (chart = the archive name without its
+  # version) goes last, so its sizes win over every other values file (docs/LAB_LOCAL.md).
+  chart="$(basename "$tgz" .tgz)"
+  chart="${chart%-*}"
+  if [[ "${LOCAL_SIZE:-default}" == small && -f "$REPO_ROOT/platform/local/values/small/$chart.yaml" ]]; then
+    small="$REPO_ROOT/platform/local/values/small/$chart.yaml"
+    set -- "$@" --values "$small"
+  fi
+  log "helm upgrade --install $release ($(basename "$tgz"), namespace $ns${small:+, size small})"
   helm upgrade --install "$release" "$tgz" --namespace "$ns" "$@" \
     --wait=watcher --rollback-on-failure --timeout 10m >/dev/null
 }

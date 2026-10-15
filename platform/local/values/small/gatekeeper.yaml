@@ -1,0 +1,15 @@
+# Size small (LOCAL_SIZE=small, docs/LAB_LOCAL.md): the audit lists every constrained resource of the
+# cluster; every 5 minutes instead of every minute (the probes test the admission, not the audit).
+auditInterval: 300
+controllerManager:
+  resources:
+    requests:
+      memory: 96Mi
+    limits:
+      memory: 384Mi
+audit:
+  resources:
+    requests:
+      memory: 96Mi
+    limits:
+      memory: 384Mi

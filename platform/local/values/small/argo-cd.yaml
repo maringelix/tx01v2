@@ -1,0 +1,34 @@
+# Size small (LOCAL_SIZE=small, docs/LAB_LOCAL.md): fewer workers and less memory for Argo CD. The lab
+# has one Application.
+configs:
+  params:
+    controller.status.processors: "5"
+    controller.operation.processors: "2"
+    reposerver.parallelism.limit: "1"
+controller:
+  env:
+    - name: GOMEMLIMIT
+      value: 256MiB
+  resources:
+    requests:
+      memory: 128Mi
+    limits:
+      memory: 320Mi
+repoServer:
+  env:
+    - name: GOMEMLIMIT
+      value: 160MiB
+  resources:
+    requests:
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+server:
+  env:
+    - name: GOMEMLIMIT
+      value: 128MiB
+  resources:
+    requests:
+      memory: 48Mi
+    limits:
+      memory: 192Mi

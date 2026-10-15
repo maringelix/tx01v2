@@ -1,0 +1,10 @@
+# Size small (LOCAL_SIZE=small, docs/LAB_LOCAL.md): less memory for Loki (single binary).
+singleBinary:
+  extraEnv:
+    - name: GOMEMLIMIT
+      value: 256MiB
+  resources:
+    requests:
+      memory: 96Mi
+    limits:
+      memory: 320Mi

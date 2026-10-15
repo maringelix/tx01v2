@@ -792,15 +792,29 @@ local_chart_values() {
 # Pulls every chart of the local platform (SHA256-verified, like install.sh), renders it with its
 # values and asserts: every image pinned by digest, no :latest, no Service of type LoadBalancer or
 # NodePort (only the Istio gateways get a LoadBalancer, created at run time), no placeholder left.
+# A chart with a size overlay (platform/local/values/small/<chart>.yaml, LOCAL_SIZE=small) is rendered
+# twice: the same checks hold for both, and the overlay changes sizes, never images.
 check_helm_template_local() {
-  local rc=0 entry repo_key version_key sha_key chart values tgz rendered out images bad svc
-  local -a args=()
+  local rc=0 entry repo_key version_key sha_key chart values tgz rendered out images bad svc variant label f
+  local default_images
+  local -a args=() extra=() variants=() charts=()
   need helm
   load_local_versions
   export HELM_CACHE_HOME="$HARNESS_WORK_DIR/helm/cache" HELM_CONFIG_HOME="$HARNESS_WORK_DIR/helm/config" HELM_DATA_HOME="$HARNESS_WORK_DIR/helm/data"
   out="$HARNESS_WORK_DIR/local-charts"
   rm -rf "$out"
   mkdir -p "$out"
+  for entry in "${LOCAL_CHARTS[@]}"; do
+    read -r _ _ _ chart _ <<<"$entry"
+    charts+=("$chart")
+  done
+  for f in platform/local/values/small/*.yaml; do
+    [[ -e "$f" ]] || continue
+    printf '%s\n' "${charts[@]}" | grep -qxF "$(basename "$f" .yaml)" || {
+      echo "$f: no chart of that name in LOCAL_CHARTS (the size overlays are applied by chart name)"
+      rc=1
+    }
+  done
   for entry in "${LOCAL_CHARTS[@]}"; do
     read -r repo_key version_key sha_key chart values <<<"$entry"
     mkdir -p "$out/$chart"
@@ -812,33 +826,51 @@ check_helm_template_local() {
       continue
     }
     mapfile -t args < <(local_chart_values "$values")
-    rendered="$out/$chart.yaml"
-    helm template "$chart" "$tgz" --namespace lab --kube-version "$K8S_SCHEMA_KUBERNETES_VERSION" "${args[@]}" >"$rendered" || {
-      echo "$chart: helm template failed"
-      rc=1
-      continue
-    }
-    # Some charts (istio base) render no workload at all.
-    # ConfigMaps are left out: istiod ships its injection templates (with template placeholders) in one.
-    images="$(awk '/^---/ { flush(); next } { doc = doc $0 "\n" } /^kind: ConfigMap$/ { skip = 1 }
-      function flush() { if (!skip) printf "%s", doc; doc = ""; skip = 0 } END { flush() }' "$rendered" |
-      grep -hoE '^[[:space:]-]*image:[[:space:]]*["'\'']?[^"'\''[:space:]]+' | sed -E 's/^[[:space:]-]*image:[[:space:]]*["'\'']?//' | sort -u)" || images=""
-    bad=""
-    [[ -z "$images" ]] || bad="$(grep -vE '@sha256:[0-9a-f]{64}$' <<<"$images")" || bad=""
-    if [[ -n "$bad" ]]; then
-      printf '%s: images not pinned by digest:\n%s\n' "$chart" "$bad"
-      rc=1
-    fi
-    svc="$(awk '/^kind: Service$/ { s = 1 } s && /^  type: (LoadBalancer|NodePort)/ { print; s = 0 } /^---/ { s = 0 }' "$rendered")"
-    if [[ -n "$svc" ]]; then
-      printf '%s: Services must stay ClusterIP:\n%s\n' "$chart" "$svc"
-      rc=1
-    fi
-    if grep -qE '__[A-Z_]+__' "$rendered"; then
-      echo "$chart: unresolved placeholder in the rendered chart"
-      rc=1
-    fi
-    echo "$chart ${LV[$version_key]}: $(grep -c . <<<"$images" || :) images, $(grep -c '^kind:' "$rendered" || :) objects"
+    variants=(default)
+    [[ -f "platform/local/values/small/$chart.yaml" ]] && variants+=(small)
+    default_images=""
+    for variant in "${variants[@]}"; do
+      rendered="$out/$chart.yaml"
+      label="$chart"
+      extra=()
+      if [[ "$variant" == small ]]; then
+        rendered="$out/$chart-small.yaml"
+        label="$chart (size small)"
+        extra=(--values "platform/local/values/small/$chart.yaml")
+      fi
+      helm template "$chart" "$tgz" --namespace lab --kube-version "$K8S_SCHEMA_KUBERNETES_VERSION" "${args[@]}" "${extra[@]}" >"$rendered" || {
+        echo "$label: helm template failed"
+        rc=1
+        continue
+      }
+      # Some charts (istio base) render no workload at all.
+      # ConfigMaps are left out: istiod ships its injection templates (with template placeholders) in one.
+      images="$(awk '/^---/ { flush(); next } { doc = doc $0 "\n" } /^kind: ConfigMap$/ { skip = 1 }
+        function flush() { if (!skip) printf "%s", doc; doc = ""; skip = 0 } END { flush() }' "$rendered" |
+        grep -hoE '^[[:space:]-]*image:[[:space:]]*["'\'']?[^"'\''[:space:]]+' | sed -E 's/^[[:space:]-]*image:[[:space:]]*["'\'']?//' | sort -u)" || images=""
+      bad=""
+      [[ -z "$images" ]] || bad="$(grep -vE '@sha256:[0-9a-f]{64}$' <<<"$images")" || bad=""
+      if [[ -n "$bad" ]]; then
+        printf '%s: images not pinned by digest:\n%s\n' "$label" "$bad"
+        rc=1
+      fi
+      svc="$(awk '/^kind: Service$/ { s = 1 } s && /^  type: (LoadBalancer|NodePort)/ { print; s = 0 } /^---/ { s = 0 }' "$rendered")"
+      if [[ -n "$svc" ]]; then
+        printf '%s: Services must stay ClusterIP:\n%s\n' "$label" "$svc"
+        rc=1
+      fi
+      if grep -qE '__[A-Z_]+__' "$rendered"; then
+        echo "$label: unresolved placeholder in the rendered chart"
+        rc=1
+      fi
+      if [[ "$variant" == default ]]; then
+        default_images="$images"
+      elif [[ "$images" != "$default_images" ]]; then
+        echo "$label: the size overlay changes the images (it may only change sizes)"
+        rc=1
+      fi
+      echo "$label ${LV[$version_key]}: $(grep -c . <<<"$images" || :) images, $(grep -c '^kind:' "$rendered" || :) objects"
+    done
   done
   return "$rc"
 }
