@@ -8,6 +8,13 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- The cloud platform layer installs the OpenTelemetry Collector from the chart archive checked
+  against `OTEL_COLLECTOR_CHART_SHA256`, now in `platform/versions.env` and shared with the local
+  lab, as in tx02v2 and tx03v2: before, the key was `OTEL_COLLECTOR_SHA256` in
+  `platform/local/versions.env`, and the cloud install took the chart from the repository without
+  checking it. The `helm-template` check renders the same verified archive (roadmap R1.7).
+- Comments, script messages and docs say "the contract" or point to `docs/CONTRATO.md` instead of
+  "contract v1": the contract has been at version 2 since round 1 (roadmap S.8).
 - The family table of both READMEs links the family hub `tx00v2` (roadmap, family guardrails,
   cross-repo checks).
 - The edge of the local lab keeps a UUID-shaped external `X-Request-Id` as it came (EnvoyFilter

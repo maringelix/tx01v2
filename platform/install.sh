@@ -52,7 +52,7 @@ main() {
   require_aws_region
   load_platform_versions
 
-  local cluster region vpc_id store
+  local cluster region vpc_id store tgz
   cluster="$(lab_param cluster-name)"
   region="$(lab_param region)"
   vpc_id="$(lab_param vpc-id)"
@@ -72,8 +72,7 @@ main() {
 
   helm repo add eks https://aws.github.io/eks-charts --force-update
   helm repo add external-secrets https://charts.external-secrets.io --force-update
-  helm repo add open-telemetry https://open-telemetry.github.io/opentelemetry-helm-charts --force-update
-  helm repo update eks external-secrets open-telemetry
+  helm repo update eks external-secrets
 
   log "installing aws-load-balancer-controller chart $LBC_CHART_VERSION"
   helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller \
@@ -95,10 +94,15 @@ main() {
   log "applying platform/manifests"
   apply_manifests "$region"
 
-  log "installing opentelemetry-collector chart $OTEL_COLLECTOR_CHART_VERSION (traces to X-Ray in $region)"
-  helm upgrade --install opentelemetry-collector open-telemetry/opentelemetry-collector \
+  # The Collector, from the chart archive checked against platform/versions.env.
+  tgz="$WORK_DIR/opentelemetry-collector-$OTEL_COLLECTOR_CHART_VERSION.tgz"
+  helm pull opentelemetry-collector --repo https://open-telemetry.github.io/opentelemetry-helm-charts \
+    --version "$OTEL_COLLECTOR_CHART_VERSION" --destination "$WORK_DIR"
+  [[ -f "$tgz" && "$(sha256_of "$tgz")" == "$OTEL_COLLECTOR_CHART_SHA256" ]] ||
+    die "refusing the opentelemetry-collector chart $OTEL_COLLECTOR_CHART_VERSION: missing, or its SHA256 differs from platform/versions.env"
+  log "installing the opentelemetry-collector chart $OTEL_COLLECTOR_CHART_VERSION (SHA256 verified; traces to X-Ray in $region)"
+  helm upgrade --install opentelemetry-collector "$tgz" \
     --namespace observability \
-    --version "$OTEL_COLLECTOR_CHART_VERSION" \
     --values "$HERE/values/otel-collector.yaml" \
     --set-string config.exporters.awsxray.region="$region" \
     --wait=watcher --rollback-on-failure --timeout 10m

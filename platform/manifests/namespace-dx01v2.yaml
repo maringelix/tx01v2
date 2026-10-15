@@ -1,4 +1,4 @@
-# Namespace of the dx01v2 app (contract v1, docs/CONTRATO.md).
+# Namespace of the dx01v2 app (docs/CONTRATO.md).
 apiVersion: v1
 kind: Namespace
 metadata:

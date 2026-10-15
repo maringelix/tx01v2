@@ -1,4 +1,4 @@
-# GitHub OIDC trust and the three contract roles (docs/CONTRATO.md, contract v1).
+# GitHub OIDC trust and the three contract roles (docs/CONTRATO.md).
 
 mock_provider "aws" {
   source = "../tests/mocks"
@@ -215,7 +215,7 @@ run "role_permissions_follow_the_contract" {
         Resource = "arn:aws:ssm:us-east-1:123456789012:parameter/tx01v2/lab/*"
       },
     ]
-    error_message = "dx01v2-gha-deploy permissions must match contract v1 exactly."
+    error_message = "dx01v2-gha-deploy permissions must match the contract exactly."
   }
 }
 

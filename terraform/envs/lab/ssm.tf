@@ -22,7 +22,7 @@ resource "aws_ssm_parameter" "contract" {
   for_each = local.contract_parameters
 
   name        = "${local.ssm_prefix}/${each.key}"
-  description = "tx01v2 -> dx01v2 contract v1 (docs/CONTRATO.md)."
+  description = "tx01v2 -> dx01v2 contract (docs/CONTRATO.md)."
   type        = "String"
   tier        = "Standard"
   # Not secret: insecure_value keeps the value readable in plans.

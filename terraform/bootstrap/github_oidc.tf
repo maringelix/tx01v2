@@ -13,7 +13,7 @@ resource "aws_iam_openid_connect_provider" "github" {
 locals {
   github_oidc_provider_arn = var.create_github_oidc_provider ? aws_iam_openid_connect_provider.github[0].arn : var.existing_github_oidc_provider_arn
 
-  # Contract v1 (docs/CONTRATO.md): exact sub claims, no wildcards.
+  # The contract (docs/CONTRATO.md): exact sub claims, no wildcards.
   github_oidc_subjects = {
     plan = [
       "repo:${var.github_owner}/tx01v2:pull_request",
