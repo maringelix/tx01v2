@@ -15,7 +15,8 @@ Cobre o código (Terraform, scripts, workflows), as ferramentas do harness, as v
   (job `e2e`); `verificado localmente` em 2026-10-13 (`full`) e 2026-10-14 (`observability` e
   `operations`, com traces, Slack e os novos experimentos de chaos).
 - Bootstrap, apply, plataforma e destroy: `não executado em nuvem (v2)`.
-- Contrato com o dx01v2: versão 2 de 2026-10-14, com o endpoint OTLP do Collector (`docs/CONTRATO.md`).
+- Contrato com o dx01v2: versão 3 de 2026-10-15, com subjects OIDC imutáveis; a versão 2 adicionou o
+  endpoint OTLP do Collector (`docs/CONTRATO.md`).
 
 ## 3. Rotinas
 

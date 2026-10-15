@@ -18,7 +18,7 @@ is the source of truth. The full rule list (pt-BR) is [docs/GUARDRAILS.md](docs/
   OpenTelemetry Collector, Argo CD, Gatekeeper, Trivy Operator, Velero, Chaos Mesh). `make e2e` proves it
   with 34 probes (CI job `e2e`). It is not
   cloud-mutating: agents may run it, one heavy run at a time (8 GB of Docker memory for `full`, 7 GB with `LOCAL_SIZE=small`).
-- The interface with `dx01v2` is [docs/CONTRATO.md](docs/CONTRATO.md) (contract v2, owned here; the
+- The interface with `dx01v2` is [docs/CONTRATO.md](docs/CONTRATO.md) (contract v3, owned here; the
   local lab has its own local contract, `lab-system/lab-contract`).
 
 ## 2. Non-negotiable rules

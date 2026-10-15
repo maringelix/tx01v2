@@ -8,6 +8,9 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- Contract version 3 with dx01v2, coordinated with [dx01v2#14](https://github.com/maringelix/dx01v2/pull/14):
+  the OIDC contract now pins the immutable GitHub owner and repository IDs (roadmap R3.15). The
+  application parameters and tracing requirements from version 2 remain in place.
 - `make clean` removes things only under the directory of the Makefile, wherever make was started
   from (roadmap R3.18).
 - The cloud platform layer installs the OpenTelemetry Collector from the chart archive checked
