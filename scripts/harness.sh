@@ -397,16 +397,16 @@ check_policy_identifiers() {
   return "$rc"
 }
 
-# Scripts act only on what the lab created (docs/GUARDRAILS.md, SEC-10): no variable of the caller's
-# shell chooses their target (a forker may have CLUSTER_NAME exported for another cluster), the cloud
-# kubeconfig is a temporary file, and every script of platform/local checks the kind context first.
-# shellcheck disable=SC2016 # the patterns and messages name shell expansions literally
 # scripts/destroy.sh with simulated aws, terraform, kubectl and helm: an uninstall that fails still
 # ends in the API cleanup, terraform destroy and the leftover check (docs/GUARDRAILS.md, CUSTO-03).
 check_destroy_flow() {
   bash scripts/tests/destroy-flow.sh
 }
 
+# Scripts act only on what the lab created (docs/GUARDRAILS.md, SEC-10): no variable of the caller's
+# shell chooses their target (a forker may have CLUSTER_NAME exported for another cluster), the cloud
+# kubeconfig is a temporary file, and every script of platform/local checks the kind context first.
+# shellcheck disable=SC2016 # the patterns and messages name shell expansions literally
 check_policy_scripts() {
   local rc=0 out f
   forbid '\$\{(CLUSTER_NAME|RESOURCE_GROUP|LAB_[A-Z_]+|CONTRACT_PARAMETER)(:-|-|:=|=)' \

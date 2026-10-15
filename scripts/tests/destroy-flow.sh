@@ -16,6 +16,15 @@ LB_ARN="arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/k8s
 TG_ARN="arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/k8s-lab/0123456789abcdef"
 SG_ID="sg-0123456789abcdef0"
 
+# The scripts under test run from a copy of the tree: they put .tools/bin (the real terraform, kubectl
+# and helm of the harness) in front of PATH, which would shadow the simulated CLIs.
+make_sandbox() {
+  mkdir -p "$WORK/repo/scripts" "$WORK/repo/platform"
+  cp "$REPO_ROOT/scripts/destroy.sh" "$REPO_ROOT/scripts/leftovers.sh" "$WORK/repo/scripts/"
+  cp -r "$REPO_ROOT/scripts/lib" "$WORK/repo/scripts/lib"
+  cp "$REPO_ROOT/platform/uninstall.sh" "$WORK/repo/platform/"
+}
+
 make_fakes() {
   local bin="$WORK/bin"
   mkdir -p "$bin"
@@ -89,7 +98,7 @@ run_case() {
   rm -f "$WORK/state"/*
   env "$@" PATH="$WORK/bin:$PATH" FAKE_STATE="$WORK/state" AWS_REGION=us-east-1 TF_STATE_BUCKET=fake-bucket \
     DESTROY_RETRY_SECONDS=0 LB_WAIT_SECONDS=0 \
-    bash "$REPO_ROOT/scripts/destroy.sh" "${DESTROY_ARGS[@]}" >"$WORK/$name.out" 2>&1 || rc=$?
+    bash "$WORK/repo/scripts/destroy.sh" "${DESTROY_ARGS[@]}" >"$WORK/$name.out" 2>&1 || rc=$?
   cp "$WORK/state/calls.log" "$WORK/$name.calls"
   if [[ "$rc" != "$expected" ]]; then
     echo "FAIL $name: exit code $rc, expected $expected"
@@ -132,6 +141,7 @@ ordered() { # NAME REGEX_A REGEX_B -> 0 when A exists and comes before B
 }
 
 main() {
+  make_sandbox
   make_fakes
 
   # 1. The controller works: the uninstall deletes the ingress, the API cleanup is not needed.
@@ -166,7 +176,7 @@ main() {
   DESTROY_ARGS=()
   expect lock "the lock is released before terraform destroy" \
     "$(ordered lock 'terraform .*force-unlock -force 0b5d3a9e' 'terraform .*destroy')"
-  if bash "$REPO_ROOT/scripts/destroy.sh" --force-unlock "not-a-lock-id" >/dev/null 2>&1; then
+  if bash "$WORK/repo/scripts/destroy.sh" --force-unlock "not-a-lock-id" >/dev/null 2>&1; then
     echo "FAIL lock: a lock ID that is not a UUID must be refused"
     FAILED=1
   else
