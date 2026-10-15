@@ -4,7 +4,7 @@
 # `kind delete cluster` itself. Environment (set by Terraform):
 #   CLUSTER, KIND_CONFIG, KIND_EXPERIMENTAL_DOCKER_NETWORK, REGISTRY_ENDPOINT (http://<registry ip>:5000),
 #   REGISTRY_HOSTS (space-separated names the node maps to it: the push name localhost:<port> and the
-#   in-cluster name registry.tx01v2.local)
+#   in-cluster name registry.tx01v2.local); LOCAL_SIZE (inherited: small appends kind-config-small.yaml)
 # usage: scripts/local/kind-cluster.sh create
 set -euo pipefail
 
@@ -19,17 +19,27 @@ cluster_exists() {
 }
 
 create() {
-  local work node networks
+  local work node networks config
   require_cmd kind docker
   : "${CLUSTER:?CLUSTER is required}" "${KIND_CONFIG:?KIND_CONFIG is required}"
   : "${KIND_EXPERIMENTAL_DOCKER_NETWORK:?KIND_EXPERIMENTAL_DOCKER_NETWORK is required}"
   : "${REGISTRY_HOSTS:?REGISTRY_HOSTS is required}" "${REGISTRY_ENDPOINT:?REGISTRY_ENDPOINT is required}"
+  case "${LOCAL_SIZE:-default}" in
+    default | small) ;;
+    *) die "LOCAL_SIZE must be default or small (got '$LOCAL_SIZE')" ;;
+  esac
   if cluster_exists; then
-    log "kind cluster $CLUSTER already exists: reusing it"
+    log "kind cluster $CLUSTER already exists: reusing it (a new LOCAL_SIZE needs make local-down first)"
   else
     work="$(mktemp -d)"
+    config="$KIND_CONFIG"
+    if [[ "${LOCAL_SIZE:-default}" == small ]]; then
+      config="$work/kind-config.yaml"
+      cat "$KIND_CONFIG" "$(dirname "$KIND_CONFIG")/kind-config-small.yaml" >"$config"
+      log "kind cluster $CLUSTER: size small (kind-config-small.yaml)"
+    fi
     # The kubeconfig of the create step is thrown away: scripts/local-lab.sh writes its own.
-    kind create cluster --name "$CLUSTER" --config "$KIND_CONFIG" --kubeconfig "$work/kubeconfig" --wait 180s
+    kind create cluster --name "$CLUSTER" --config "$config" --kubeconfig "$work/kubeconfig" --wait 180s
     rm -rf "$work"
   fi
   for node in $(kind get nodes --name "$CLUSTER"); do

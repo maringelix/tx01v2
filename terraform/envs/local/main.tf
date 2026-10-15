@@ -349,6 +349,7 @@ resource "terraform_data" "cluster" {
     local.name,
     docker_network.lab.name,
     filesha256("${path.module}/kind-config.yaml"),
+    filesha256("${path.module}/kind-config-small.yaml"),
     var.registry_host_port,
     local.registry_name,
   ]
