@@ -1,0 +1,12 @@
+# Size small (LOCAL_SIZE=small, docs/LAB_LOCAL.md): one scan job at a time (each runs a Trivy client)
+# and less memory for the operator.
+operator:
+  scanJobsConcurrentLimit: 1
+extraEnv:
+  - name: GOMEMLIMIT
+    value: 192MiB
+resources:
+  requests:
+    memory: 64Mi
+  limits:
+    memory: 320Mi

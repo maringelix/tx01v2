@@ -1,0 +1,63 @@
+# Size small (LOCAL_SIZE=small, docs/LAB_LOCAL.md): the same stack with fewer series and less memory.
+# Every target the probes look for stays (kube-state-metrics, node-exporter, apiserver, kubelet).
+defaultRules:
+  rules:
+    # These groups read the cAdvisor series and the apiserver histograms that this size does not keep.
+    k8sContainerCpuUsageSecondsTotal: false
+    k8sContainerMemoryCache: false
+    k8sContainerMemoryRss: false
+    k8sContainerMemorySwap: false
+    k8sContainerResource: false
+    k8sContainerMemoryWorkingSetBytes: false
+    kubeApiserverAvailability: false
+    kubeApiserverBurnrate: false
+    kubeApiserverHistogram: false
+    kubeApiserverSlos: false
+    kubernetesResources: false
+
+kubelet:
+  serviceMonitor:
+    # The kubelet target stays (job kubelet). Its cAdvisor and probes endpoints are the largest series
+    # sets of the cluster, and no probe or rule of the lab reads them.
+    cAdvisor: false
+    probes: false
+
+kubeApiServer:
+  serviceMonitor:
+    # Histograms are most of the apiserver series; the probes read only whether it is up.
+    metricRelabelings:
+      - action: drop
+        sourceLabels: [__name__]
+        regex: .+_bucket
+
+prometheus:
+  prometheusSpec:
+    retention: 2h
+    exemplars:
+      maxSize: 20000
+    # Prometheus 3 sets GOMEMLIMIT from this limit.
+    resources:
+      requests:
+        memory: 256Mi
+      limits:
+        memory: 640Mi
+
+grafana:
+  # The lab alerts through Alertmanager: the alerting engine of Grafana and the plugins it installs at
+  # startup only cost memory here.
+  grafana.ini:
+    unified_alerting:
+      enabled: false
+    plugins:
+      preinstall_disabled: true
+    analytics:
+      reporting_enabled: false
+      check_for_updates: false
+      check_for_plugin_updates: false
+  env:
+    GOMEMLIMIT: 360MiB
+  resources:
+    requests:
+      memory: 160Mi
+    limits:
+      memory: 512Mi
