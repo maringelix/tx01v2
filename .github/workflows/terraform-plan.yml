@@ -31,11 +31,24 @@ jobs:
       TF_INPUT: "0"
       TF_VAR_aws_region: ${{ vars.AWS_REGION }}
       TF_VAR_github_owner: ${{ github.repository_owner }}
-      TF_VAR_endpoint_public_access_cidrs: ${{ vars.LAB_ENDPOINT_PUBLIC_ACCESS_CIDRS }}
+      # A secret, not a variable: the logs of a public repository are public, and a secret is masked.
+      TF_VAR_endpoint_public_access_cidrs: ${{ secrets.LAB_ENDPOINT_PUBLIC_ACCESS_CIDRS }}
       TF_VAR_allow_endpoint_from_anywhere: ${{ vars.LAB_ALLOW_ENDPOINT_FROM_ANYWHERE || 'false' }}
       TF_VAR_cluster_admin_principal_arns: ${{ vars.LAB_CLUSTER_ADMIN_PRINCIPAL_ARNS }}
       TF_VAR_app_deployer_principal_arns: ${{ vars.LAB_APP_DEPLOYER_PRINCIPAL_ARNS || '[]' }}
     steps:
+      - name: Mask the addresses of the operator in the logs
+        env:
+          CIDRS: ${{ secrets.LAB_ENDPOINT_PUBLIC_ACCESS_CIDRS }}
+        run: |
+          if [[ -n "$CIDRS" ]]; then
+            addresses="$(jq -er '.[]' <<<"$CIDRS")"
+            while IFS= read -r cidr; do
+              echo "::add-mask::$cidr"
+              echo "::add-mask::${cidr%%/*}"
+            done <<<"$addresses"
+          fi
+
       - name: Check repository variables
         env:
           AWS_PLAN_ROLE_ARN: ${{ vars.AWS_PLAN_ROLE_ARN }}
@@ -45,7 +58,7 @@ jobs:
             [[ -n "${!v}" ]] || missing+=("$v")
           done
           if ((${#missing[@]} > 0)); then
-            echo "::error::Missing repository variables for: ${missing[*]}. Settings > Secrets and variables > Actions > Variables; names and values in docs/RUNBOOK.md (section 'Variáveis do GitHub')."
+            echo "::error::Missing repository variables or secrets for: ${missing[*]}. Settings > Secrets and variables > Actions > Variables; names and values in docs/RUNBOOK.md (section 'Variáveis do GitHub')."
             exit 1
           fi
 
@@ -72,10 +85,18 @@ jobs:
         run: terraform -chdir=terraform/envs/lab plan -lock=false -input=false -no-color -out=tfplan
 
       - name: Plan text to the job summary
+        env:
+          CIDRS: ${{ secrets.LAB_ENDPOINT_PUBLIC_ACCESS_CIDRS }}
         run: |
           account_id="$(aws sts get-caller-identity --query Account --output text)"
           plan_text="$(terraform -chdir=terraform/envs/lab show -no-color tfplan)"
-          printf '%s\n' "${plan_text//"$account_id"/<ACCOUNT_ID>}" > plan.txt
+          plan_text="${plan_text//"$account_id"/<ACCOUNT_ID>}"
+          # The job summary and the artifact are not covered by the masks of the log.
+          while IFS= read -r cidr; do
+            plan_text="${plan_text//"$cidr"/<CIDR>}"
+            plan_text="${plan_text//"${cidr%%/*}"/<IP>}"
+          done < <(jq -er '.[]' <<<"$CIDRS")
+          printf '%s\n' "$plan_text" > plan.txt
           {
             echo "## terraform plan: terraform/envs/lab"
             echo '```'

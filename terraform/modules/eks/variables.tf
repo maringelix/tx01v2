@@ -75,3 +75,13 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "permissions_boundary_arn" {
+  description = "Permissions boundary of every IAM role of the module (the bootstrap policy tx01v2-lab-boundary; the apply role can create a role only with it)."
+  type        = string
+
+  validation {
+    condition     = can(regex("^arn:aws[a-z-]*:iam::[0-9]{12}:policy/.+$", var.permissions_boundary_arn))
+    error_message = "The permissions_boundary_arn must be the ARN of an IAM policy."
+  }
+}

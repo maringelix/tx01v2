@@ -15,7 +15,15 @@ locals {
   }
 
   ecr_repositories = ["dx01v2/api", "dx01v2/web"]
+
+  # Created by the bootstrap (terraform/bootstrap/boundary.tf). The apply role can create a role of
+  # the lab only with it, so every role below carries it.
+  permissions_boundary_arn = "arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:policy/${local.project}-lab-boundary"
 }
+
+data "aws_caller_identity" "current" {}
+
+data "aws_partition" "current" {}
 
 module "kms" {
   source = "../../modules/kms"
@@ -28,6 +36,7 @@ module "network" {
   source = "../../modules/network"
 
   name                     = local.name
+  permissions_boundary_arn = local.permissions_boundary_arn
   vpc_cidr                 = var.vpc_cidr
   az_count                 = var.az_count
   nat_gateway_per_az       = var.nat_gateway_per_az
@@ -39,6 +48,7 @@ module "eks" {
   source = "../../modules/eks"
 
   name                         = local.name
+  permissions_boundary_arn     = local.permissions_boundary_arn
   cluster_version              = var.cluster_version
   private_subnet_ids           = module.network.private_subnet_ids
   endpoint_public_access_cidrs = var.endpoint_public_access_cidrs

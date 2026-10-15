@@ -171,8 +171,9 @@ resource "aws_cloudwatch_log_group" "flow_logs" {
 }
 
 resource "aws_iam_role" "flow_logs" {
-  name        = "${var.name}-vpc-flow-logs"
-  description = "Lets VPC Flow Logs of ${var.name} write to its CloudWatch log group."
+  name                 = "${var.name}-vpc-flow-logs"
+  description          = "Lets VPC Flow Logs of ${var.name} write to its CloudWatch log group."
+  permissions_boundary = var.permissions_boundary_arn
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"

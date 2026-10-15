@@ -46,13 +46,21 @@ Regras da Role `dx01v2-deployer` (namespace `dx01v2`):
 ## Confiança OIDC do GitHub
 
 `sub` exato (StringEquals, sem curingas), audience `sts.amazonaws.com`, dono configurável
-(`github_owner`, sem padrão: o dono do repositório ou do seu fork).
+(`github_owner`, sem padrão: o dono do repositório ou do seu fork). O `sub` é o **imutável** do GitHub
+(repositórios criados depois de 2026-07-15 ou que aderiram): leva o ID numérico do dono e o do
+repositório (`github_owner_id`, `tx01v2_repository_id`, `dx01v2_repository_id`), então um nome de conta
+apagado e registrado de novo não herda o lab. O ambiente `lab` só implanta a partir de `main`.
 
 | Papel | `sub` permitido |
 |---|---|
-| `tx01v2-gha-plan` | `repo:<owner>/tx01v2:pull_request`, `repo:<owner>/tx01v2:ref:refs/heads/main` |
-| `tx01v2-gha-apply` | `repo:<owner>/tx01v2:environment:lab` |
-| `dx01v2-gha-deploy` | `repo:<owner>/dx01v2:environment:lab` |
+| `tx01v2-gha-plan` | `repo:<owner>@<owner id>/tx01v2@<repo id>:pull_request`, `repo:<owner>@<owner id>/tx01v2@<repo id>:ref:refs/heads/main` |
+| `tx01v2-gha-apply` | `repo:<owner>@<owner id>/tx01v2@<repo id>:environment:lab` |
+| `dx01v2-gha-deploy` | `repo:<owner>@<owner id>/dx01v2@<repo id>:environment:lab` |
+
+O papel `tx01v2-gha-plan` lê só os serviços do lab (Describe/Get/List), não a conta inteira. Todo
+papel IAM que o apply cria (`tx01v2-*`) leva o *permissions boundary* `tx01v2-lab-boundary`, criado
+pelo bootstrap: o apply só cria um papel com ele e não pode editá-lo nem tirá-lo, e o boundary corta
+qualquer alteração de IAM, da organização e da conta, seja qual for a política anexada ao papel.
 
 Permissões de `dx01v2-gha-deploy`: `ecr:GetAuthorizationToken` em `*`; ações de push/pull apenas nos
 ARNs dos dois repositórios ECR; `eks:DescribeCluster` no ARN do cluster; `ssm:GetParameter`,

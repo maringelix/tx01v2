@@ -122,8 +122,14 @@ Then, from the root of your `tx01v2` clone:
 1. **Bootstrap** (once, from your machine, with the administrator credentials): copy
    `terraform/bootstrap/terraform.tfvars.example` to `terraform.tfvars` (git-ignored) and set
    `github_owner` to your GitHub user and `budget_alert_emails` to an address you read. Neither has a
-   usable default: the placeholders are refused, so the roles can only trust your forks. If the
-   account already has a GitHub OIDC provider, set `create_github_oidc_provider = false` and its ARN.
+   usable default: the placeholders are refused, so the roles can only trust your forks. Set the three
+   numeric GitHub IDs too (`github_owner_id`, `tx01v2_repository_id`, `dx01v2_repository_id`): GitHub
+   writes them into the OIDC subject of every repository created after 2026-07-15 (your fork), and the
+   roles trust that exact subject. `scripts/repo-guardrails.sh` prints them, or:
+   `gh api users/<you> --jq .id`, `gh api repos/<you>/tx01v2 --jq .id`, `gh api repos/<you>/dx01v2 --jq .id`.
+   A repository that predates 2026-07-15 must opt in to immutable subject claims first (Settings >
+   Actions > General > OpenID Connect). If the account already has a GitHub OIDC provider, set
+   `create_github_oidc_provider = false`: it is read by its URL and never changed.
 
    ```bash
    export PATH="$PWD/.tools/bin:$PATH"   # terraform and kubectl from make tools
@@ -141,10 +147,11 @@ Then, from the root of your `tx01v2` clone:
    gh variable set -f /tmp/dx01v2.env -R <you>/dx01v2
    ```
 
-   Then add the ones you choose (`LAB_ENDPOINT_PUBLIC_ACCESS_CIDRS`,
-   `LAB_ALLOW_ENDPOINT_FROM_ANYWHERE`, and your own admin role in `LAB_CLUSTER_ADMIN_PRINCIPAL_ARNS`):
-   [docs/RUNBOOK.md](docs/RUNBOOK.md), section 3. Variables are not secret: never put a credential in
-   one.
+   Then add the ones you choose (`LAB_ALLOW_ENDPOINT_FROM_ANYWHERE`, and your own admin role in
+   `LAB_CLUSTER_ADMIN_PRINCIPAL_ARNS`) and the address you operate from as a **secret**,
+   `LAB_ENDPOINT_PUBLIC_ACCESS_CIDRS` (`gh secret set LAB_ENDPOINT_PUBLIC_ACCESS_CIDRS -R <you>/tx01v2`):
+   [docs/RUNBOOK.md](docs/RUNBOOK.md), section 3. Variables are not secret: never put a credential or
+   your home address in one. The workflows mask every CIDR of the secret in their logs.
 3. **Run**: from the Actions tab, `terraform-plan`, `terraform-apply` and `platform` (each one waits
    for your approval of the `lab` environment), the app deploy from your `dx01v2`, the smoke test,
    then `terraform-destroy`, which ends with the leftover check: [docs/RUNBOOK.md](docs/RUNBOOK.md),

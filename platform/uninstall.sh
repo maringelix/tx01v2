@@ -37,17 +37,6 @@ delete_load_balancer_services() {
   done <<<"$out"
 }
 
-# controller_leftovers CLUSTER -> load balancers, target groups and security groups the controller
-# created for CLUSTER that still exist (one per line).
-controller_leftovers() {
-  local cluster=$1 sgs
-  elbv2_arns_with_tag lb elbv2.k8s.aws/cluster "$cluster"
-  elbv2_arns_with_tag tg elbv2.k8s.aws/cluster "$cluster"
-  sgs="$(aws ec2 describe-security-groups --filters "Name=tag:elbv2.k8s.aws/cluster,Values=$cluster" \
-    --query 'SecurityGroups[].GroupId' --output text)"
-  printf '%s\n' "$sgs" | words_to_lines
-}
-
 # The controller deletes its ALBs, target groups and security groups asynchronously; it must keep
 # running until they are gone, or they stay behind and block the VPC deletion.
 wait_for_controller_resources() {

@@ -5,8 +5,11 @@ mock_provider "aws" {
 }
 
 variables {
-  github_owner        = "maringelix"
-  budget_alert_emails = ["lab-alerts@example.org"]
+  github_owner         = "maringelix"
+  github_owner_id      = "1000000"
+  tx01v2_repository_id = "2000000"
+  dx01v2_repository_id = "3000000"
+  budget_alert_emails  = ["lab-alerts@example.org"]
 }
 
 run "trust_policies_allow_exactly_the_contract_subjects" {
@@ -14,10 +17,10 @@ run "trust_policies_allow_exactly_the_contract_subjects" {
 
   assert {
     condition = jsondecode(aws_iam_role.plan.assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == [
-      "repo:maringelix/tx01v2:pull_request",
-      "repo:maringelix/tx01v2:ref:refs/heads/main",
+      "repo:maringelix@1000000/tx01v2@2000000:pull_request",
+      "repo:maringelix@1000000/tx01v2@2000000:ref:refs/heads/main",
     ]
-    error_message = "tx01v2-gha-plan must trust exactly the tx01v2 pull_request and main subjects."
+    error_message = "tx01v2-gha-plan must trust exactly the tx01v2 pull_request and main subjects, in the immutable format with the owner and repository IDs."
   }
 
   assert {
@@ -28,13 +31,13 @@ run "trust_policies_allow_exactly_the_contract_subjects" {
   }
 
   assert {
-    condition     = jsondecode(aws_iam_role.apply.assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == ["repo:maringelix/tx01v2:environment:lab"]
-    error_message = "tx01v2-gha-apply must trust only repo:maringelix/tx01v2:environment:lab."
+    condition     = jsondecode(aws_iam_role.apply.assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == ["repo:maringelix@1000000/tx01v2@2000000:environment:lab"]
+    error_message = "tx01v2-gha-apply must trust only the environment lab of tx01v2, with the owner and repository IDs."
   }
 
   assert {
-    condition     = jsondecode(aws_iam_role.deploy.assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == ["repo:maringelix/dx01v2:environment:lab"]
-    error_message = "dx01v2-gha-deploy must trust only repo:maringelix/dx01v2:environment:lab."
+    condition     = jsondecode(aws_iam_role.deploy.assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == ["repo:maringelix@1000000/dx01v2@3000000:environment:lab"]
+    error_message = "dx01v2-gha-deploy must trust only the environment lab of dx01v2, with the owner and repository IDs."
   }
 
   assert {
@@ -88,55 +91,70 @@ run "github_owner_is_configurable" {
   command = apply
 
   variables {
-    github_owner = "example-org"
+    github_owner         = "example-org"
+    github_owner_id      = "42"
+    tx01v2_repository_id = "4300"
+    dx01v2_repository_id = "4400"
   }
 
   assert {
-    condition     = jsondecode(aws_iam_role.apply.assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == ["repo:example-org/tx01v2:environment:lab"]
-    error_message = "The owner in the sub claims must follow var.github_owner."
+    condition     = jsondecode(aws_iam_role.apply.assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == ["repo:example-org@42/tx01v2@4300:environment:lab"]
+    error_message = "The owner and the IDs in the sub claims must follow var.github_owner, github_owner_id and tx01v2_repository_id."
   }
 
   assert {
-    condition     = jsondecode(aws_iam_role.deploy.assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == ["repo:example-org/dx01v2:environment:lab"]
-    error_message = "The deploy role must follow var.github_owner too."
+    condition     = jsondecode(aws_iam_role.deploy.assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == ["repo:example-org@42/dx01v2@4400:environment:lab"]
+    error_message = "The deploy role must follow the owner and the dx01v2 repository ID too."
   }
 }
 
-run "existing_oidc_provider_is_reused" {
-  command = plan
-
-  variables {
-    create_github_oidc_provider       = false
-    existing_github_oidc_provider_arn = "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
-  }
-
-  assert {
-    condition     = length(aws_iam_openid_connect_provider.github) == 0
-    error_message = "No OIDC provider may be created when an existing one is reused."
-  }
-
-  assert {
-    condition     = jsondecode(aws_iam_role.plan.assume_role_policy).Statement[0].Principal.Federated == "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
-    error_message = "Trust policies must use the existing provider ARN."
-  }
-}
-
-run "reuse_requires_the_existing_provider_arn" {
+run "existing_oidc_provider_is_read_not_created" {
   command = plan
 
   variables {
     create_github_oidc_provider = false
   }
 
-  expect_failures = [var.existing_github_oidc_provider_arn]
+  assert {
+    condition     = length(aws_iam_openid_connect_provider.github) == 0
+    error_message = "No OIDC provider may be created when the account already has one."
+  }
+
+  assert {
+    condition     = data.aws_iam_openid_connect_provider.existing[0].url == "https://token.actions.githubusercontent.com"
+    error_message = "The existing provider is read by the GitHub URL."
+  }
+
+  assert {
+    condition     = jsondecode(aws_iam_role.plan.assume_role_policy).Statement[0].Principal.Federated == "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
+    error_message = "Trust policies must use the ARN of the existing provider."
+  }
+}
+
+run "the_ids_are_numeric" {
+  command = plan
+
+  variables {
+    tx01v2_repository_id = "tx01v2"
+  }
+
+  expect_failures = [var.tx01v2_repository_id]
 }
 
 run "role_permissions_follow_the_contract" {
   command = apply
 
   assert {
-    condition     = aws_iam_role_policy_attachment.plan_read_only.policy_arn == "arn:aws:iam::aws:policy/ReadOnlyAccess"
-    error_message = "The plan role must be read-only (ReadOnlyAccess)."
+    condition = alltrue([
+      for a in jsondecode(aws_iam_role_policy.plan_read_lab.policy).Statement[0].Action :
+      can(regex("^[a-z0-9]+:(Describe|Get|List|BatchGet)[A-Za-z]*[*]?$", a))
+    ])
+    error_message = "The plan role may only read: every action must be a Describe, Get, List or BatchGet pattern."
+  }
+
+  assert {
+    condition     = !contains(jsondecode(aws_iam_role_policy.plan_read_lab.policy).Statement[0].Action, "secretsmanager:GetSecretValue") && !contains(jsondecode(aws_iam_role_policy.plan_read_lab.policy).Statement[0].Action, "s3:GetObject") && !contains(jsondecode(aws_iam_role_policy.plan_read_lab.policy).Statement[0].Action, "s3:Get*")
+    error_message = "The plan role must not read secret values or objects of other buckets (it is not ReadOnlyAccess of the account)."
   }
 
   assert {
