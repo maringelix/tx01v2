@@ -6,7 +6,9 @@ de verdade (`docs/LICOES_APRENDIDAS.md`). O lab local constrói essa plataforma 
 máquina, com Terraform, e prova cada peça com tráfego ou chamadas reais. Nada aqui fala com a AWS.
 
 Status: `verificado no CI` (job `e2e`, 34 sondas) e `verificado localmente` (2026-10-14: os perfis
-`observability`, 22 sondas, e `operations`, 24 sondas, cada um do zero até o destroy).
+`observability`, 22 sondas, e `operations`, 24 sondas, cada um do zero até o destroy). O tamanho
+`small` (abaixo) é `verificado no CI` pelo job `e2e-platform-small` do dx01v2: a plataforma `full` com
+o app, com o Docker limitado a 7 GB.
 
 O v1 parou nos "próximos passos" (DR multi-região, FinOps, chaos, observabilidade com OpenTelemetry).
 Aqui dois deles existem e são provados: traces com OpenTelemetry (Collector, Tempo, spans dos Gateways
@@ -50,12 +52,13 @@ as constraints do Gatekeeper em `deny`.
 
 ## Como rodar
 
-Precisa de Docker com 8 GB de memória para o perfil `full` (o perfil `core` cabe em 3 GB), além das
-ferramentas de `make tools`. Linux, WSL 2 ou o devcontainer.
+Precisa de Docker com 8 GB de memória para o perfil `full`, ou 7 GB com `LOCAL_SIZE=small` (abaixo; o
+perfil `core` cabe em 3 GB), além das ferramentas de `make tools`. Linux, WSL 2 ou o devcontainer.
 
 ```bash
 make e2e                          # up + sondas + down (sempre destrói, também depois de falha)
 LOCAL_PROFILE=core make local-up  # só a base; observability e operations são as outras camadas
+LOCAL_SIZE=small make local-up    # a plataforma inteira com menos memória (7 GB de Docker, abaixo)
 make local-check                  # sondas do que estiver instalado
 make local-down                   # destroy + scripts/leftovers-local.sh
 scripts/local-lab.sh status       # contêineres e nós do lab
@@ -85,6 +88,52 @@ Alertas no Slack: crie um incoming webhook no seu workspace e suba o lab com
 O webhook vai para o Secret `monitoring/alertmanager-slack` pelo stdin do kubectl, nunca para arquivos
 ou logs.
 
+## Tamanhos (`LOCAL_SIZE`)
+
+`LOCAL_SIZE=small` (o padrão é `default`) instala os mesmos componentes com menos memória: o
+`helm_install` põe `platform/local/values/small/<chart>.yaml` por último, então os tamanhos dele valem
+sobre os outros values. Os componentes continuam os mesmos (as sondas dos apps usam quase todos), e o
+padrão já tem uma réplica de cada.
+
+| Chart | No tamanho `small` |
+|---|---|
+| kube-prometheus-stack | Prometheus com retenção de 2 h (padrão 6 h), 20 mil exemplars (padrão 100 mil) e limite de 640 MiB; sem os endpoints cAdvisor e probes do kubelet, sem os histogramas do apiserver e sem os grupos de regras padrão que leem essas séries (os alvos que as sondas procuram continuam); Grafana sem o alerting unificado (o lab alerta pelo Alertmanager) e sem instalar plugins na partida, limite de 512 MiB |
+| Loki, Tempo, Alloy | limites de 320, 320 e 200 MiB; Tempo com retenção de 1 h (padrão 6 h) |
+| OpenTelemetry Collector | limite de 192 MiB (o chart deriva dele o `GOMEMLIMIT` e o `memory_limiter`) |
+| Argo CD | menos workers (5 de status, 2 de operação, um render por vez no repo-server; o lab tem uma Application) e limites de 320, 256 e 192 MiB |
+| Gatekeeper | auditoria a cada 5 minutos (padrão 1) e só dos tipos que as constraints usam (sem isso, cada rodada lista pelo apiserver todos os tipos do cluster), limite de 384 MiB |
+| Trivy Operator | um scan job por vez, limite de 320 MiB no operador |
+| Velero | limite de 256 MiB |
+
+Os componentes em Go recebem `GOMEMLIMIT` abaixo do limite (o Prometheus 3 e o chart do Collector já o
+derivam do limite), para o coletor de lixo trabalhar antes do OOM kill. O plano de controle também:
+o `scripts/local/kind-cluster.sh` acrescenta `terraform/envs/local/kind-config-small.yaml` à config do
+kind (`GOMEMLIMIT` no apiserver, no controller-manager e no etcd, pelo `extraEnvs` do kubeadm v1beta4).
+Trocar o tamanho de um lab de pé pede `make local-down` antes, porque o cluster existente é
+reaproveitado. O check `helm-template-local` renderiza cada chart também com o overlay, aplica as
+mesmas regras e falha se o overlay trocar uma imagem ou citar um chart que não existe.
+
+Quanto a plataforma `full` com o app do dx01v2 precisa (memória do Docker, sem swap):
+
+| Tamanho | Docker | Resultado |
+|---|---|---|
+| `default` | 7 GB (local, 2026-10-15) | falha: a memória bateu no limite cerca de 825 mil vezes (thrashing), o apiserver reiniciou e os controllers entraram em CrashLoop; nenhum OOM kill |
+| `default` | runner do CI, 16 GB | passa (jobs `e2e` daqui e `e2e-platform` do dx01v2) |
+| `small` | 6 GB (CI, Docker-in-Docker, 2026-10-15) | falha: 14 das 18 sondas passam, e a de rollout perde 7 de 376 requisições; memória anônima de 4,25 GiB, limite atingido 468 mil vezes, 4 OOM kills (a cópia do plugin do Velero) |
+| `small` | 7 GB (CI, Docker-in-Docker, 2026-10-15) | passa: as 18 sondas em 14 minutos, memória anônima de 4,38 GiB, nenhum OOM kill |
+| `small` | 8 GB (CI, Docker-in-Docker, 2026-10-15) | passa no mesmo tempo, memória anônima de 4,37 GiB |
+
+O tamanho `small` fica em 7 GB, decisão do Bruno em 2026-10-15 (a meta da R1.8 era 6 GB): abaixo dos
+7,65 GiB do Docker Desktop de desenvolvimento e 1 GB a menos que o padrão. O job
+`e2e-platform-small` do dx01v2 repete a prova em todo PR. O maior consumidor é o apiserver, que passa de
+1 GiB com os CRDs da plataforma inteira mesmo com `GOMEMLIMIT` de 768 MiB. Picos de memória no job
+(working set, 2026-10-15): apiserver 1248 MiB, controller do Argo CD 306 MiB, Grafana 299 MiB mais
+163 MiB dos dois sidecars, Prometheus 236 MiB, Trivy Operator 208 MiB, etcd 150 MiB e os dois pods do
+Gatekeeper, 271 MiB.
+
+Os perfis `observability` e `operations`, sem o app, passaram no tamanho padrão com os 7,65 GiB do
+Docker Desktop de desenvolvimento (2026-10-14).
+
 ## O que as sondas provam (`platform/local/check.sh`)
 
 | Área | Sonda |
@@ -112,5 +161,7 @@ ou logs.
   máquina descartável ou no CI.
 - O mirror do Trivy Operator e o mapeamento `registry.tx01v2.local` existem só no lab local.
 - Logs, métricas, traces e backups vivem dentro do lab (retenções de horas) e somem no destroy.
+- O tamanho `small` foi provado com as 18 sondas do dx01v2. As 34 sondas daqui rodam no CI só no tamanho
+  padrão: `LOCAL_SIZE=small make e2e` não é verificado.
 - Sem `LOCAL_SLACK_WEBHOOK_URL` o CI prova o receptor Slack e o formato da mensagem, não a entrega a um
   workspace de verdade.
