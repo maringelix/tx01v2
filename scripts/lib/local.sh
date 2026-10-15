@@ -2,6 +2,20 @@
 # Helpers of the local lab scripts (platform/local/*.sh). Source after scripts/lib/common.sh.
 
 LOCAL_TF_DIR="$REPO_ROOT/terraform/envs/local"
+LOCAL_CLUSTER=tx01v2-local
+
+# require_lab_context -> refuses to run kubectl against anything but the kind cluster of the local lab.
+# KUBECONFIG must be one file (scripts/local-lab.sh writes $LOCAL_STATE_DIR/kubeconfig) whose current
+# context is kind-tx01v2-local: the kube contexts of the machine (the clusters of whoever forked the
+# lab) are never used, also when a script of platform/local runs on its own.
+require_lab_context() {
+  local want="kind-$LOCAL_CLUSTER" got
+  [[ -n "${KUBECONFIG:-}" && "$KUBECONFIG" != *:* && -f "$KUBECONFIG" ]] ||
+    die "KUBECONFIG must be the kubeconfig file of the local lab: run this through scripts/local-lab.sh"
+  got="$(kubectl config current-context 2>/dev/null)" || got=""
+  [[ "$got" == "$want" ]] ||
+    die "refusing to touch the kube context '${got:-none}': only $want (the local lab) is allowed; run this through scripts/local-lab.sh"
+}
 
 # tf_out NAME -> value of a terraform/envs/local output (needs the TF_DATA_DIR of scripts/local-lab.sh).
 tf_out() {

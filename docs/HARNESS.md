@@ -11,7 +11,7 @@ Ele vive em `scripts/harness.sh`; o `Makefile` e o CI só o chamam. O que passa 
 | Ferramentas | `make tools` | binários nas versões de `tools/versions.env`, SHA256 conferido | — | local, CI |
 | Versões | check `tool-versions` | PATH usa as versões fixadas (estrito) | — | local, CI |
 | Estrutura e honestidade | `repo-structure`, `version-consistency` | arquivos obrigatórios, rótulos de status, LF, versões coerentes entre arquivos, política do LBC idêntica ao upstream | que a documentação está certa | local, CI |
-| Políticas | `policy-terraform`, `policy-identifiers`, `policy-workflows`, `trivyignore-policy`, `contract-platform` | erros do v1 não voltam; sem IDs reais; actions fixadas; ignores com validade; manifests conforme o contrato | intenção de quem escreveu | local, CI |
+| Políticas | `policy-terraform`, `policy-identifiers`, `policy-workflows`, `policy-scripts`, `trivyignore-policy`, `contract-platform` | erros do v1 não voltam; sem IDs reais; actions fixadas; scripts que só agem no lab (sem alvo vindo de variável de ambiente, kubeconfig temporário, tag `Project` conferida, contexto do kind no lab local); ignores com validade; manifests conforme o contrato | intenção de quem escreveu | local, CI |
 | Formato e sintaxe | `terraform-fmt`, `terraform-validate:*` | HCL formatado e válido para o schema do provider fixado | que a AWS aceita os valores | local, CI |
 | Lock de providers | `terraform-lockfiles` | hashes para linux_amd64, linux_arm64, darwin_arm64, windows_amd64 | — | local, CI |
 | Lint | `tflint` | preset recommended + regras AWS sem issues | regras que dependem de chamadas à AWS (deep check desligado) | local, CI |

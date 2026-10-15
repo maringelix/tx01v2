@@ -7,6 +7,9 @@
 #   3. uninstall the OpenTelemetry Collector, the External Secrets Operator and the AWS Load
 #      Balancer Controller releases
 # CLOUD-MUTATING. Fails loudly on any error or timeout. Needs the same tools as platform/install.sh.
+# It acts only on the cluster of the contract (tx01v2-lab) and only when that cluster carries the tag
+# Project=tx01v2; no environment variable changes the target. The kubeconfig is temporary: the
+# ~/.kube/config and the current context of the machine stay as they were.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -17,6 +20,11 @@ source "$REPO_ROOT/scripts/lib/aws.sh"
 export PATH="$REPO_ROOT/.tools/bin:$PATH"
 
 LB_WAIT_SECONDS="${LB_WAIT_SECONDS:-900}"
+WORK_DIR=""
+
+cleanup() {
+  [[ -z "$WORK_DIR" ]] || rm -rf "$WORK_DIR"
+}
 
 delete_load_balancer_services() {
   local out svc
@@ -62,9 +70,12 @@ main() {
   require_cmd aws kubectl helm
   require_aws_region
 
-  local cluster
-  cluster="${CLUSTER_NAME:-$(lab_param cluster-name)}"
-  aws eks update-kubeconfig --region "$AWS_REGION" --name "$cluster" --alias "$cluster"
+  local cluster=$LAB_CLUSTER
+  require_lab_cluster "$cluster"
+  WORK_DIR="$(mktemp -d)"
+  trap cleanup EXIT
+  export KUBECONFIG="$WORK_DIR/kubeconfig"
+  aws eks update-kubeconfig --region "$AWS_REGION" --name "$cluster" --kubeconfig "$KUBECONFIG" >/dev/null
   kubectl get --raw /readyz >/dev/null || die "the Kubernetes API of $cluster is not reachable"
 
   log "deleting every Ingress in $cluster"

@@ -11,8 +11,8 @@ output "cluster_name" {
 }
 
 output "update_kubeconfig_command" {
-  description = "Command that writes a kubeconfig entry for the cluster (needs a principal with an access entry)."
-  value       = "aws eks update-kubeconfig --region ${var.aws_region} --name ${module.eks.cluster_name}"
+  description = "Command that writes the kubeconfig of the cluster to its own file (needs a principal with an access entry); ~/.kube/config and its current context stay untouched. Then: export KUBECONFIG=~/.kube/tx01v2-lab.kubeconfig"
+  value       = "aws eks update-kubeconfig --region ${var.aws_region} --name ${module.eks.cluster_name} --kubeconfig ~/.kube/tx01v2-lab.kubeconfig"
 }
 
 output "vpc_id" {

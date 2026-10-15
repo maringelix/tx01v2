@@ -2,7 +2,9 @@
 # Lists what the lab may have left behind after a destroy. Read-only (Describe/List/Get calls).
 #   BILLABLE  still costs money        -> exit 1
 #   ORPHANED  free, but blocks or confuses the next round (shown, exit code unaffected)
-#   INFO      expected (bootstrap resources, KMS keys pending deletion)
+#   INFO      expected (bootstrap resources, KMS keys pending deletion) or not created by the lab
+# The names, tags and the cluster are fixed by the contract (scripts/lib/aws.sh): no environment
+# variable widens or moves the scan.
 # Usage: AWS_REGION=us-east-1 scripts/leftovers.sh [--retry-for SECONDS]
 #   --retry-for re-scans every 60 s until nothing billable remains or the time is up
 #   (resources in transition right after a destroy). Exit 2 on usage or AWS API errors.
@@ -13,8 +15,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 # shellcheck source=scripts/lib/aws.sh
 source "$REPO_ROOT/scripts/lib/aws.sh"
 
-PROJECT=tx01v2
-CLUSTER="${CLUSTER_NAME:-tx01v2-lab}"
+PROJECT=$LAB_PROJECT
+CLUSTER=$LAB_CLUSTER
 NAME_PREFIX=tx01v2-lab
 LOG_GROUP_PREFIXES=("/aws/eks/$NAME_PREFIX" "/aws/vpc/$NAME_PREFIX" "/aws/rds/instance/$NAME_PREFIX" "aws-waf-logs-$NAME_PREFIX")
 
@@ -66,9 +68,14 @@ scan() {
     --query 'NatGateways[].NatGatewayId' --output text
   found BILLABLE "NAT gateway" "${items[@]}"
 
-  # Every unassociated Elastic IP is billed (dedicated lab account assumed).
-  as_array items aws ec2 describe-addresses --query 'Addresses[?AssociationId==null].AllocationId' --output text
+  # An unassociated Elastic IP is billed. Only the ones tagged by the lab count as leftovers; any
+  # other one belongs to someone else in the account and is only listed (never "delete it").
+  as_array items aws ec2 describe-addresses --filters "Name=tag:Project,Values=$PROJECT" \
+    --query 'Addresses[?AssociationId==null].AllocationId' --output text
   found BILLABLE "unattached Elastic IP" "${items[@]}"
+  as_array items aws ec2 describe-addresses \
+    --query "Addresses[?AssociationId==null && !(Tags[?Key=='Project' && Value=='$PROJECT'])].AllocationId" --output text
+  found INFO "unattached Elastic IP (not the lab's)" "${items[@]}"
 
   as_array items elbv2_arns_with_tag lb elbv2.k8s.aws/cluster "$CLUSTER"
   as_array more elbv2_arns_with_tag lb Project "$PROJECT"

@@ -16,6 +16,22 @@ All notable changes to this project are documented here. The format follows
 
 ### Security
 
+- Scripts act only on what the lab created, so whoever forks it can run them on a machine and an
+  account that also hold other work:
+  - `platform/uninstall.sh` (it deletes every Ingress and LoadBalancer Service of the cluster) and
+    `scripts/leftovers.sh` no longer read `CLUSTER_NAME` from the environment, a variable many EKS
+    guides export for another cluster; the target is the contract cluster `tx01v2-lab`, and the
+    platform scripts refuse a cluster without the tag `Project=tx01v2` (`require_lab_cluster`).
+  - `platform/install.sh` and `platform/uninstall.sh` write the kubeconfig and the Helm repositories
+    to a temporary directory: `~/.kube/config`, its current context and the Helm settings of the
+    machine stay as they were. The output `update_kubeconfig_command` and `docs/RUNBOOK.md` write the
+    kubeconfig of the lab to its own file (`~/.kube/tx01v2-lab.kubeconfig`).
+  - The scripts of `platform/local` refuse any kube context but `kind-tx01v2-local`
+    (`require_lab_context`), also when one of them runs on its own: `platform/local/uninstall.sh`
+    deletes every Gateway and LoadBalancer Service of the cluster it reaches.
+  - `scripts/leftovers.sh` counts as billable only the unattached Elastic IPs tagged
+    `Project=tx01v2`; any other one is listed as `INFO` (not the lab's), never as something to delete.
+  - New static check `policy-scripts` keeps all of this from coming back.
 - `github_owner` has no default any more (`terraform/bootstrap` and `terraform/envs/lab`): a fork that
   kept the default would have created CI identities that trust the workflows of another owner. The
   bootstrap refuses the placeholders of `terraform.tfvars.example` (`your-github-user` and the alert

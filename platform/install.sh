@@ -6,7 +6,10 @@
 #   4. OpenTelemetry Collector (observability): OTLP from the app, traces to AWS X-Ray
 # CLOUD-MUTATING: run it only when you mean to (docs/RUNBOOK.md). Needs AWS CLI v2, kubectl and helm
 # (scripts/install-tools.sh kubectl helm), AWS_REGION and credentials of a principal listed in
-# cluster_admin_principal_arns. Re-running it upgrades in place.
+# cluster_admin_principal_arns. Re-running it upgrades in place. It installs only on the cluster of
+# the contract (tx01v2-lab, tagged Project=tx01v2); the kubeconfig and the Helm repositories live in a
+# temporary directory, so the ~/.kube/config, the current context and the Helm settings of the
+# machine stay as they were.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -39,6 +42,11 @@ apply_manifests() {
   die "could not apply platform/manifests"
 }
 
+WORK_DIR=""
+cleanup() {
+  [[ -z "$WORK_DIR" ]] || rm -rf "$WORK_DIR"
+}
+
 main() {
   require_cmd aws kubectl helm
   require_aws_region
@@ -50,9 +58,16 @@ main() {
   vpc_id="$(lab_param vpc-id)"
   store="$(lab_param eso/cluster-secret-store)"
   [[ "$region" == "$AWS_REGION" ]] || die "AWS_REGION=$AWS_REGION but the lab runs in $region"
+  [[ "$cluster" == "$LAB_CLUSTER" ]] || die "contract key cluster-name is '$cluster', not $LAB_CLUSTER"
+  require_lab_cluster "$cluster"
+
+  WORK_DIR="$(mktemp -d)"
+  trap cleanup EXIT
+  export KUBECONFIG="$WORK_DIR/kubeconfig"
+  export HELM_REPOSITORY_CONFIG="$WORK_DIR/helm/repositories.yaml" HELM_REPOSITORY_CACHE="$WORK_DIR/helm/cache"
 
   log "cluster $cluster in $region (VPC $vpc_id)"
-  aws eks update-kubeconfig --region "$region" --name "$cluster" --alias "$cluster"
+  aws eks update-kubeconfig --region "$region" --name "$cluster" --kubeconfig "$KUBECONFIG" >/dev/null
   kubectl get --raw /readyz >/dev/null || die "the Kubernetes API is not reachable (endpoint_public_access_cidrs?) or this principal has no access entry"
 
   helm repo add eks https://aws.github.io/eks-charts --force-update

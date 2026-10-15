@@ -5,15 +5,17 @@
 #      (cloud-provider-kind then removes its Envoy containers)
 #   2. waits until no Envoy container of the cluster is left (fails loudly after 180 s)
 # Everything else lives inside the kind cluster and goes away with it. Needs kubectl, docker and the
-# KUBECONFIG written by scripts/local-lab.sh.
+# KUBECONFIG written by scripts/local-lab.sh; it refuses any other kube context (require_lab_context).
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/common.sh
 source "$HERE/../../scripts/lib/common.sh"
+# shellcheck source=scripts/lib/local.sh
+source "$REPO_ROOT/scripts/lib/local.sh"
 export PATH="$REPO_ROOT/.tools/bin:$PATH"
 
-CLUSTER=tx01v2-local
+CLUSTER=$LOCAL_CLUSTER
 WAIT_SECONDS=180
 
 envoy_containers() {
@@ -23,6 +25,7 @@ envoy_containers() {
 main() {
   local services i left
   require_cmd kubectl docker
+  require_lab_context
   kubectl version >/dev/null 2>&1 || die "the lab cluster is not reachable (KUBECONFIG=${KUBECONFIG:-unset})"
   # Argo CD self-heals: with an app synced (dx01v2), it would recreate the Gateway deleted below and
   # cloud-provider-kind would start a new Envoy container after the wait. Stop the reconciler first.

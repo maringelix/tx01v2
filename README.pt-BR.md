@@ -34,7 +34,7 @@ A família do lab (v2):
 | Formatação, validação, lock files de providers (4 plataformas) | `verificado no CI` | `make static` (`terraform-fmt`, `terraform-validate:*`, `terraform-lockfiles`); job `static` do CI |
 | Lint e scan de segurança da IaC (tflint, trivy HIGH/CRITICAL) | `verificado no CI` | `make static` (`tflint`, `trivy-config`, `trivy-config-tfvars`) |
 | Workflows, scripts, manifests Kubernetes e values do Helm (actionlint, shellcheck, kubeconform, helm template) | `verificado no CI` | `make static` |
-| Scan de segredos e políticas do repositório (sem identificadores reais, actions fixadas, regressões do v1) | `verificado no CI` | `make static` (`gitleaks`, `policy-*`, `repo-structure`) |
+| Scan de segredos e políticas do repositório (sem identificadores reais, actions fixadas, scripts que só agem no lab, regressões do v1) | `verificado no CI` | `make static` (`gitleaks`, `policy-*`, `repo-structure`) |
 | Testes unitários do Terraform com provider AWS mockado (trust OIDC, bucket, budget, EKS, nós, RDS, ECR, WAF, KMS, parâmetros SSM do contrato, validações negativas) | `verificado no CI` | `make test`; job `test` do CI |
 | Bootstrap (bucket de state, papéis OIDC do GitHub, budget) | `não executado em nuvem (v2)` | `terraform/bootstrap`, `docs/RUNBOOK.md` |
 | Apply do lab (VPC, EKS 1.36, RDS PostgreSQL 17, ECR, WAF, contrato no SSM) | `não executado em nuvem (v2)` | `.github/workflows/terraform-apply.yml` |
