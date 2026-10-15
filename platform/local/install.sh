@@ -337,6 +337,7 @@ on_exit() {
 
 main() {
   require_cmd kubectl helm terraform curl
+  require_lab_context
   kubectl version >/dev/null 2>&1 || die "the lab cluster is not reachable (run: scripts/local-lab.sh up)"
   local_load_versions
   WORK_DIR="$(mktemp -d)"

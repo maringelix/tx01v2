@@ -62,6 +62,11 @@ scripts/local-lab.sh status       # contêineres e nós do lab
 export KUBECONFIG="$(scripts/local-lab.sh kubeconfig)"   # kubectl contra o lab
 ```
 
+O kubeconfig do lab é um arquivo próprio (`$LOCAL_STATE_DIR/kubeconfig`): o `~/.kube/config` da
+máquina nunca é usado nem alterado. Os scripts de `platform/local` recusam qualquer contexto que não
+seja `kind-tx01v2-local`, também quando rodam sozinhos, porque o `uninstall.sh` apaga todo Gateway e
+todo Service `LoadBalancer` do cluster que alcança (check `policy-scripts`).
+
 O devcontainer tem Docker próprio (Docker-in-Docker): lá dentro, os comandos acima funcionam sem
 ajuste (`LOCAL_PROFILE=core make e2e` verificado localmente em 2026-10-14). Dentro de um contêiner
 que usa o Docker do host (docker.sock montado), exporte `LOCAL_KIND_INTERNAL=1`: o script entra na

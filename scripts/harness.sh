@@ -396,6 +396,34 @@ check_policy_identifiers() {
   return "$rc"
 }
 
+# Scripts act only on what the lab created (docs/GUARDRAILS.md, SEC-10): no variable of the caller's
+# shell chooses their target (a forker may have CLUSTER_NAME exported for another cluster), the cloud
+# kubeconfig is a temporary file, and every script of platform/local checks the kind context first.
+# shellcheck disable=SC2016 # the patterns and messages name shell expansions literally
+check_policy_scripts() {
+  local rc=0 out f
+  forbid '\$\{(CLUSTER_NAME|RESOURCE_GROUP|LAB_[A-Z_]+|CONTRACT_PARAMETER)(:-|-|:=|=)' \
+    "an environment variable must never choose the target of a script of the lab" '*.sh' scripts platform || rc=1
+  out="$(grep -rn --include='*.sh' --exclude=harness.sh -e 'eks update-kubeconfig' scripts platform | grep -v -e '--kubeconfig "\$KUBECONFIG"')" || true
+  [[ -z "$out" ]] || {
+    printf 'aws eks update-kubeconfig must write a temporary file (--kubeconfig "$KUBECONFIG"), never ~/.kube/config:\n%s\n' "$out"
+    rc=1
+  }
+  for f in platform/install.sh platform/uninstall.sh; do
+    grep -q '^  require_lab_cluster ' "$f" || {
+      echo "$f must call require_lab_cluster (tag Project=tx01v2) before it touches the cluster"
+      rc=1
+    }
+  done
+  for f in platform/local/install.sh platform/local/check.sh platform/local/uninstall.sh; do
+    grep -q '^  require_lab_context$' "$f" || {
+      echo "$f must call require_lab_context (only the kind context of the lab) before any kubectl"
+      rc=1
+    }
+  done
+  return "$rc"
+}
+
 check_tflint() {
   need tflint
   [[ -d "$TFLINT_PLUGIN_DIR/github.com/terraform-linters/tflint-ruleset-aws" ]] || skip "tflint-ruleset-aws is not installed (run: make tools)"
@@ -832,6 +860,7 @@ register_checks() {
   register static policy-terraform check_policy_terraform
   register static policy-identifiers check_policy_identifiers
   register static policy-workflows check_policy_workflows
+  register static policy-scripts check_policy_scripts
   register static trivyignore-policy check_trivyignore_policy
   register static contract-platform check_contract_platform
   register static terraform-fmt check_terraform_fmt

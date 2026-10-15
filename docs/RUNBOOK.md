@@ -77,16 +77,26 @@ cd terraform/envs/lab
 cp terraform.tfvars.example terraform.tfvars   # seus valores reais (arquivo ignorado pelo git)
 terraform init -backend-config=backend.hcl
 terraform plan -out tfplan && terraform apply tfplan
-terraform output update_kubeconfig_command
+terraform output update_kubeconfig_command   # o comando que grava o kubeconfig do lab num arquivo próprio
+```
+
+O kubeconfig do lab fica num arquivo só dele: o `~/.kube/config` e o contexto atual da sua máquina
+não mudam (nenhum script do lab mexe neles).
+
+```bash
+aws eks update-kubeconfig --region us-east-1 --name tx01v2-lab --kubeconfig ~/.kube/tx01v2-lab.kubeconfig
+export KUBECONFIG=~/.kube/tx01v2-lab.kubeconfig   # só neste terminal
 ```
 
 ## 5. Plataforma
 
-Dispare `platform` com `action=install` (aprovação do environment `lab`). Localmente:
+Dispare `platform` com `action=install` (aprovação do environment `lab`). Localmente (o script usa um
+kubeconfig temporário e só instala no cluster `tx01v2-lab` com a tag `Project=tx01v2`):
 
 ```bash
 export AWS_REGION=us-east-1
 platform/install.sh        # LBC, ESO, platform/manifests e o OpenTelemetry Collector; termina com ClusterSecretStore Ready
+export KUBECONFIG=~/.kube/tx01v2-lab.kubeconfig   # o arquivo da seção 4
 kubectl get ingressclass alb && kubectl get clustersecretstore aws-secrets-manager
 kubectl -n observability rollout status deployment/opentelemetry-collector
 ```
@@ -116,7 +126,9 @@ kubectl -n dx01v2 get externalsecrets               # SecretSynced
 
 Dispare `terraform-destroy` com a confirmação `destroy tx01v2-lab`. O job roda
 `platform/uninstall.sh` (se o cluster existir), `terraform destroy` e `scripts/leftovers.sh`.
-Qualquer erro para o job: leia o log, corrija e rode de novo. Localmente:
+Qualquer erro para o job: leia o log, corrija e rode de novo. O `platform/uninstall.sh` apaga todo
+Ingress e todo Service `LoadBalancer` do cluster, por isso só age no cluster `tx01v2-lab` com a tag
+`Project=tx01v2`; nenhuma variável de ambiente (`CLUSTER_NAME`, por exemplo) muda o alvo. Localmente:
 
 ```bash
 export AWS_REGION=us-east-1
@@ -128,7 +140,9 @@ scripts/leftovers.sh --retry-for 900
 ## 9. Sobras
 
 `scripts/leftovers.sh` lista `BILLABLE` (sai com 1), `ORPHANED` e `INFO`. Chaves KMS em
-`PendingDeletion` são esperadas (janela de 7 dias). Remoção manual dos casos mais comuns:
+`PendingDeletion` são esperadas (janela de 7 dias). Elastic IPs sem a tag `Project=tx01v2` aparecem
+só como `INFO` ("not the lab's"): não são do lab, não apague. Antes de apagar qualquer item, confira
+que ele é do lab (tag `Project=tx01v2` ou o prefixo `tx01v2-`). Remoção manual dos casos mais comuns:
 
 ```bash
 aws elbv2 delete-load-balancer --load-balancer-arn <ARN>

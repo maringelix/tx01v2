@@ -111,8 +111,8 @@ run "contract_ssm_parameters_and_wiring" {
   }
 
   assert {
-    condition     = output.update_kubeconfig_command == "aws eks update-kubeconfig --region us-east-1 --name tx01v2-lab"
-    error_message = "update_kubeconfig_command is wrong."
+    condition     = output.update_kubeconfig_command == "aws eks update-kubeconfig --region us-east-1 --name tx01v2-lab --kubeconfig ~/.kube/tx01v2-lab.kubeconfig"
+    error_message = "update_kubeconfig_command must write the kubeconfig of the lab to its own file (~/.kube/config is never touched)."
   }
 
   assert {
