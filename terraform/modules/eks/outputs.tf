@@ -57,3 +57,8 @@ output "external_secrets_role_arn" {
   description = "Pod Identity role of external-secrets/external-secrets."
   value       = aws_iam_role.external_secrets.arn
 }
+
+output "trivy_operator_role_arn" {
+  description = "Pod Identity role of trivy-system/trivy-operator, read-only on the two dx01v2 ECR repositories."
+  value       = aws_iam_role.trivy_operator.arn
+}

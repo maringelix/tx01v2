@@ -1,0 +1,178 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: waf-nginx-templates
+  namespace: lab-probe
+data:
+  nginx.conf.template: |
+    load_module modules/ngx_http_modsecurity_module.so;
+    load_module modules/ngx_http_headers_more_filter_module.so;
+
+    worker_processes ${NGINX_WORKER_PROCESSES};
+    pid /tmp/nginx.pid;
+
+    events {
+        worker_connections ${WORKER_CONNECTIONS};
+    }
+
+    http {
+        include /etc/nginx/mime.types;
+        default_type application/octet-stream;
+        client_body_timeout ${CLIENT_BODY_TIMEOUT};
+        keepalive_timeout ${KEEPALIVE_TIMEOUT};
+        sendfile on;
+        http2 ${HTTP2};
+        port_in_redirect ${NGINX_PORT_IN_REDIRECT};
+        limit_req_zone $binary_remote_addr zone=waf_probe:1m rate=1r/s;
+        resolver RESOLVERS RESOLVER_CONFIG;
+        include /etc/nginx/conf.d/*.conf;
+    }
+  default.conf.template: |
+    server_tokens ${SERVER_TOKENS};
+    more_set_headers 'Server: ${SERVER_HEADER}';
+    map $http_upgrade $connection_upgrade {
+        default upgrade;
+        '' close;
+    }
+    server {
+        listen ${PORT} default_server;
+        server_name ${SERVER_NAME};
+        set $always_redirect ${NGINX_ALWAYS_TLS_REDIRECT};
+        limit_req_status 429;
+        PROXY_SSL_CONFIG
+        location / {
+            client_max_body_size 0;
+            limit_req zone=waf_probe burst=0 nodelay;
+            if ($always_redirect = on) {
+                return 301 https://$host$request_uri;
+            }
+            include includes/cors.conf;
+            include includes/proxy_backend.conf;
+            index index.html index.htm;
+            root /usr/share/nginx/html;
+        }
+        include includes/location_common.conf;
+    }
+    server {
+        listen ${SSL_PORT} ssl;
+        HTTP3_CONFIG
+        server_name ${SERVER_NAME};
+        ssl_certificate ${SSL_CERT_FILE};
+        ssl_certificate_key ${SSL_CERT_KEY_FILE};
+        ssl_session_timeout 1d;
+        ssl_session_cache shared:MozSSL:10m;
+        ssl_session_tickets off;
+        ssl_dhparam /etc/ssl/certs/dhparam-${SSL_DH_BITS}.pem;
+        ssl_protocols ${SSL_PROTOCOLS};
+        ssl_ciphers ${SSL_CIPHERS};
+        ssl_prefer_server_ciphers ${SSL_PREFER_CIPHERS};
+        ssl_stapling ${SSL_OCSP_STAPLING};
+        ssl_stapling_verify ${SSL_OCSP_STAPLING};
+        ssl_verify_client ${SSL_VERIFY};
+        ssl_verify_depth ${SSL_VERIFY_DEPTH};
+        PROXY_SSL_CONFIG
+        location / {
+            client_max_body_size 0;
+            limit_req zone=waf_probe burst=0 nodelay;
+            include includes/cors.conf;
+            include includes/proxy_backend.conf;
+            index index.html index.htm;
+            root /usr/share/nginx/html;
+        }
+        include includes/location_common.conf;
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: waf-probe
+  namespace: lab-probe
+  labels:
+    app.kubernetes.io/name: waf-probe
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: waf-probe
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: waf-probe
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: nginx-modsecurity-crs
+          # OWASP CRS 4.30.0 NGINX Alpine build; use its immutable registry digest.
+          image: docker.io/owasp/modsecurity-crs@sha256:f12da37e72e29d1f06e7e829780f1016606d0799eac2966e58ef3819a3d30a50
+          env:
+            - name: BACKEND
+              value: http://echo.lab-probe.svc.cluster.local:8080
+            - name: MODSEC_RULE_ENGINE
+              value: "On"
+            - name: BLOCKING_PARANOIA
+              value: "1"
+            - name: DETECTION_PARANOIA
+              value: "1"
+            - name: PORT
+              value: "8080"
+            - name: PROXY_TIMEOUT
+              value: 10s
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: nginx-templates
+              mountPath: /etc/nginx/templates/nginx.conf.template
+              subPath: nginx.conf.template
+              readOnly: true
+            - name: nginx-templates
+              mountPath: /etc/nginx/templates/conf.d/default.conf.template
+              subPath: default.conf.template
+              readOnly: true
+      volumes:
+        - name: nginx-templates
+          configMap:
+            name: waf-nginx-templates
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: waf-probe
+  namespace: lab-probe
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: waf-probe
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP

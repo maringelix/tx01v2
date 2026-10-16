@@ -11,6 +11,7 @@ variables {
   tx01v2_repository_id = "2000000"
   dx01v2_repository_id = "3000000"
   budget_alert_emails  = ["lab-alerts@example.org"]
+  lab_route53_zone_id  = "Z1234567890ABC"
 }
 
 run "the_boundary_removes_iam_and_account_changes" {
@@ -30,6 +31,34 @@ run "the_boundary_removes_iam_and_account_changes" {
   }
 
   assert {
+    condition = (
+      [for s in jsondecode(aws_iam_policy.lab_boundary.policy).Statement : s.Action if s.Sid == "LabServiceFamiliesOnly"][0] == local.lab_role_actions &&
+      !contains(local.lab_role_actions, "lambda:*") && !contains(local.lab_role_actions, "iam:*")
+    )
+    error_message = "The permissions boundary must cap lab identities to the explicitly reviewed cloud service families."
+  }
+
+  assert {
+    condition = ([for s in jsondecode(aws_iam_policy.lab_boundary.policy).Statement : s if s.Sid == "VeleroBucketOnly"][0] == {
+      Sid      = "VeleroBucketOnly"
+      Effect   = "Allow"
+      Action   = ["s3:ListBucket", "s3:GetBucketLocation"]
+      Resource = "arn:aws:s3:::tx01v2-lab-velero-123456789012-us-east-1"
+    } && [for s in jsondecode(aws_iam_policy.lab_boundary.policy).Statement : s if s.Sid == "VeleroObjectsOnly"][0].Resource == "arn:aws:s3:::tx01v2-lab-velero-123456789012-us-east-1/*")
+    error_message = "The permissions boundary must restrict Velero S3 access to its bucket and objects."
+  }
+
+  assert {
+    condition = [for s in jsondecode(aws_iam_policy.lab_boundary.policy).Statement : s if s.Sid == "ConfiguredRoute53ZoneOnly"][0] == {
+      Sid      = "ConfiguredRoute53ZoneOnly"
+      Effect   = "Allow"
+      Action   = ["route53:ListResourceRecordSets", "route53:ChangeResourceRecordSets"]
+      Resource = "arn:aws:route53:::hostedzone/Z1234567890ABC"
+    }
+    error_message = "The permissions boundary must restrict workload DNS changes to the configured zone."
+  }
+
+  assert {
     condition = alltrue([
       for a in [for s in jsondecode(aws_iam_policy.lab_boundary.policy).Statement : s if s.Sid == "NoIamChangesExceptTheLoadBalancerServiceLinkedRole"][0].Action :
       !startswith(a, "iam:Get") && !startswith(a, "iam:List")
@@ -45,6 +74,22 @@ run "the_boundary_removes_iam_and_account_changes" {
   assert {
     condition     = [for s in jsondecode(aws_iam_policy.lab_boundary.policy).Statement : s if s.Sid == "NoOrganizationOrAccountChanges"][0].Action == ["organizations:*", "account:*"]
     error_message = "The boundary must deny the organization and the account APIs."
+  }
+}
+
+run "the_boundary_has_no_dns_permissions_without_a_zone" {
+  command = apply
+
+  variables {
+    lab_route53_zone_id = ""
+  }
+
+  assert {
+    condition = alltrue([
+      for s in jsondecode(aws_iam_policy.lab_boundary.policy).Statement :
+      !startswith(s.Sid, "ConfiguredRoute53") && s.Sid != "DiscoverRoute53Zones"
+    ])
+    error_message = "A fork without a DNS zone must not grant Route53 permissions to workload identities."
   }
 }
 

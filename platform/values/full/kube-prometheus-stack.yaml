@@ -1,5 +1,5 @@
 # Overlay of platform/local/values/kube-prometheus-stack.yaml for the profile full in the cloud (same
-# chart, same images by digest, same sizes and rules). The in-cluster sink of the local lab does not
+# chart and image digests; cloud-only persistence and retention are configured here). The in-cluster sink of the local lab does not
 # exist here, so Alertmanager keeps every alert (its UI and Grafana show them) and delivers none:
 # SLACK_WEBHOOK_URL at install time adds the Slack receiver
 # (platform/values/full/kube-prometheus-stack-slack.yaml). Helm merges maps and replaces lists: the

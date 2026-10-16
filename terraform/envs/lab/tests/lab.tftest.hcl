@@ -61,8 +61,12 @@ run "contract_ssm_parameters_and_wiring" {
       "/tx01v2/lab/db/secret-name",
       "/tx01v2/lab/app/admin-token-secret-name",
       "/tx01v2/lab/eso/cluster-secret-store",
+      "/tx01v2/lab/dns/enabled",
+      "/tx01v2/lab/dns/domain-name",
+      "/tx01v2/lab/dns/zone-id",
+      "/tx01v2/lab/dns/acm-certificate-arn",
     ])
-    error_message = "The lab must publish exactly the ten contract SSM parameters."
+    error_message = "The lab must publish exactly the fourteen contract SSM parameters."
   }
 
   assert {
@@ -116,8 +120,8 @@ run "contract_ssm_parameters_and_wiring" {
   }
 
   assert {
-    condition     = length(output.ssm_parameter_names) == 10
-    error_message = "ssm_parameter_names must list the ten parameters."
+    condition     = length(output.ssm_parameter_names) == 14
+    error_message = "ssm_parameter_names must list the fourteen parameters."
   }
 }
 

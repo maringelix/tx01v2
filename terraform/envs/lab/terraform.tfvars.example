@@ -12,6 +12,12 @@ github_owner = "your-github-user"
 endpoint_public_access_cidrs = ["203.0.113.10/32"]
 allow_endpoint_from_anywhere = false
 
+# Optional HTTPS and public DNS. The domain and public Route53 zone must already belong to you.
+# Leave both empty for the low-cost HTTP-only core path. For GitHub Actions, set the matching
+# LAB_APP_DOMAIN_NAME and LAB_ROUTE53_PUBLIC_ZONE_ID repository secrets.
+app_domain_name        = ""
+route53_public_zone_id = ""
+
 # tx01v2-gha-apply runs the platform and destroy workflows; add your own admin role too.
 cluster_admin_principal_arns = [
   "arn:aws:iam::123456789012:role/tx01v2-gha-apply",

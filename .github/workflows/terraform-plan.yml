@@ -38,11 +38,18 @@ jobs:
       TF_VAR_app_deployer_principal_arns: ${{ vars.LAB_APP_DEPLOYER_PRINCIPAL_ARNS || '[]' }}
       TF_VAR_node_instance_types: ${{ vars.LAB_NODE_INSTANCE_TYPES || '["t3.medium","t3a.medium"]' }}
       TF_VAR_node_desired_size: ${{ vars.LAB_NODE_DESIRED_SIZE || '2' }}
+      # Optional public DNS: use secrets so real hostnames and hosted-zone IDs stay out of logs.
+      TF_VAR_app_domain_name: ${{ secrets.LAB_APP_DOMAIN_NAME }}
+      TF_VAR_route53_public_zone_id: ${{ secrets.LAB_ROUTE53_PUBLIC_ZONE_ID }}
     steps:
       - name: Mask the addresses of the operator in the logs
         env:
           CIDRS: ${{ secrets.LAB_ENDPOINT_PUBLIC_ACCESS_CIDRS }}
+          APP_DOMAIN_NAME: ${{ secrets.LAB_APP_DOMAIN_NAME }}
+          ROUTE53_PUBLIC_ZONE_ID: ${{ secrets.LAB_ROUTE53_PUBLIC_ZONE_ID }}
         run: |
+          [[ -z "$APP_DOMAIN_NAME" ]] || echo "::add-mask::$APP_DOMAIN_NAME"
+          [[ -z "$ROUTE53_PUBLIC_ZONE_ID" ]] || echo "::add-mask::$ROUTE53_PUBLIC_ZONE_ID"
           if [[ -n "$CIDRS" ]]; then
             addresses="$(jq -r '.[]' <<<"$CIDRS")"
             while IFS= read -r cidr; do
@@ -89,10 +96,14 @@ jobs:
       - name: Plan text to the job summary
         env:
           CIDRS: ${{ secrets.LAB_ENDPOINT_PUBLIC_ACCESS_CIDRS }}
+          APP_DOMAIN_NAME: ${{ secrets.LAB_APP_DOMAIN_NAME }}
+          ROUTE53_PUBLIC_ZONE_ID: ${{ secrets.LAB_ROUTE53_PUBLIC_ZONE_ID }}
         run: |
           account_id="$(aws sts get-caller-identity --query Account --output text)"
           plan_text="$(terraform -chdir=terraform/envs/lab show -no-color tfplan)"
           plan_text="${plan_text//"$account_id"/<ACCOUNT_ID>}"
+          if [[ -n "$APP_DOMAIN_NAME" ]]; then plan_text="${plan_text//"$APP_DOMAIN_NAME"/<APP_DOMAIN>}"; fi
+          if [[ -n "$ROUTE53_PUBLIC_ZONE_ID" ]]; then plan_text="${plan_text//"$ROUTE53_PUBLIC_ZONE_ID"/<HOSTED_ZONE_ID>}"; fi
           # The job summary and the artifact are not covered by the masks of the log.
           while IFS= read -r cidr; do
             plan_text="${plan_text//"$cidr"/<CIDR>}"

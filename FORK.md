@@ -69,7 +69,7 @@ of the ruleset. On Windows, run it from WSL or Git Bash.
 ```bash
 make tools                     # the pinned tools into .tools/, each one SHA256-verified
 HARNESS_STRICT=1 make verify   # static checks and terraform test: what the CI jobs static and test run
-make e2e                       # the whole local lab: apply, platform, 34 probes, destroy
+make e2e                       # the whole local lab: apply, platform, 39 probes, destroy
 ```
 
 `make e2e` builds the platform of [docs/LAB_LOCAL.md](docs/LAB_LOCAL.md) on Docker: a kind cluster
@@ -114,7 +114,9 @@ Before the first apply:
   bill by the hour while the lab is up, and free tiers and trial credits change often: check what
   your account covers. The bootstrap creates a monthly budget with alerts, but a budget only warns,
   it stops nothing. Destroy on the same day.
-- Use a **dedicated AWS account** (the apply role administers the whole lab account), an
+- Use a **dedicated AWS account** (the apply identity can manage the AWS service families used by the
+  lab; most resource creation APIs are scoped to those service families, while IAM roles, the Velero
+  bucket and optional Route53 records are further restricted), an
   administrator with MFA for the bootstrap, the AWS CLI v2 and `jq`.
 
 Then, from the root of your `tx01v2` clone:
@@ -127,6 +129,9 @@ Then, from the root of your `tx01v2` clone:
    writes them into the OIDC subject of every repository created after 2026-07-15 (your fork), and the
    roles trust that exact subject. `scripts/repo-guardrails.sh` prints them, or:
    `gh api users/<you> --jq .id`, `gh api repos/<you>/tx01v2 --jq .id`, `gh api repos/<you>/dx01v2 --jq .id`.
+   For optional DNS/HTTPS, set `lab_route53_zone_id` in this bootstrap file to your existing public
+   hosted zone; use the same ID in the tx01v2 DNS secret later. Leave it empty for HTTP-only. This
+   limits the plan/apply roles' Route53 permissions to that zone.
    A repository that predates 2026-07-15 must opt in to immutable subject claims first (Settings >
    Actions > General > OpenID Connect). If the account already has a GitHub OIDC provider, set
    `create_github_oidc_provider = false`: it is read by its URL and never changed.

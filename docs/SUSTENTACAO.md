@@ -11,7 +11,7 @@ Cobre o código (Terraform, scripts, workflows), as ferramentas do harness, as v
 ## 2. Estado atual
 
 - Harness completo (`make verify`) `verificado no CI` (jobs `static` e `test`).
-- Lab local (`docs/LAB_LOCAL.md`): `make e2e` com o perfil `full` (34 sondas) `verificado no CI`
+- Lab local (`docs/LAB_LOCAL.md`): `make e2e` com o perfil `full` (39 sondas esperadas; CI pendente)
   (job `e2e`); `verificado localmente` em 2026-10-13 (`full`) e 2026-10-14 (`observability` e
   `operations`, com traces, Slack e os novos experimentos de chaos).
 - Bootstrap, apply, plataforma e destroy: `não executado em nuvem (v2)`.

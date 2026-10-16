@@ -1,0 +1,14 @@
+# Encrypted gp3 volumes for Prometheus, Alertmanager, Grafana, Loki and Tempo in profile full.
+# Only EKS Pod Identity of the EBS CSI controller can provision and delete driver-tagged volumes.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: tx01v2-gp3
+provisioner: ebs.csi.aws.com
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+reclaimPolicy: Delete
+parameters:
+  type: gp3
+  encrypted: "true"
+  fsType: ext4

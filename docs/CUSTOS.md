@@ -39,6 +39,14 @@ uso medido e o cálculo não inclui os pods gerenciados do EKS.
 | core | — | 2 × `t3.medium`/`t3a.medium` | ~US$0,26/h | ~US$0,32/h |
 | full | 795m CPU / 3104MiB RAM | 2 × `t3.large`/`t3a.large` | **~US$0,29/h** | **~US$0,40/h** |
 
+O perfil `full` também reserva **36 GiB de EBS gp3** para Prometheus (12 GiB), Alertmanager (2 GiB),
+Grafana (2 GiB), Loki (10 GiB) e Tempo (10 GiB). A US$0,08/GiB-mês em `us-east-1`, isso soma
+aproximadamente **US$2,88/mês**, ou **US$0,004/h**, enquanto os volumes existirem. O preço é por
+capacidade provisionada; reduzir retenção não reduz o tamanho da fatura enquanto o PVC continuar com
+o mesmo pedido. `platform/uninstall.sh` remove os PVCs desses charts e espera o EBS CSI concluir a
+exclusão dos volumes antes do destroy. [Preço EBS gp3](https://aws.amazon.com/ebs/pricing/), verificado
+em 2026-10-16.
+
 Para `full`, defina as variáveis de repositório `LAB_NODE_INSTANCE_TYPES='["t3.large","t3a.large"]'` e
 `LAB_NODE_DESIRED_SIZE=2` antes do `terraform-plan` e mantenha os mesmos valores até o destroy. Os três
 workflows Terraform passam esses valores como `TF_VAR_*`; sem eles, ficam os padrões baratos do `core`.
@@ -47,8 +55,9 @@ uma hipótese de 35% do preço on-demand igual à usada na linha do perfil `core
 varia por zona e hora; os valores de `t3a` também podem variar. O grupo padrão de dois `t3.medium` não
 é o tamanho documentado para o `full`.
 
-Uma rodada de 3 horas fica em cerca de **US$0,87 com Spot** ou **US$1,21 on-demand**. Se ficar ligado
-730 horas, o total de referência chega a aproximadamente US$212/mês ou US$292/mês, respectivamente;
+Uma rodada de 3 horas fica em cerca de **US$0,88 com Spot** ou **US$1,22 on-demand**, incluindo o
+armazenamento do `full`. Se ficar ligado 730 horas, o total de referência chega a aproximadamente
+US$215/mês ou US$295/mês, respectivamente;
 tráfego, ingestão e armazenamento podem aumentar esse valor. O budget mensal de US$25 continua
 intencionalmente baixo e envia alertas em 50%, 80%, 100% e previsão de 100%: ele avisa, mas não para
 recursos.

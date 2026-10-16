@@ -14,11 +14,11 @@ Tipos: `bloqueante` (falha o CI ou o apply), `alerta` (notifica), `processo` (di
 | SEC-04 | GitHub → AWS só por OIDC, com `sub` exato (StringEquals) e `aud` `sts.amazonaws.com`; o `sub` é o imutável (`repo:<dono>@<id>/<repo>@<id>:...`), com os IDs numéricos do dono e do repositório | sem chaves estáticas; nenhum outro repo/branch assume os papéis; um nome de conta apagado e registrado de novo não herda o lab | `terraform/bootstrap/tests/oidc_roles.tftest.hcl`; `scripts/repo-guardrails.sh` confere o `sub` do repositório | bloqueante |
 | SEC-05 | `id-token: write` só no job de nuvem que precisa; nunca no `ci.yml` | limita quem obtém credenciais | check `policy-workflows` | bloqueante |
 | SEC-06 | Endpoint público do EKS restrito a `endpoint_public_access_cidrs`; `0.0.0.0/0` exige `allow_endpoint_from_anywhere = true` | reduz exposição da API; a escolha fica explícita | validação de variável + `tests/validations.tftest.hcl` | bloqueante |
-| SEC-07 | Papel apply: IAM só em `role/`, `policy/`, `instance-profile/` `tx01v2-*`; negado em `role/tx01v2-gha-*`; papel plan só lê os serviços do lab (Describe/Get/List), não a conta inteira | o lab não altera a própria identidade de CI nem lê dados de outros projetos da conta | `oidc_roles.tftest.hcl` (`role_permissions_follow_the_contract`) | bloqueante |
+| SEC-07 | Papel apply: sem `PowerUserAccess`; serviços restritos às famílias usadas pelo lab, IAM em `tx01v2-*`, state e bucket Velero por ARN, Route53 na zona configurada; negado em `role/tx01v2-gha-*`; papel plan só lê serviços e zona configurados | reduz ações fora do lab e impede que um fork altere a própria identidade de CI | `oidc_roles.tftest.hcl` (`role_permissions_follow_the_contract`) | bloqueante |
 | SEC-08 | Plan só para PRs do próprio repositório (guarda `head.repo.full_name == github.repository`) | forks nunca recebem credenciais | `terraform-plan.yml` | processo |
 | SEC-09 | O bootstrap não tem dono padrão: `github_owner` é obrigatório e o placeholder `your-github-user` é recusado; `budget_alert_emails` recusa o placeholder `you@example.com` | um fork que esquecesse de trocar o dono confiaria nos repositórios de outra pessoa, e sem um e-mail lido o alerta de custo não chega (`FORK.md`) | validações das variáveis; `placeholder_owner_is_refused`, `placeholder_alert_email_is_refused` | bloqueante |
 | SEC-10 | Scripts só agem no que o lab criou: o alvo vem do contrato e é conferido pela tag `Project=tx01v2` antes de qualquer mudança (nenhuma variável de ambiente, como `CLUSTER_NAME`, muda o alvo); kubeconfig e repositórios do Helm em arquivos temporários (o `~/.kube/config` e o contexto atual de quem roda não mudam); os scripts de `platform/local` só falam com o contexto `kind-tx01v2-local`; o `leftovers.sh` só conta como sobra o que tem a tag do lab | quem faz fork roda os scripts na própria máquina e na própria conta, onde pode haver clusters, contextos e variáveis de outros projetos | check `policy-scripts`; `require_lab_cluster` (`scripts/lib/aws.sh`) e `require_lab_context` (`scripts/lib/local.sh`) | bloqueante |
-| SEC-11 | Todo papel IAM que o apply cria leva o *permissions boundary* `tx01v2-lab-boundary` (sem mudanças de IAM, da organização e da conta); o apply só cria ou troca o boundary de um papel com ele e não pode editá-lo nem tirá-lo | o papel apply anexa políticas a papéis `tx01v2-*`: sem o boundary, daria `AdministratorAccess` a um deles | `terraform/bootstrap/tests/boundary.tftest.hcl`; `tests/eks.tftest.hcl` e `tests/network.tftest.hcl` (todo papel do lab) | bloqueante |
+| SEC-11 | Todo papel IAM que o apply cria leva o *permissions boundary* `tx01v2-lab-boundary` (famílias de serviço do lab, S3 só no bucket Velero, Route53 só na zona opcional, sem IAM, organização ou APIs da conta); o apply só cria ou troca o boundary de um papel com ele e não pode editá-lo nem tirá-lo | o papel apply anexa políticas a papéis `tx01v2-*`; o boundary limita o alcance efetivo dessas políticas | `terraform/bootstrap/tests/boundary.tftest.hcl`; `tests/eks.tftest.hcl` e `tests/network.tftest.hcl` (todo papel do lab) | bloqueante |
 | SEC-12 | O secret `LAB_ENDPOINT_PUBLIC_ACCESS_CIDRS` (de onde você opera) é mascarado, cada CIDR e cada IP, em todo workflow de nuvem; o resumo do job e os artefatos trocam os valores | os logs, o resumo e os artefatos de um repositório público são públicos | `policy-workflows` | bloqueante |
 | SUP-01 | Ferramentas do harness com versão e SHA256 fixados; divergência é erro fatal | cadeia de suprimentos | `scripts/install-tools.sh`, `tools/checksums.txt` | bloqueante |
 | SUP-02 | Toda action fixada por SHA de 40 caracteres com comentário `# vX.Y.Z` | tags podem ser movidas | `policy-workflows` | bloqueante |
@@ -76,20 +76,25 @@ Uma exceção é um ignore de scanner. Para adicionar uma:
 3. Explique a exceção no PR. O check `trivyignore-policy` rejeita entradas sem justificativa, sem
    validade, vencidas ou longas demais; o trivy deixa de aplicar uma entrada vencida.
 
-Exceções atuais (verificado em 2026-10-10): `AWS-0040` e `AWS-0041` (endpoint público restrito por
+Exceções atuais (verificado em 2026-10-16): `AWS-0040` e `AWS-0041` (endpoint público restrito por
 CIDR), `AWS-0132` (bucket de state com SSE-S3 em vez de CMK), `KSV-0056` (deployer cria Services,
 Ingresses e NetworkPolicies, exigido pelo contrato). Achados MEDIUM/LOW conhecidos e aceitos, que não
 falham o scan: backup de 1 dia (`AWS-0077`), deletion protection desligada (`AWS-0177`), Performance
 Insights desligado (`AWS-0133`), access logging do bucket de state (`AWS-0089`) e leitura de secrets
 pelo deployer (`KSV-0113`).
 
+`KSV-0014` is an additional time-bound exception for the disposable local OWASP CRS WAF probe only:
+the upstream image does not publish a read-only variant. The probe is exposed only through the
+ephemeral kind Gateway and still runs non-root, with no privilege escalation, dropped capabilities,
+seccomp RuntimeDefault and read-only ConfigMap mounts. Its exception expires on 2027-04-30.
+
 ## Limites (o que NÃO é garantido)
 
 - Nada do v2 rodou na AWS: os testes usam um provider AWS mockado e provam a configuração, não que a
   AWS aceita cada chamada nem que os recursos funcionam juntos.
-- O papel `tx01v2-gha-apply` é, na prática, equivalente a administrador da conta: pode criar papéis e
-  políticas `tx01v2-*` com qualquer permissão. Por isso: conta AWS dedicada, environment `lab` com
-  revisor obrigatório e deploy só a partir de `main`. Um permission boundary está `planejado`.
+- O papel `tx01v2-gha-apply` tem privilégio alto nas famílias AWS que o lab usa; recursos de criação
+  nem sempre aceitam restrições por ARN antes de existirem. IAM, bucket Velero, state e Route53 têm
+  escopo mais estreito. Use uma conta dedicada e configure a hosted zone no bootstrap antes de ligar DNS.
 - O ID da conta aparece em logs públicos de workflows (ARN do papel como input, nome do bucket).
   A AWS não trata account IDs como segredo, mas use uma conta dedicada. `mask-aws-account-id` mascara
   o que vem depois da autenticação, e o resumo do plan troca o ID por `<ACCOUNT_ID>`.
@@ -98,9 +103,8 @@ pelo deployer (`KSV-0113`).
 - A política IAM do LBC é a do upstream, com recursos `*` limitados por condições de tag.
 - `scripts/leftovers.sh` cobre os serviços que o lab usa; recursos criados à mão fora disso não.
 - O schema do ClusterSecretStore no kubeconform é de 2026-06-02 (ver `docs/HARNESS.md`).
-- O perfil `full` nunca foi instalado na AWS. Sem credencial de ECR, o Trivy Operator pode não
-  produzir relatórios para imagens privadas; as imagens e manifests são validados no render, mas a
-  cobertura de scan em runtime precisa de credencial configurada pelo operador.
+- O perfil `full` nunca foi instalado na AWS. O código associa EKS Pod Identity ao Trivy Operator e
+  restringe a leitura aos dois repositórios ECR do app; o scan privado real aguarda homologação cloud.
 - O lab local prova a plataforma num nó kind, não na AWS; o cloud-provider-kind usa o socket do Docker
   (cria contêineres): rode o lab local só numa máquina descartável ou no CI (`docs/LAB_LOCAL.md`).
 - Os namespaces `istio-system`, `monitoring-agents` e `chaos-mesh` do lab local são `privileged` por

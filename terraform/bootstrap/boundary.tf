@@ -6,8 +6,8 @@
 # the organization or the account. The apply role can only create or re-bound a lab role with this
 # boundary (roles.tf), and it cannot edit the boundary or take it off a role.
 #
-# The boundary only removes: it does not list the services of the lab, so a new component of the
-# platform does not need a change here. The data-plane limits of each role are its own policies.
+# The boundary caps lab roles to the service families in terraform/bootstrap/roles.tf. A new
+# component needs an explicit service-family review before its identity can access another AWS API.
 
 locals {
   lab_boundary_name = "${local.project}-lab-boundary"
@@ -43,13 +43,26 @@ resource "aws_iam_policy" "lab_boundary" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
+    Statement = concat([
       {
-        Sid      = "TheBoundaryOnlyRemoves"
+        Sid      = "LabServiceFamiliesOnly"
         Effect   = "Allow"
-        Action   = "*"
+        Action   = local.lab_role_actions
         Resource = "*"
       },
+      {
+        Sid      = "VeleroBucketOnly"
+        Effect   = "Allow"
+        Action   = local.lab_velero_bucket_actions
+        Resource = local.velero_bucket_arn
+      },
+      {
+        Sid      = "VeleroObjectsOnly"
+        Effect   = "Allow"
+        Action   = local.lab_velero_object_actions
+        Resource = "${local.velero_bucket_arn}/*"
+      },
+      ], local.lab_route53_boundary_statements, [
       {
         # The load balancer controller creates the service-linked role of Elastic Load Balancing the
         # first time it needs it: the one IAM write that stays.
@@ -69,6 +82,6 @@ resource "aws_iam_policy" "lab_boundary" {
         Action   = ["organizations:*", "account:*"]
         Resource = "*"
       },
-    ]
+    ])
   })
 }

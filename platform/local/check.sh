@@ -19,6 +19,8 @@ CURL_IMAGE="curlimages/curl:8.22.0@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da
 PROBE_HOST=probe.tx01v2.local
 WORK_DIR=""
 PASSED=0
+ACME_PROBE_IP=""
+PEBBLE_FORWARD_PID=""
 
 pass() {
   PASSED=$((PASSED + 1))
@@ -27,6 +29,10 @@ pass() {
 
 cleanup() {
   local rc=$?
+  if [[ -n "$PEBBLE_FORWARD_PID" ]]; then
+    kill "$PEBBLE_FORWARD_PID" >/dev/null 2>&1 || true
+    wait "$PEBBLE_FORWARD_PID" >/dev/null 2>&1 || true
+  fi
   if ((rc != 0)); then
     log "diagnostics:"
     kubectl get pods --all-namespaces -o wide 2>&1 | sed 's/^/  /' >&2 || true
@@ -42,7 +48,9 @@ cleanup() {
       kubectl top pods --all-namespaces >"$LOCAL_DIAGNOSTICS_DIR/top.txt" 2>&1 || true
     fi
   fi
-  kubectl delete namespace lab-probe lab-probe-outside lab-probe-policy lab-probe-backup lab-probe-gitops \
+  kubectl delete clusterissuer pebble-local --ignore-not-found >/dev/null 2>&1 || true
+  kubectl -n cert-manager delete secret pebble-local-account --ignore-not-found >/dev/null 2>&1 || true
+  kubectl delete namespace lab-probe lab-probe-outside lab-probe-policy lab-probe-backup lab-probe-gitops lab-acme \
     --ignore-not-found --wait=false >/dev/null 2>&1 || true
   kubectl -n argocd delete application lab-probe --ignore-not-found --wait=false >/dev/null 2>&1 || true
   kubectl -n argocd delete appproject lab-probe --ignore-not-found >/dev/null 2>&1 || true
@@ -261,6 +269,10 @@ spec:
         mode: Terminate
         certificateRefs:
           - name: probe-tls
+    - name: acme-validation
+      protocol: HTTP
+      port: 5002
+      hostname: $PROBE_HOST
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
@@ -304,6 +316,7 @@ EOF
     sleep 1
   done
   [[ "$ip" =~ ^[0-9.]+$ ]] || die "gateway: no load balancer address (cloud-provider-kind)"
+  ACME_PROBE_IP="$ip"
   pass "gateway: Gateway probe Programmed with the load balancer address $ip (cloud-provider-kind)"
   tf_out ca_cert_pem >"$WORK_DIR/ca.pem"
   for i in $(seq 1 60); do
@@ -324,6 +337,192 @@ EOF
   code="$(curl -sS -m 5 -o /dev/null -w '%{http_code}' --resolve "$PROBE_HOST:80:$ip" "http://$PROBE_HOST/hostname")"
   [[ "$code" == 301 ]] || die "gateway: HTTP must redirect to HTTPS (got $code)"
   pass "gateway: http://$PROBE_HOST -> 301 to HTTPS"
+}
+
+# The local twin runs the real OWASP CRS engine for SQLi and NGINX request limiting for a small
+# burst. It is reachable only through the local Gateway and is deleted by cleanup.
+check_waf() {
+  local status i code saw_limited=0 saw_allowed=0
+  kubectl apply -f "$REPO_ROOT/platform/local/manifests/waf-probe.yaml" >/dev/null
+  kubectl -n lab-probe wait --for=condition=Available deployment/waf-probe --timeout=180s >/dev/null ||
+    die "waf: the local OWASP CRS proxy did not become ready"
+  kubectl -n lab-probe apply -f - >/dev/null <<EOF
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: waf-probe
+spec:
+  parentRefs:
+    - name: probe
+      sectionName: https
+  hostnames: ["$PROBE_HOST"]
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /waf
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: waf-probe
+          port: 8080
+EOF
+  for i in $(seq 1 45); do
+    status="$(kubectl -n lab-probe get httproute waf-probe -o jsonpath='{.status.parents[0].conditions[?(@.type=="Accepted")].status}' 2>/dev/null || true)"
+    [[ "$status" == True ]] && break
+    sleep 2
+  done
+  [[ "$status" == True ]] || die "waf: Gateway API did not attach the local WAF route"
+
+  status="$(curl -sS -m 10 -o "$WORK_DIR/waf-benign.body" -w '%{http_code}' --cacert "$WORK_DIR/ca.pem" \
+    --resolve "$PROBE_HOST:443:$ACME_PROBE_IP" "https://$PROBE_HOST/waf/hostname")" ||
+    die "waf: the benign probe could not reach the local WAF"
+  [[ "$status" == 200 && "$(cat "$WORK_DIR/waf-benign.body")" == echo-* ]] ||
+    die "waf: benign traffic did not reach the backend (HTTP $status)"
+  pass "waf: benign request passes through the local ModSecurity/OWASP CRS proxy"
+
+  status="$(curl -sS -m 10 -o /dev/null -w '%{http_code}' --cacert "$WORK_DIR/ca.pem" \
+    --resolve "$PROBE_HOST:443:$ACME_PROBE_IP" --get --data-urlencode "id=1' OR '1'='1" \
+    "https://$PROBE_HOST/waf/hostname")" || die "waf: SQLi probe did not receive an HTTP response"
+  [[ "$status" == 403 ]] || die "waf: OWASP CRS did not block the SQL injection probe (HTTP $status)"
+  pass "waf: OWASP CRS blocks a SQL injection probe with HTTP 403"
+
+  for i in $(seq 1 12); do
+    (
+      curl -sS -m 10 -o /dev/null -w '%{http_code}' --cacert "$WORK_DIR/ca.pem" \
+        --resolve "$PROBE_HOST:443:$ACME_PROBE_IP" "https://$PROBE_HOST/waf/hostname" \
+        >"$WORK_DIR/waf-rate-$i.status" 2>/dev/null || true
+    ) &
+  done
+  wait
+  for i in $(seq 1 12); do
+    code="$(cat "$WORK_DIR/waf-rate-$i.status" 2>/dev/null || true)"
+    [[ "$code" == 429 ]] && saw_limited=1
+    [[ "$code" == 200 ]] && saw_allowed=1
+  done
+  ((saw_limited == 1 && saw_allowed == 1)) ||
+    die "waf: concurrent burst must include both an allowed request and HTTP 429 (allowed=$saw_allowed blocked=$saw_limited)"
+  pass "waf: NGINX rate limit allows a request and blocks a burst with HTTP 429"
+}
+
+# Pebble is a test CA, isolated to this ephemeral cluster. The short-lived profile gives cert-manager
+# a real ACME renewal deadline in minutes; no environment variable bypasses HTTP-01 validation.
+check_acme() {
+  local ca_bundle status revision serial="" initial_serial renewal_time renewal_epoch now i
+  kubectl apply -f - >/dev/null <<'EOF'
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lab-acme
+  labels:
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce-version: latest
+EOF
+  openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 2 \
+    -keyout "$WORK_DIR/pebble-server.key" -out "$WORK_DIR/pebble-server.crt" \
+    -subj "/CN=pebble.lab-acme.svc" \
+    -addext "subjectAltName=DNS:pebble.lab-acme.svc,DNS:pebble.lab-acme.svc.cluster.local" \
+    -addext "basicConstraints=critical,CA:TRUE" \
+    -addext "keyUsage=critical,digitalSignature,keyEncipherment,keyCertSign,cRLSign" \
+    -addext "extendedKeyUsage=serverAuth" >/dev/null 2>&1 || die "acme: could not create the ephemeral Pebble API TLS certificate"
+  kubectl -n lab-acme create secret tls pebble-server-tls --cert="$WORK_DIR/pebble-server.crt" \
+    --key="$WORK_DIR/pebble-server.key" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+  kubectl apply -f "$REPO_ROOT/platform/local/manifests/pebble.yaml" >/dev/null
+  kubectl -n lab-acme wait --for=condition=Available deployment/pebble deployment/challtestsrv --timeout=120s >/dev/null ||
+    die "acme: Pebble or challtestsrv did not become ready"
+
+  kubectl -n lab-acme port-forward service/challtestsrv 18055:management >"$WORK_DIR/challtestsrv-port-forward.log" 2>&1 &
+  PEBBLE_FORWARD_PID=$!
+  for i in $(seq 1 30); do
+    status="$(curl -sS -m 2 -o /dev/null -w '%{http_code}' http://127.0.0.1:18055/not-found 2>/dev/null || true)"
+    [[ "$status" == 404 ]] && break
+    sleep 1
+  done
+  [[ "$status" == 404 ]] || die "acme: challtestsrv management API port-forward did not start"
+  curl -fsS -X POST -H 'Content-Type: application/json' \
+    -d "{\"ip\":\"$ACME_PROBE_IP\"}" http://127.0.0.1:18055/set-default-ipv4 >/dev/null ||
+    die "acme: could not route Pebble DNS validation to the local Gateway"
+
+  ca_bundle="$(base64 <"$WORK_DIR/pebble-server.crt" | tr -d '\r\n')"
+  kubectl apply -f - >/dev/null <<EOF
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: pebble-local
+spec:
+  acme:
+    email: learner@example.org
+    server: https://pebble.lab-acme.svc.cluster.local:14000/dir
+    caBundle: "$ca_bundle"
+    profile: shortlived
+    privateKeySecretRef:
+      name: pebble-local-account
+    solvers:
+      - http01:
+          gatewayHTTPRoute:
+            parentRefs:
+              - name: probe
+                namespace: lab-probe
+                sectionName: acme-validation
+        selector:
+          dnsNames:
+            - $PROBE_HOST
+        waitInsteadOfSelfCheck: 10s
+EOF
+  kubectl wait --for=condition=Ready clusterissuer/pebble-local --timeout=90s >/dev/null ||
+    die "acme: cert-manager could not register with the local ACME server"
+  kubectl -n lab-probe apply -f - >/dev/null <<EOF
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: probe-acme
+spec:
+  secretName: probe-acme-tls
+  # cert-manager's API minimum is one hour; the local Pebble profile actually issues 20m certs.
+  duration: 1h
+  dnsNames:
+    - $PROBE_HOST
+  issuerRef:
+    name: pebble-local
+    kind: ClusterIssuer
+    group: cert-manager.io
+  renewBefore: 15m
+EOF
+  kubectl -n lab-probe wait --for=condition=Ready certificate/probe-acme --timeout=180s >/dev/null ||
+    die "acme: cert-manager did not issue an HTTP-01 certificate from Pebble"
+  kubectl -n lab-probe get secret probe-acme-tls -o jsonpath='{.data.tls\.crt}' | base64 -d >"$WORK_DIR/probe-acme.crt"
+  openssl x509 -in "$WORK_DIR/probe-acme.crt" -noout -checkhost "$PROBE_HOST" >/dev/null 2>&1 ||
+    die "acme: issued certificate does not cover $PROBE_HOST"
+  initial_serial="$(openssl x509 -in "$WORK_DIR/probe-acme.crt" -noout -serial | cut -d= -f2)"
+  revision="$(kubectl -n lab-probe get certificate probe-acme -o jsonpath='{.status.revision}')"
+  [[ "$revision" == 1 && -n "$initial_serial" ]] || die "acme: first issuance revision/serial was unexpected (revision=$revision)"
+  pass "acme: Pebble completed DNS and HTTP-01 routing; cert-manager issued a hostname-valid certificate"
+
+  renewal_time="$(kubectl -n lab-probe get certificate probe-acme -o jsonpath='{.status.renewalTime}')"
+  renewal_epoch="$(date -d "$renewal_time" +%s 2>/dev/null || true)"
+  now="$(date +%s)"
+  if [[ ! "$renewal_epoch" =~ ^[0-9]+$ ]] || ((renewal_epoch < now - 10 || renewal_epoch > now + 600)); then
+    die "acme: automatic renewal was not scheduled within ten minutes (renewalTime=${renewal_time:-missing})"
+  fi
+
+  for i in $(seq 1 144); do
+    revision="$(kubectl -n lab-probe get certificate probe-acme -o jsonpath='{.status.revision}' 2>/dev/null || true)"
+    if [[ "$revision" =~ ^[0-9]+$ ]] && ((revision >= 2)); then
+      kubectl -n lab-probe get secret probe-acme-tls -o jsonpath='{.data.tls\.crt}' | base64 -d >"$WORK_DIR/probe-acme-renewed.crt"
+      serial="$(openssl x509 -in "$WORK_DIR/probe-acme-renewed.crt" -noout -serial | cut -d= -f2)"
+      [[ -n "$serial" && "$serial" != "$initial_serial" ]] && break
+    fi
+    sleep 5
+  done
+  [[ "$revision" =~ ^[0-9]+$ ]] && ((revision >= 2)) && [[ "$serial" != "$initial_serial" ]] ||
+    die "acme: cert-manager did not automatically rotate the short-lived certificate within twelve minutes"
+  kubectl -n lab-probe wait --for=condition=Ready certificate/probe-acme --timeout=30s >/dev/null ||
+    die "acme: renewed certificate is not Ready"
+  pass "acme: cert-manager automatically renewed the certificate (revision $revision, new serial $serial)"
 }
 
 check_external_secrets() {
@@ -1218,7 +1417,7 @@ EOF
 }
 
 main() {
-  require_cmd kubectl docker curl terraform helm git ssh
+  require_cmd kubectl docker curl terraform helm git ssh openssl
   require_lab_context
   kubectl version >/dev/null 2>&1 || die "the lab cluster is not reachable (run: scripts/local-lab.sh up)"
   WORK_DIR="$(mktemp -d)"
@@ -1228,6 +1427,8 @@ main() {
   deploy_echo
   check_mesh
   check_gateway
+  check_waf
+  check_acme
   check_external_secrets
   check_metrics_server
   if installed kube-prometheus-stack monitoring; then

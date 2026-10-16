@@ -66,6 +66,17 @@ variable "state_bucket_force_destroy" {
   default     = false
 }
 
+variable "lab_route53_zone_id" {
+  description = "Optional existing public Route53 hosted zone that the lab app may use. When set, the GitHub apply and plan roles can change or inspect records only in this zone; it must match terraform/envs/lab/route53_public_zone_id."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.lab_route53_zone_id == "" || can(regex("^Z[A-Z0-9]+$", var.lab_route53_zone_id))
+    error_message = "The lab_route53_zone_id must be empty or look like Z0123456789ABC."
+  }
+}
+
 variable "monthly_budget_usd" {
   description = "Monthly AWS cost budget of the account, in USD."
   type        = number

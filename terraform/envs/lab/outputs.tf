@@ -64,3 +64,18 @@ output "external_secrets_role_arn" {
   description = "Pod Identity role of External Secrets Operator."
   value       = module.eks.external_secrets_role_arn
 }
+
+output "app_domain_name" {
+  description = "Public app DNS name, or disabled when the optional Route53 integration is not configured."
+  value       = local.dns_enabled ? var.app_domain_name : "disabled"
+}
+
+output "app_certificate_arn" {
+  description = "DNS-validated ACM certificate for the app ALB, or disabled when no domain is configured."
+  value       = local.dns_enabled ? aws_acm_certificate_validation.app[0].certificate_arn : "disabled"
+}
+
+output "external_dns_role_arn" {
+  description = "EKS Pod Identity role limited to the app record in the configured public Route53 zone, or disabled."
+  value       = local.dns_enabled ? aws_iam_role.external_dns[0].arn : "disabled"
+}

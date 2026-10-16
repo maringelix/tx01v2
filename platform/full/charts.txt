@@ -14,10 +14,10 @@ ISTIO_REPO ISTIO_VERSION ISTIOD_SHA256 istiod istiod istio-system local/values/i
 ISTIO_REPO ISTIO_VERSION ISTIO_CNI_SHA256 cni istio-cni istio-system local/values/istio-cni.yaml
 ISTIO_REPO ISTIO_VERSION ZTUNNEL_SHA256 ztunnel ztunnel istio-system local/values/ztunnel.yaml
 CERT_MANAGER_REPO CERT_MANAGER_VERSION CERT_MANAGER_SHA256 cert-manager cert-manager cert-manager local/values/cert-manager.yaml
-KPS_REPO KPS_VERSION KPS_SHA256 kube-prometheus-stack kube-prometheus-stack monitoring local/values/kube-prometheus-stack.yaml,values/full/kube-prometheus-stack.yaml
-GRAFANA_REPO LOKI_VERSION LOKI_SHA256 loki loki monitoring local/values/loki.yaml
+KPS_REPO KPS_VERSION KPS_SHA256 kube-prometheus-stack kube-prometheus-stack monitoring local/values/kube-prometheus-stack.yaml,values/full/kube-prometheus-stack.yaml,values/full/kube-prometheus-stack-storage.yaml
+GRAFANA_REPO LOKI_VERSION LOKI_SHA256 loki loki monitoring local/values/loki.yaml,values/full/loki.yaml
 GRAFANA_REPO ALLOY_VERSION ALLOY_SHA256 alloy alloy monitoring local/values/alloy.yaml
-GRAFANA_COMMUNITY_REPO TEMPO_VERSION TEMPO_SHA256 tempo tempo monitoring local/values/tempo.yaml
+GRAFANA_COMMUNITY_REPO TEMPO_VERSION TEMPO_SHA256 tempo tempo monitoring local/values/tempo.yaml,values/full/tempo.yaml
 OTEL_COLLECTOR_REPO OTEL_COLLECTOR_CHART_VERSION OTEL_COLLECTOR_CHART_SHA256 opentelemetry-collector opentelemetry-collector observability values/otel-collector.yaml,values/full/otel-collector.yaml
 ARGOCD_REPO ARGOCD_VERSION ARGOCD_SHA256 argo-cd argocd argocd local/values/argo-cd.yaml
 GATEKEEPER_REPO GATEKEEPER_VERSION GATEKEEPER_SHA256 gatekeeper gatekeeper gatekeeper-system local/values/gatekeeper.yaml,values/full/gatekeeper.yaml

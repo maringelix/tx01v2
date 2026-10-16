@@ -44,6 +44,10 @@ PROFILE=core
 OWNER=""
 REGION=""
 VELERO_BUCKET=""
+DNS_ENABLED=false
+DNS_DOMAIN_NAME=""
+DNS_ZONE_ID=""
+DNS_CERTIFICATE_ARN=""
 
 usage() {
   echo "usage: $0 [--profile core|full] [--github-owner OWNER]" >&2
@@ -121,6 +125,24 @@ install_istio() {
   install_chart ztunnel
   # istiod creates the GatewayClass once it runs.
   retry 60 2 kubectl get gatewayclass istio >/dev/null 2>&1 || die "istiod did not create the GatewayClass istio"
+}
+
+install_external_dns() {
+  local tgz
+  [[ "$DNS_ENABLED" == true ]] || {
+    log "public DNS is disabled; ExternalDNS is not installed"
+    return 0
+  }
+  tgz="$(pull_chart "$WORK_DIR/charts" "$EXTERNAL_DNS_REPO" external-dns \
+    "$EXTERNAL_DNS_CHART_VERSION" "$EXTERNAL_DNS_CHART_SHA256")"
+  log "installing ExternalDNS $EXTERNAL_DNS_CHART_VERSION (SHA256 verified) for the app record in its one public zone"
+  helm upgrade --install external-dns "$tgz" \
+    --namespace kube-system \
+    --values "$HERE/values/external-dns.yaml" \
+    --set-string "domainFilters[0]=$DNS_DOMAIN_NAME" \
+    --set-string "extraArgs.aws-zone-id-filter=$DNS_ZONE_ID" \
+    --set-string "image.tag=${EXTERNAL_DNS_IMAGE_TAG}@${EXTERNAL_DNS_IMAGE_DIGEST}" \
+    --wait=watcher --rollback-on-failure --timeout 10m >/dev/null
 }
 
 # Prometheus, Alertmanager, Grafana (admin password generated here, kept in the Secret grafana-admin:
@@ -211,6 +233,7 @@ install_full() {
   VELERO_BUCKET="$LAB_CLUSTER-velero-$account-$REGION"
 
   apply_full full/namespaces.yaml
+  apply_full full/storageclass.yaml
   install_istio
   install_chart cert-manager
   install_observability
@@ -248,8 +271,26 @@ main() {
   REGION="$(lab_param region)"
   vpc_id="$(lab_param vpc-id)"
   store="$(lab_param eso/cluster-secret-store)"
+  DNS_ENABLED="$(lab_param dns/enabled)"
+  DNS_DOMAIN_NAME="$(lab_param dns/domain-name)"
+  DNS_ZONE_ID="$(lab_param dns/zone-id)"
+  DNS_CERTIFICATE_ARN="$(lab_param dns/acm-certificate-arn)"
   [[ "$REGION" == "$AWS_REGION" ]] || die "AWS_REGION=$AWS_REGION but the lab runs in $REGION"
   [[ "$cluster" == "$LAB_CLUSTER" ]] || die "contract key cluster-name is '$cluster', not $LAB_CLUSTER"
+  case "$DNS_ENABLED" in
+    false)
+      [[ "$DNS_DOMAIN_NAME" == disabled && "$DNS_ZONE_ID" == disabled && "$DNS_CERTIFICATE_ARN" == disabled ]] ||
+        die "DNS contract is inconsistent: disabled must use the disabled sentinel for domain, zone and ACM certificate"
+      ;;
+    true)
+      [[ "$DNS_DOMAIN_NAME" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$ ]] ||
+        die "DNS contract has an invalid app domain name"
+      [[ "$DNS_ZONE_ID" =~ ^Z[A-Z0-9]+$ ]] || die "DNS contract has an invalid Route53 public hosted zone ID"
+      [[ "$DNS_CERTIFICATE_ARN" =~ ^arn:aws[a-z-]*:acm:${REGION}:[0-9]{12}:certificate/[0-9a-f-]+$ ]] ||
+        die "DNS contract has no DNS-validated ACM certificate in $REGION"
+      ;;
+    *) die "DNS contract dns/enabled must be true or false" ;;
+  esac
   require_lab_cluster "$cluster"
 
   WORK_DIR="$(mktemp -d)"
@@ -275,6 +316,8 @@ main() {
     --set-string region="$REGION" \
     --set-string vpcId="$vpc_id" \
     --wait=watcher --rollback-on-failure --timeout 10m
+
+  install_external_dns
 
   log "installing external-secrets chart $ESO_CHART_VERSION"
   helm upgrade --install external-secrets external-secrets/external-secrets \

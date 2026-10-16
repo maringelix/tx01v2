@@ -1,0 +1,44 @@
+# ExternalDNS chart 1.23.0, configured only when terraform/envs/lab enables the DNS contract.
+# The chart archive and image are pinned by SHA256/digest in platform/versions.env. One hosted zone,
+# one app A record, one prefixed TXT ownership record, one service account with EKS Pod Identity.
+image:
+  repository: registry.k8s.io/external-dns/external-dns
+  tag: v0.23.0@sha256:1854499e2b08cee47c40a08e356bff20dcb192dbcfde8378fc3f900f12cad5a3
+  pullPolicy: IfNotPresent
+provider:
+  name: aws
+sources:
+  - ingress
+policy: sync
+registry: txt
+txtOwnerId: tx01v2-lab
+txtPrefix: "%{record_type}-_external-dns-"
+domainFilters: []
+managedRecordTypes:
+  - A
+  - TXT
+serviceAccount:
+  create: true
+  name: external-dns
+  automountServiceAccountToken: true
+resources:
+  requests:
+    cpu: 25m
+    memory: 64Mi
+  limits:
+    memory: 128Mi
+securityContext:
+  privileged: false
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  capabilities:
+    drop: [ALL]
+extraArgs:
+  aws-zone-type: public
+  ingress-class: alb
+  interval: 5m
+  events: true
+  aws-batch-change-interval: 5s

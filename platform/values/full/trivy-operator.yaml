@@ -1,11 +1,14 @@
 # Overlay of platform/local/values/trivy-operator.yaml for the profile full in the cloud (same chart,
 # same images by digest, same sizes). The mirror and the plain-HTTP registry exist only for the
 # registry container of the local lab; the images of the app come from Amazon ECR. A null removes a
-# key of the base. Limit, not verified in a cloud: the scan jobs of this release have no ECR
-# credentials (an IAM role for the operator is not part of the profile), so the VulnerabilityReports
-# of the private images of the app can be missing; the ConfigAuditReports and the scans of public
-# images do not depend on it (docs/ARQUITETURA.md).
+# key of the base. Trivy resolves ECR credentials through the AWS SDK. The Terraform Pod Identity
+# association gives scan jobs running as trivy-system/trivy-operator read access only to dx01v2/api
+# and dx01v2/web. The scanner receives its AWS credential token without a Kubernetes API token.
 trivy:
   registry:
     mirror: null
   nonSslRegistries: null
+operator:
+  accessGlobalSecretsAndServiceAccount: true
+trivyOperator:
+  scanJobAutomountServiceAccountToken: false

@@ -29,6 +29,9 @@ The rules, where each one is enforced and the known limits are in
 ## Known limits
 
 v2 has never been applied to AWS (`not run in the cloud (v2)`): the Terraform tests use a mocked AWS
-provider. The apply role is effectively administrator of the lab account (it can create `tx01v2-*` IAM
-roles and policies), so use a **dedicated AWS account** and keep the `lab` environment protected.
+provider. The apply role has high privileges within the AWS service families the lab uses. Service
+creation APIs do not always support resource-level restrictions. IAM, the state and Velero buckets,
+and optional Route53 records have narrower scopes. Workload roles created by apply have a boundary
+that limits S3 to the Velero bucket and Route53 to the configured zone. Use a **dedicated AWS account** and keep the `lab`
+environment protected.
 The lab account ID appears in public workflow logs. See the "Limites" section of docs/GUARDRAILS.md.
