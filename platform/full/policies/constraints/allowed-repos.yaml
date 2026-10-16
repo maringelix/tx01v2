@@ -1,0 +1,21 @@
+# The cloud twin of platform/local/policies/constraints/allowed-repos.yaml (same template, same
+# selector, deny): the images of the app come from the Amazon ECR repositories of the lab, not from the
+# registry container of the local lab, and the Istio gateways of the local lab do not exist here.
+# platform/install.sh replaces the registry host below, a documentation account and region, with the
+# one of the cluster (the ECR registry of the account and region of the lab).
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: LabAllowedRepos
+metadata:
+  name: allowed-repos
+spec:
+  enforcementAction: deny
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: [Pod]
+    namespaceSelector:
+      matchLabels:
+        policy.lab/enforce: "true"
+  parameters:
+    repos:
+      - "123456789012.dkr.ecr.us-east-1.amazonaws.com/dx01v2/"

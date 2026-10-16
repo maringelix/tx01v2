@@ -53,7 +53,7 @@ The lab family (v2):
 | In-cluster scanning: Trivy Operator (vulnerability and configuration reports) | `verified in CI` | `make e2e` |
 | Backup and restore drill: Velero to the S3 emulator (namespace deleted, restored with its data) | `verified in CI` | `make e2e` |
 | Chaos engineering with hypotheses: Chaos Mesh pod kill, 100 ms network latency, CPU and memory stress; availability, latency and restarts measured | `verified in CI` | `make e2e` |
-| The same add-ons on EKS | `planned` | the local platform shows the target; the cloud platform layer installs only LBC, ESO and the OpenTelemetry Collector |
+| Full platform on EKS (15 pinned charts, GitOps, Velero, Gatekeeper, Trivy Operator, Chaos Mesh) | `implemented as code; not run in the cloud (v2)` | `platform/install.sh --profile full`; `helm-template-full`, `kubeconform`, `contract-platform`; `.github/workflows/platform.yml` |
 
 `verified in CI` rows run on every pull request, on every push to `main` and weekly (CI jobs
 `static` and `test`). A cloud row changes only with a `cloud_run_report` issue (date, region,
@@ -157,7 +157,7 @@ All docs are in Brazilian Portuguese.
 |---|---|
 | [FORK.md](FORK.md) | fork the lab: what GitHub does not copy, the local lab, your own cloud account |
 | [docs/ARQUITETURA.md](docs/ARQUITETURA.md) | diagram, ADRs, v1 → v2 |
-| [docs/CONTRATO.md](docs/CONTRATO.md) | tx01v2 ⇄ dx01v2 contract v3 (source of truth) |
+| [docs/CONTRATO.md](docs/CONTRATO.md) | tx01v2 ⇄ dx01v2 contract v4 (source of truth) |
 | [docs/RUNBOOK.md](docs/RUNBOOK.md) | full cloud round |
 | [docs/LAB_LOCAL.md](docs/LAB_LOCAL.md) | the local lab: what is emulated, how to run it, probes, limits |
 | [docs/CUSTOS.md](docs/CUSTOS.md) | cost estimate per component |

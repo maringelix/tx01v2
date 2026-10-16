@@ -1,0 +1,8 @@
+# The apps that the platform registers in Argo CD (profile full of platform/install.sh): the AppProject
+# and the Application of dx01v2. The Application platform (platform/manifests/full/argocd-platform.yaml)
+# syncs this chart from the public repository of tx01v2, so a new app is a commit here.
+apiVersion: v2
+name: platform-apps
+description: AppProject and Application of the apps of the tx01v2 lab
+type: application
+version: 0.1.0

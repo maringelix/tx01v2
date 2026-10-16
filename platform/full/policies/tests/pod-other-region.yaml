@@ -1,0 +1,22 @@
+# Same account, same repository name, another region: not the registry of the lab.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: other-region
+  namespace: dx01v2
+  labels:
+    app.kubernetes.io/name: api
+spec:
+  containers:
+    - name: api
+      image: 123456789012.dkr.ecr.eu-west-1.amazonaws.com/dx01v2/api:0000000000000000000000000000000000000000
+      readinessProbe:
+        httpGet:
+          path: /readyz
+          port: 3000
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          memory: 256Mi

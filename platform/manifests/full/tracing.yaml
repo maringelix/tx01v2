@@ -1,0 +1,14 @@
+# Mesh-wide tracing of the profile full: every Istio gateway or waypoint reports a span per request to
+# the provider otel-tracing of platform/values/full/istiod.yaml (the Collector of the namespace
+# observability). A request that arrives with a W3C traceparent continues that trace. ztunnel (ambient
+# L4) produces no spans; the dx01v2 API adds its own. Applied after the Collector and Istio.
+apiVersion: telemetry.istio.io/v1
+kind: Telemetry
+metadata:
+  name: mesh-default
+  namespace: istio-system
+spec:
+  tracing:
+    - providers:
+        - name: otel-tracing
+      randomSamplingPercentage: 100

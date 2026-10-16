@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 # Removes the platform layer before `terraform destroy`, so no load balancer created by the AWS Load
 # Balancer Controller is left behind (they would block the VPC deletion and keep billing):
-#   1. delete every Ingress (and Service of type LoadBalancer) in the cluster
-#   2. wait until no load balancer, target group or security group tagged
+#   1. delete the Argo CD Applications of the profile full, if any (their self-heal would create the
+#      Ingress again)
+#   2. delete every Ingress (and Service of type LoadBalancer) in the cluster
+#   3. wait until no load balancer, target group or security group tagged
 #      elbv2.k8s.aws/cluster=<cluster> exists (the controller deletes them)
-#   3. uninstall the OpenTelemetry Collector, the External Secrets Operator and the AWS Load
+#   4. uninstall the OpenTelemetry Collector, the External Secrets Operator and the AWS Load
 #      Balancer Controller releases
+# The add-ons of the profile full create nothing outside the cluster (emptyDir storage, ClusterIP
+# Services, a bucket that Terraform owns): terraform destroy removes them with the cluster.
 # CLOUD-MUTATING. Fails loudly on any error or timeout. Needs the same tools as platform/install.sh.
 # It acts only on the cluster of the contract (tx01v2-lab) and only when that cluster carries the tag
 # Project=tx01v2; no environment variable changes the target. The kubeconfig is temporary: the
@@ -24,6 +28,15 @@ WORK_DIR=""
 
 cleanup() {
   [[ -z "$WORK_DIR" ]] || rm -rf "$WORK_DIR"
+}
+
+# The Applications of the profile full are not deleted in cascade (no finalizer): the Ingress is deleted
+# explicitly next. The parent goes first, or it would create the child again.
+stop_gitops() {
+  kubectl get crd applications.argoproj.io >/dev/null 2>&1 || return 0
+  log "deleting the Argo CD Applications (self-heal would create the Ingress again)"
+  kubectl --namespace argocd delete applications.argoproj.io platform --ignore-not-found --wait=true --timeout=5m
+  kubectl delete applications.argoproj.io --all --all-namespaces --wait=true --timeout=5m
 }
 
 delete_load_balancer_services() {
@@ -67,6 +80,7 @@ main() {
   aws eks update-kubeconfig --region "$AWS_REGION" --name "$cluster" --kubeconfig "$KUBECONFIG" >/dev/null
   kubectl get --raw /readyz >/dev/null || die "the Kubernetes API of $cluster is not reachable"
 
+  stop_gitops
   log "deleting every Ingress in $cluster"
   kubectl delete ingress --all --all-namespaces --wait=true --timeout=10m
   delete_load_balancer_services

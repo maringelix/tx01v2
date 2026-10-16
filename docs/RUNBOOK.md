@@ -3,9 +3,9 @@
 Passo a passo para subir o lab na sua conta AWS, usar, destruir e registrar o resultado. Nada disto
 foi executado em nuvem na v2 (`não executado em nuvem (v2)`): você será a primeira evidência.
 
-> **Custo**: com os padrões, cerca de US$0,26–0,32 por hora em us-east-1 (preços de tabela de
-> referência, ver `docs/CUSTOS.md`). Uma rodada de 3 horas fica perto de US$1, mas um lab esquecido
-> ligado passa de US$40 por semana. Destrua no mesmo dia.
+> **Custo**: `core` custa cerca de US$0,26–0,32/h; `full`, com os nós maiores recomendados, cerca de
+> US$0,29–0,40/h em `us-east-1` (estimativas, ver `docs/CUSTOS.md`). Uma rodada de 3 horas fica perto
+> de US$1. Destrua no mesmo dia; o budget avisa, mas não para recursos.
 
 ## 1. Pré-requisitos
 
@@ -70,6 +70,8 @@ de `main`); ele falha, em vez de pular, se o repositório não puder protegê-lo
 | `LAB_ALLOW_ENDPOINT_FROM_ANYWHERE` | `true` | `TF_VAR_allow_endpoint_from_anywhere` | obrigatório com `0.0.0.0/0`; padrão `false` |
 | `LAB_CLUSTER_ADMIN_PRINCIPAL_ARNS` | `["arn:aws:iam::<ACCOUNT_ID>:role/tx01v2-gha-apply","arn:aws:iam::<ACCOUNT_ID>:role/<YOUR_ADMIN_ROLE>"]` | `TF_VAR_cluster_admin_principal_arns` (lista JSON) | o papel apply (plataforma e destroy) e o seu papel admin |
 | `LAB_APP_DEPLOYER_PRINCIPAL_ARNS` | `["arn:aws:iam::<ACCOUNT_ID>:role/dx01v2-gha-deploy"]` | `TF_VAR_app_deployer_principal_arns` (lista JSON) | output `deploy_role_arn`; padrão `[]` |
+| `LAB_NODE_INSTANCE_TYPES` (só `full`) | `["t3.large","t3a.large"]` | `TF_VAR_node_instance_types` (lista JSON) | dimensionamento do R4.7 |
+| `LAB_NODE_DESIRED_SIZE` (só `full`) | `2` | `TF_VAR_node_desired_size` | dimensionamento do R4.7 |
 
 `TF_VAR_github_owner` vem de `github.repository_owner` e `TF_VAR_aws_region` de `AWS_REGION`. Os
 demais inputs usam os padrões do `variables.tf`; para mudar um (por exemplo `node_capacity_type`),
@@ -78,10 +80,16 @@ IAM (`arn:aws:iam::<ACCOUNT_ID>:role/<nome>`), não o ARN `sts::...:assumed-role
 `aws sts get-caller-identity` mostra. No dx01v2, configure o ARN do `dx01v2-gha-deploy` conforme a
 documentação daquele repositório.
 
+O perfil `core` usa os defaults e não precisa das duas variáveis `LAB_NODE_*`. Para `full`, grave os
+valores da tabela antes do plan e mantenha-os nos workflows de plan, apply e destroy. No GitHub, o
+webhook opcional do Slack deve ser um **secret** `SLACK_WEBHOOK_URL`, nunca uma variável. O instalador
+manda o valor ao Secret do Alertmanager por stdin; sem ele, os alertas usam o receiver `null`.
+
 ## 4. Apply
 
 1. Dispare `terraform-plan` a partir de `main` (ou abra um PR que mexa em `terraform/**`) e leia o
-   plano no resumo do job.
+   plano no resumo do job. Para `full`, confirme que o plan mostra o node group `t3.large`/`t3a.large`
+   com duas instâncias antes de aprovar o apply.
 2. Dispare `terraform-apply` e aprove o environment `lab`. O job planeja e aplica no mesmo run.
 
 Alternativa local (suas credenciais; o seu papel precisa estar nos admins para a seção 5):
@@ -104,16 +112,25 @@ export KUBECONFIG=~/.kube/tx01v2-lab.kubeconfig   # só neste terminal
 
 ## 5. Plataforma
 
-Dispare `platform` com `action=install` (aprovação do environment `lab`). Localmente (o script usa um
-kubeconfig temporário e só instala no cluster `tx01v2-lab` com a tag `Project=tx01v2`):
+Dispare `platform` com `action=install` e escolha `profile=core` (padrão) ou `profile=full`, com a
+aprovação do environment `lab`. Use `full` apenas depois que os PRs de tx01v2 e dx01v2 do R4 estiverem
+mesclados. Localmente (o script usa kubeconfig e cache Helm temporários e só instala no cluster
+`tx01v2-lab` com a tag `Project=tx01v2`):
 
 ```bash
 export AWS_REGION=us-east-1
-platform/install.sh        # LBC, ESO, platform/manifests e o OpenTelemetry Collector; termina com ClusterSecretStore Ready
+platform/install.sh --profile core
 export KUBECONFIG=~/.kube/tx01v2-lab.kubeconfig   # o arquivo da seção 4
 kubectl get ingressclass alb && kubectl get clustersecretstore aws-secrets-manager
 kubectl -n observability rollout status deployment/opentelemetry-collector
 ```
+
+Para instalar `full` localmente, exporte `GITHUB_OWNER=<seu-usuario-ou-org>` e rode
+`platform/install.sh --profile full --github-owner "$GITHUB_OWNER"`. O modo `full` cria o AppProject e
+a Application `platform` no Argo CD; a Application do app segue a branch `gitops/aws` do dx. Se o fork
+do app for privado, configure a credencial do repositório no Argo CD antes de instalar. Para enviar
+alertas ao Slack, configure o secret `SLACK_WEBHOOK_URL` no GitHub (ou exporte-o apenas no terminal
+local da rodada).
 
 Os traces do app (contrato v2) passam pelo Collector e chegam ao AWS X-Ray da mesma região. Depois do
 deploy do app e de algumas requisições, confira no console do CloudWatch (X-Ray traces) ou com
@@ -123,9 +140,14 @@ Pod Identity).
 
 ## 6. Deploy do app (dx01v2)
 
-Siga o runbook do dx01v2: ele lê os parâmetros `/tx01v2/lab/*` do SSM, publica as imagens nos
-repositórios `dx01v2/api` e `dx01v2/web` e aplica os manifests no namespace `dx01v2` com o papel
-`dx01v2-gha-deploy` (grupo `dx01v2-deployers`).
+Siga o runbook do dx01v2. O workflow lê os parâmetros `/tx01v2/lab/*`, publica as imagens nos
+repositórios `dx01v2/api` e `dx01v2/web` e usa `dx01v2-gha-deploy` (grupo `dx01v2-deployers`). Com
+`core`, selecione `mode=push`, pois esse perfil não instala Argo CD. Com `full`, use `mode=gitops`
+(padrão): o workflow publica as imagens, registra a tag SHA do commit na branch `gitops/aws`, configura
+na Application viva o overlay e os parâmetros de nuvem e espera o Argo CD sincronizar e deixar `dx01v2`
+saudável. A branch pública recebe apenas parâmetros de exemplo; IDs e CIDRs reais ficam no cluster.
+O modo `push` também serve a clusters sem Argo CD; no perfil `full`, o self-heal pode reverter mudanças
+feitas fora da branch GitOps.
 
 ## 7. Smoke test
 
@@ -134,7 +156,57 @@ kubectl -n dx01v2 get ingress                       # ADDRESS = hostname do ALB 
 curl -fsS "http://<ALB_HOSTNAME>/healthz"           # web
 aws wafv2 get-web-acl-for-resource --resource-arn "<ALB_ARN>"   # o ACL do lab está associado
 kubectl -n dx01v2 get externalsecrets               # SecretSynced
+kubectl -n argocd get application dx01v2             # só no perfil full: Synced / Healthy
+kubectl -n velero get backupstoragelocation default  # só no perfil full: Available
 ```
+
+No perfil `full`, o Grafana é ClusterIP; acesse-o com `kubectl -n monitoring port-forward svc/kube-prometheus-stack-grafana 3000:80`
+e a UI do Argo CD com `kubectl -n argocd port-forward svc/argocd-server 8080:443`. A senha do Grafana
+é gerada durante a instalação; não a registre no Git. Sem autenticação do ECR para o Trivy Operator,
+os relatórios de imagens privadas podem faltar.
+
+### Drill de restore do Velero (perfil `full`)
+
+O drill usa um namespace descartável, só objetos Kubernetes e nenhum volume. Ele não altera o app nem
+prova snapshots de EBS. Rode com um contexto do cluster do lab:
+
+```bash
+DRILL=velero-restore-drill
+BACKUP="tx01v2-restore-$(date -u +%Y%m%d%H%M%S)"
+kubectl create namespace "$DRILL"
+kubectl label namespace "$DRILL" pod-security.kubernetes.io/enforce=restricted
+kubectl -n "$DRILL" create configmap restore-proof --from-literal=payload=restore-me
+kubectl apply -f - <<EOF
+apiVersion: velero.io/v1
+kind: Backup
+metadata:
+  name: $BACKUP
+  namespace: velero
+spec:
+  includedNamespaces: [$DRILL]
+  snapshotVolumes: false
+  ttl: 24h0m0s
+EOF
+kubectl -n velero wait --for=jsonpath='{.status.phase}=Completed' "backup/$BACKUP" --timeout=10m
+kubectl delete namespace "$DRILL" --wait=true
+kubectl apply -f - <<EOF
+apiVersion: velero.io/v1
+kind: Restore
+metadata:
+  name: $BACKUP
+  namespace: velero
+spec:
+  backupName: $BACKUP
+EOF
+kubectl -n velero wait --for=jsonpath='{.status.phase}=Completed' "restore/$BACKUP" --timeout=10m
+kubectl -n "$DRILL" get configmap restore-proof -o jsonpath='{.data.payload}'  # restore-me
+kubectl -n velero delete restore "$BACKUP"
+kubectl delete namespace "$DRILL" --wait=true
+```
+
+O backup expira após 24 horas e o ciclo do bucket remove os objetos após 35 dias. Se qualquer espera
+falhar, leia `kubectl -n velero describe backup "$BACKUP"` ou `restore "$BACKUP"`, corrija a causa e
+repita com um nome novo.
 
 ## 8. Destroy
 
@@ -151,6 +223,26 @@ Dispare `terraform-destroy` com a confirmação `destroy tx01v2-lab`. O job roda
    jeito.
 4. `scripts/leftovers.sh --retry-for 900`, sempre, também depois de um destroy que falhou. O job só
    passa quando o destroy e a checagem de sobras passam.
+
+No `full`, o uninstall apaga primeiro as Applications do Argo CD para impedir que o self-heal recrie
+o Ingress enquanto o controlador do ALB é removido. O Terraform destrói o bucket do Velero junto com
+o lab, inclusive os objetos de backup restantes (o módulo usa `force_destroy`). Guarde fora do lab
+qualquer dado que precise preservar.
+
+Não há transição suportada de `full` para `core`: destrua o lab e aplique-o de novo com as variáveis
+`LAB_NODE_*` removidas ou nos valores de `core`; instale então `profile=core`. Não desinstale apenas
+os charts e reduza o node group.
+
+### Se uma etapa falhar
+
+| Etapa | Diagnóstico e próxima ação |
+|---|---|
+| Bootstrap | Leia o primeiro erro do Terraform; se o provider OIDC já existe, use `create_github_oidc_provider = false` com o ARN existente. Não repita o apply sem corrigir a variável ou a permissão. |
+| Plan/apply | Leia o plano e o erro do provider; confira `LAB_NODE_*`, região, quotas e estado remoto. Corrija a entrada e rode um novo plan antes do apply. |
+| Instalação `core`/`full` | Confira `kubectl get pods -A` e `helm list -A` no cluster do lab, corrija o primeiro chart sem Ready e repita a mesma opção `profile`; o instalador é idempotente. |
+| Application do Argo CD | `kubectl -n argocd describe application dx01v2`; confirme que a branch `gitops/aws` existe, que o repositório público é acessível e que `deploy/k8s/overlays/aws` renderiza. Corrija no dx e faça novo deploy. |
+| Velero | `kubectl -n velero describe backupstoragelocation default`; confira a associação Pod Identity `velero/velero`, o nome/região do bucket e o status. Não crie credenciais AWS estáticas no cluster. |
+| Destroy/sobras | Deixe o workflow terminar; se o check falhar, leia `scripts/leftovers.sh`, confirme as tags `Project=tx01v2` e rode o destroy de novo. Não remova recursos sem conferir a tag. |
 
 Qualquer erro aparece no log: leia, corrija e rode de novo. O fluxo é testado sem AWS (check
 `destroy-flow` do harness, com `aws`, `terraform`, `kubectl` e `helm` simulados).

@@ -94,6 +94,16 @@ module "ecr" {
   force_delete     = var.ecr_force_delete
 }
 
+module "velero" {
+  source = "../../modules/velero"
+
+  name                     = local.name
+  cluster_name             = module.eks.cluster_name
+  cluster_arn              = module.eks.cluster_arn
+  kms_key_arn              = module.kms.key_arn
+  permissions_boundary_arn = local.permissions_boundary_arn
+}
+
 module "waf" {
   source = "../../modules/waf"
 

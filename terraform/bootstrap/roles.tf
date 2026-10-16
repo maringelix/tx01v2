@@ -74,6 +74,17 @@ locals {
   ecr_repository_arns = [
     for repo in ["dx01v2/api", "dx01v2/web"] : "arn:${local.partition}:ecr:${local.region}:${local.account_id}:repository/${repo}"
   ]
+
+  # The backup bucket of Velero (terraform/modules/velero): the plan reads its settings, never an object.
+  velero_bucket_arn = "arn:${local.partition}:s3:::${local.lab_name}-velero-${local.account_id}-${local.region}"
+  plan_read_velero_bucket_actions = [
+    "s3:ListBucket",
+    "s3:GetBucket*",
+    "s3:GetAccelerateConfiguration",
+    "s3:GetEncryptionConfiguration",
+    "s3:GetLifecycleConfiguration",
+    "s3:GetReplicationConfiguration",
+  ]
 }
 
 # --- tx01v2-gha-plan: PRs and main, read-only ---
@@ -91,12 +102,20 @@ resource "aws_iam_role_policy" "plan_read_lab" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Sid      = "DescribeTheServicesOfTheLab"
-      Effect   = "Allow"
-      Action   = local.plan_read_actions
-      Resource = "*"
-    }]
+    Statement = [
+      {
+        Sid      = "DescribeTheServicesOfTheLab"
+        Effect   = "Allow"
+        Action   = local.plan_read_actions
+        Resource = "*"
+      },
+      {
+        Sid      = "DescribeTheVeleroBucket"
+        Effect   = "Allow"
+        Action   = local.plan_read_velero_bucket_actions
+        Resource = local.velero_bucket_arn
+      },
+    ]
   })
 }
 

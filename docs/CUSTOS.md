@@ -24,8 +24,37 @@ páginas oficiais de preço da AWS antes de cada rodada; impostos e transferênc
 | CloudWatch Logs (EKS control plane, flow logs, RDS, WAF) | volume baixo | US$0,50/GB ingerido + US$0,03/GB-mês | ~0,005 | ~0,05–0,25 |
 | X-Ray (traces do app pelo OpenTelemetry Collector) | volume do lab | 100.000 traces gravados por mês sem custo; depois US$5 por milhão ([preços do X-Ray](https://aws.amazon.com/xray/pricing/), verificado em 2026-10-14) | ~0 | ~0 |
 | ECR, SSM (Standard), S3 do state, budget sem actions | — | centavos por mês ou sem custo | ~0 | ~0 |
-| **Total com SPOT (padrão)** | | | **~0,26** | **~6,3–6,5** |
-| **Total com ON_DEMAND** | | | **~0,32** | **~7,6–7,8** |
+| **Total `core` com SPOT (padrão)** | | | **~0,26** | **~6,3–6,5** |
+| **Total `core` com ON_DEMAND** | | | **~0,32** | **~7,6–7,8** |
+
+## Perfil `full` (R4.7)
+
+`scripts/platform-sizing.sh 2 <diretório-dos-renders>` soma os requests dos charts do perfil `full`,
+incluindo réplicas, init containers, DaemonSets multiplicados por dois nós e `spec.resources` do
+Prometheus e Alertmanager. O resultado reproduzível é **795m CPU / 3104MiB RAM**. Requests não são
+uso medido e o cálculo não inclui os pods gerenciados do EKS.
+
+| Perfil | Requests do perfil | Node group recomendado | Total estimado em Spot | Total estimado on-demand |
+|---|---:|---|---:|---:|
+| core | — | 2 × `t3.medium`/`t3a.medium` | ~US$0,26/h | ~US$0,32/h |
+| full | 795m CPU / 3104MiB RAM | 2 × `t3.large`/`t3a.large` | **~US$0,29/h** | **~US$0,40/h** |
+
+Para `full`, defina as variáveis de repositório `LAB_NODE_INSTANCE_TYPES='["t3.large","t3a.large"]'` e
+`LAB_NODE_DESIRED_SIZE=2` antes do `terraform-plan` e mantenha os mesmos valores até o destroy. Os três
+workflows Terraform passam esses valores como `TF_VAR_*`; sem eles, ficam os padrões baratos do `core`.
+A estimativa usa o preço on-demand público de US$0,0832/h por `t3.large` em `us-east-1` e, para Spot,
+uma hipótese de 35% do preço on-demand igual à usada na linha do perfil `core`. A tarifa Spot real
+varia por zona e hora; os valores de `t3a` também podem variar. O grupo padrão de dois `t3.medium` não
+é o tamanho documentado para o `full`.
+
+Uma rodada de 3 horas fica em cerca de **US$0,87 com Spot** ou **US$1,21 on-demand**. Se ficar ligado
+730 horas, o total de referência chega a aproximadamente US$212/mês ou US$292/mês, respectivamente;
+tráfego, ingestão e armazenamento podem aumentar esse valor. O budget mensal de US$25 continua
+intencionalmente baixo e envia alertas em 50%, 80%, 100% e previsão de 100%: ele avisa, mas não para
+recursos.
+
+Preços do EKS e de `t3.large` consultados em 2026-10-16: [Amazon EKS](https://aws.amazon.com/eks/pricing/)
+e [t3.large em us-east-1](https://docs.aws.amazon.com/prescriptive-guidance/latest/optimize-costs-microsoft-workloads/right-size-selection.html).
 
 Leituras rápidas:
 

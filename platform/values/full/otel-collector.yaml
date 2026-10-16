@@ -1,0 +1,59 @@
+# Overlay of platform/values/otel-collector.yaml for the profile full (same chart, same image digest as
+# the local lab): besides the AWS X-Ray exporter of the core profile, every span goes to Tempo and
+# feeds the spanmetrics connector, whose request, error and duration (RED) series Prometheus scrapes
+# with exemplars that point back to the traces (the same pipelines as
+# platform/local/values/otel-collector.yaml, which runs in monitoring: here the Collector stays in
+# observability, where the dx01v2 API already sends its spans). The ServiceMonitor needs the CRDs of
+# kube-prometheus-stack, installed before this release is upgraded.
+ports:
+  # Internal telemetry of the Collector (otelcol_receiver_accepted_spans, otelcol_exporter_sent_spans).
+  metrics:
+    enabled: true
+  # The RED series of the spanmetrics connector (traces_span_metrics_*), with exemplars.
+  spanmetrics:
+    enabled: true
+    containerPort: 8889
+    servicePort: 8889
+    protocol: TCP
+serviceMonitor:
+  enabled: true
+  metricsEndpoints:
+    - port: metrics
+      interval: 30s
+    # An exemplar of spanmetrics is exposed only until the next flush (15 s, the connector resets its
+    # exemplars after each one): Prometheus must scrape more often than that, or it can miss them.
+    - port: spanmetrics
+      interval: 10s
+config:
+  connectors:
+    spanmetrics:
+      namespace: traces.span.metrics
+      metrics_flush_interval: 15s
+      histogram:
+        unit: s
+        explicit:
+          buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s]
+      dimensions:
+        - name: http.request.method
+        - name: http.response.status_code
+        - name: http.route
+      exemplars:
+        enabled: true
+  exporters:
+    otlp_grpc/tempo:
+      endpoint: tempo.monitoring.svc:4317
+      tls:
+        insecure: true
+    prometheus:
+      endpoint: ${env:MY_POD_IP}:8889
+      enable_open_metrics: true
+  service:
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, resource/lab, batch]
+        exporters: [awsxray, otlp_grpc/tempo, spanmetrics]
+      metrics/spanmetrics:
+        receivers: [spanmetrics]
+        processors: [batch]
+        exporters: [prometheus]

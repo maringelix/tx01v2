@@ -158,6 +158,16 @@ run "role_permissions_follow_the_contract" {
   }
 
   assert {
+    condition = jsondecode(aws_iam_role_policy.plan_read_lab.policy).Statement[1] == {
+      Sid      = "DescribeTheVeleroBucket"
+      Effect   = "Allow"
+      Action   = ["s3:ListBucket", "s3:GetBucket*", "s3:GetAccelerateConfiguration", "s3:GetEncryptionConfiguration", "s3:GetLifecycleConfiguration", "s3:GetReplicationConfiguration"]
+      Resource = "arn:aws:s3:::tx01v2-lab-velero-123456789012-us-east-1"
+    }
+    error_message = "The plan role reads the settings of the Velero bucket and no object of it or of any other bucket."
+  }
+
+  assert {
     condition = jsondecode(aws_iam_role_policy.plan_state.policy).Statement == [
       { Sid = "ListStateBucket", Effect = "Allow", Action = "s3:ListBucket", Resource = "arn:aws:s3:::tx01v2-tfstate-123456789012-us-east-1" },
       { Sid = "ReadLabState", Effect = "Allow", Action = "s3:GetObject", Resource = "arn:aws:s3:::tx01v2-tfstate-123456789012-us-east-1/lab/terraform.tfstate" },

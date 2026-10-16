@@ -1,0 +1,9 @@
+# Defaults for the render of the harness. The Application platform overrides the repository and the
+# revision of the app with the ones of the fork (platform/install.sh), so no value of an account is
+# ever committed here.
+dxRepoURL: https://github.com/example-owner/dx01v2.git
+# The branch that the deploy workflow of dx01v2 updates (docs/RUNBOOK.md, GitOps).
+dxRevision: gitops/aws
+# The overlay of the app that the Application syncs.
+dxPath: deploy/k8s/overlays/aws
+appNamespace: dx01v2

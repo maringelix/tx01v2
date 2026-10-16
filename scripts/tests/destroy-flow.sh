@@ -61,6 +61,10 @@ if [[ "$*" == "get --raw /readyz" && "${FAKE_API_DOWN:-0}" == 1 ]]; then
   echo "the connection to the server was refused" >&2
   exit 1
 fi
+if [[ "$1 $2 $3" == "get crd applications.argoproj.io" && "${FAKE_NO_ARGOCD:-0}" == 1 ]]; then
+  echo "Error from server (NotFound): customresourcedefinitions.apiextensions.k8s.io not found" >&2
+  exit 1
+fi
 if [[ "$1 $2" == "delete ingress" ]]; then
   touch "$FAKE_STATE/lb.gone" "$FAKE_STATE/tg.gone" "$FAKE_STATE/sg.gone"
 fi
@@ -152,6 +156,17 @@ main() {
     "$(ordered healthy 'terraform .*destroy' 'describe-nat-gateways')"
   expect healthy "no load balancer is deleted through the API" \
     "$(absent healthy 'elbv2 delete-load-balancer')"
+  expect healthy "the Argo CD Applications of the profile full go before the Ingress (self-heal would create it again)" \
+    "$(ordered healthy 'kubectl delete applications.argoproj.io --all' 'kubectl delete ingress')"
+  expect healthy "the parent Application goes before its children" \
+    "$(ordered healthy 'argocd delete applications.argoproj.io platform' 'kubectl delete applications.argoproj.io --all')"
+
+  # 1b. The profile core has no Argo CD: no Application is touched, the Ingress is deleted all the same.
+  run_case core-profile 0 FAKE_NO_ARGOCD=1
+  expect core-profile "no Application is deleted when Argo CD is not installed" \
+    "$(absent core-profile 'delete applications.argoproj.io')"
+  expect core-profile "the Ingress is deleted and terraform destroy runs" \
+    "$(ordered core-profile 'kubectl delete ingress' 'terraform .*destroy')"
 
   # 2. The cluster API is unreachable: the uninstall fails, the API cleanup removes the load
   #    balancer, the destroy and the leftover check still run, and the run passes.

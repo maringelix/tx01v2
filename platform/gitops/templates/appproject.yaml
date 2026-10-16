@@ -1,0 +1,39 @@
+# AppProject dx01v2: the Argo CD twin of the Role dx01v2-deployer (platform/manifests). Argo CD may sync
+# only the repository of the app, only into the namespace dx01v2 and only these kinds: no Secret
+# (External Secrets writes them), no Namespace, nothing cluster-scoped.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: {{ .Values.appNamespace }}
+  namespace: argocd
+spec:
+  description: The app dx01v2 of the lab (docs/CONTRATO.md)
+  sourceRepos:
+    - {{ .Values.dxRepoURL | quote }}
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: {{ .Values.appNamespace }}
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+    - group: ""
+      kind: ConfigMap
+    - group: ""
+      kind: Service
+    - group: ""
+      kind: ServiceAccount
+    - group: apps
+      kind: Deployment
+    - group: autoscaling
+      kind: HorizontalPodAutoscaler
+    - group: policy
+      kind: PodDisruptionBudget
+    - group: networking.k8s.io
+      kind: NetworkPolicy
+    - group: networking.k8s.io
+      kind: Ingress
+    - group: external-secrets.io
+      kind: ExternalSecret
+    - group: monitoring.coreos.com
+      kind: ServiceMonitor
+    - group: monitoring.coreos.com
+      kind: PrometheusRule
