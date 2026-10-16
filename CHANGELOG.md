@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Optional cloud platform profile `full` with the pinned Istio ambient, cert-manager, monitoring,
+  Argo CD GitOps, Gatekeeper, Trivy Operator, Velero and Chaos Mesh charts. The profile is render- and
+  policy-validated as code and remains `not run in the cloud (v2)`.
+- A Terraform Velero bucket and Pod Identity role, a reproducible full-profile request sizer, and
+  GitOps RBAC for the dx deploy group.
+
 ### Changed
 
 - Contract version 3 with dx01v2, coordinated with [dx01v2#14](https://github.com/maringelix/dx01v2/pull/14):

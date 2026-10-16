@@ -1,4 +1,8 @@
-# Namespace of the dx01v2 app (docs/CONTRATO.md).
+# Namespace of the dx01v2 app (docs/CONTRATO.md). The last two labels are read only by the profile full
+# of platform/install.sh and are inert without it: istio.io/dataplane-mode puts the pods of the app in
+# the ambient mesh (mTLS between them by ztunnel, PERMISSIVE: the ALB reaches the pods from outside the
+# mesh) and policy.lab/enforce selects the namespace for the Gatekeeper constraints
+# (platform/local/policies, with the ECR registry of platform/full/policies).
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -7,3 +11,5 @@ metadata:
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/enforce-version: latest
     elbv2.k8s.aws/pod-readiness-gate-inject: enabled
+    istio.io/dataplane-mode: ambient
+    policy.lab/enforce: "true"

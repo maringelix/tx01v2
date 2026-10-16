@@ -1,0 +1,10 @@
+# Overlay of platform/local/values/istiod.yaml for the profile full in the cloud (same chart, same image
+# digests, same sizes). Only the destination of the spans changes: the Collector of the cloud platform
+# runs in the namespace observability (the local lab runs it in monitoring). Lists are replaced as a
+# whole by Helm, so the provider is written out.
+meshConfig:
+  extensionProviders:
+    - name: otel-tracing
+      opentelemetry:
+        service: opentelemetry-collector.observability.svc.cluster.local
+        port: 4317

@@ -1,0 +1,31 @@
+# What the deploy role of dx01v2 may do in Argo CD (docs/CONTRATO.md): read the Application dx01v2 and
+# ask it to refresh (an annotation), nothing else and nothing in any other Application. The EKS access
+# entry puts the role in the group dx01v2-deployers; the Role of the app namespace is in
+# platform/manifests/rbac-dx01v2-deployer.yaml.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dx01v2-gitops-sync
+  namespace: argocd
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources: ["applications"]
+    resourceNames: ["dx01v2"]
+    verbs: ["get", "watch", "patch"]
+  - apiGroups: ["argoproj.io"]
+    resources: ["applications"]
+    verbs: ["list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dx01v2-gitops-sync
+  namespace: argocd
+subjects:
+  - kind: Group
+    name: dx01v2-deployers
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: dx01v2-gitops-sync
+  apiGroup: rbac.authorization.k8s.io

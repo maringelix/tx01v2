@@ -1,0 +1,23 @@
+# Second overlay of kube-prometheus-stack, used only when SLACK_WEBHOOK_URL is set at install time
+# (platform/install.sh writes the Secret alertmanager-slack, key webhook-url, through stdin: the
+# webhook is never in versioned values). Warnings and critical alerts go to Slack, like in the local
+# lab; the Watchdog stays in the null receiver.
+alertmanager:
+  alertmanagerSpec:
+    secrets: [alertmanager-slack]
+  config:
+    route:
+      routes:
+        - receiver: "null"
+          matchers:
+            - alertname = "Watchdog"
+        - receiver: slack
+          matchers:
+            - severity =~ "warning|critical"
+    receivers:
+      - name: "null"
+      - name: slack
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/alertmanager-slack/webhook-url
+            channel: "#lab-alerts"
+            send_resolved: true

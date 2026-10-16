@@ -1,9 +1,10 @@
-# Contrato tx01v2 <-> dx01v2 — versão 3 (2026-10-15)
+# Contrato tx01v2 <-> dx01v2 — versão 4 (2026-10-16)
 
-Versão 3: os subjects OIDC do GitHub incluem os IDs imutáveis do dono e do repositório, e o environment
-`lab` só permite deploy pela `main` (R3.15). A versão 2 (2026-10-14) adicionou traces do app pelo
-OpenTelemetry Collector da camada de plataforma (namespace `observability`) ao AWS X-Ray; a versão 1
-(2026-10-10) não tinha traces.
+Versão 4: a camada `full` integra o app ao Istio ambient e ao Gatekeeper e registra no Argo CD a
+revisão `gitops/aws` do dx; o grupo `dx01v2-deployers` pode pedir refresh da Application `dx01v2`
+(R4.1/R4.4). A versão 3 (2026-10-15) fixou os subjects OIDC do GitHub aos IDs imutáveis do dono e do
+repositório e restringiu deploy à `main`; a versão 2 (2026-10-14) adicionou traces via Collector ao
+AWS X-Ray. O PR de R4 do dx coordena a versão 4 deste contrato.
 
 Interface entre a infraestrutura (este repositório) e a aplicação (`dx01v2`). Esta é a fonte da
 verdade: `dx01v2/docs/CONTRATO.md` repete a parte relevante para o app e aponta para cá. Qualquer
@@ -19,6 +20,7 @@ mudança exige PRs coordenados nos dois repositórios e incremento da versão.
 | Namespace `observability`, Collector com exporter do X-Ray, mesmo digest do lab local | checks `contract-platform` e `helm-template` do harness | `verificado localmente` |
 | ECR imutável, segredos write-only, RDS | `terraform/envs/lab/tests/*.tftest.hcl` | `verificado localmente` |
 | Namespace, Role/RoleBinding, ClusterSecretStore | checks `kubeconform` e `contract-platform` do harness | `verificado localmente` |
+| Perfil `full`, Applications do Argo CD, RBAC de refresh e render de Istio | `helm-template-full`, `kubeconform` e `contract-platform` | `verificado localmente` |
 | Comportamento real na AWS | `docs/RUNBOOK.md` | `não executado em nuvem (v2)` |
 
 ## Identificadores
@@ -29,7 +31,7 @@ mudança exige PRs coordenados nos dois repositórios e incremento da versão.
 | Projeto / ambiente / prefixo | `tx01v2` / `lab` / `tx01v2-lab` |
 | Tags padrão (`default_tags` do provider) | `Project=tx01v2`, `Environment=lab`, `ManagedBy=terraform`, `Repository=<owner>/tx01v2` |
 | Cluster EKS | `tx01v2-lab`, Kubernetes `1.36` (suporte padrão do EKS até 2027-08-02), `upgrade_policy.support_type = "STANDARD"` |
-| Namespace do app | `dx01v2` — criado pela camada de plataforma do tx01v2 com os labels `pod-security.kubernetes.io/enforce=restricted`, `pod-security.kubernetes.io/enforce-version=latest`, `elbv2.k8s.aws/pod-readiness-gate-inject=enabled` |
+| Namespace do app | `dx01v2` — criado pelo tx com os labels `pod-security.kubernetes.io/enforce=restricted`, `pod-security.kubernetes.io/enforce-version=latest`, `elbv2.k8s.aws/pod-readiness-gate-inject=enabled`; no perfil `full`, também `istio.io/dataplane-mode=ambient` e `policy.lab/enforce=true` |
 | Grupo Kubernetes do deployer | `dx01v2-deployers`, ligado no namespace `dx01v2` (RoleBinding `dx01v2-deployers`) à Role `dx01v2-deployer` |
 | Traces (OpenTelemetry) | `http://opentelemetry-collector.observability.svc:4318` (OTLP/HTTP), Collector instalado pela camada de plataforma no namespace `observability` (Pod Identity `tx01v2-lab-otel-collector`, só `AWSXRayDaemonWriteAccess`); os spans vão para o AWS X-Ray da região do lab |
 | Repositórios ECR | `dx01v2/api`, `dx01v2/web` — tags IMMUTABLE, scan on push; imagens com a tag do SHA git completo (40 caracteres) do dx01v2 |
@@ -106,6 +108,21 @@ final), que casa com o recurso `parameter/tx01v2/lab/*`; ou leia os nomes com `G
   aceita ExternalSecrets do namespace `dx01v2` (`spec.conditions`).
 - Add-ons do EKS gerenciados pelo Terraform: vpc-cni (com enforcement de network policy), kube-proxy,
   coredns, eks-pod-identity-agent, metrics-server.
+- `platform/install.sh --profile full` instala Istio ambient, Gatekeeper, Argo CD e o restante dos
+  charts fixados pelo lab local; `core` continua sendo o padrão.
+- No `full`, a Application `platform` lê `platform/gitops` do tx e passa por `valuesObject` a URL
+  pública do dx e a revisão `gitops/aws`. O chart registra a Application `dx01v2`, que observa
+  `deploy/k8s/overlays/aws` com sync automático, prune e self-heal. Repositórios privados precisam
+  de credencial configurada no Argo CD por quem fez o fork.
+- O grupo Kubernetes `dx01v2-deployers` tem RoleBinding `dx01v2-gitops-sync` em `argocd`: pode
+  `get`, `list`, `watch` e `patch` a Application `dx01v2` (a listagem é necessária ao cliente
+  Kubernetes; `get/watch/patch` ficam restritos a `resourceNames: [dx01v2]`). Essa permissão permite
+  ao deploy pedir refresh; não pode criar ou modificar outras Applications. A Role `dx01v2-deployer`
+  no namespace `dx01v2` continua limitada aos recursos do app.
+- No `full`, a malha ambient e a constraint `allowed-repos` abrangem o namespace `dx01v2`; o
+  namespace de app continua sujeito às policies de rede do contrato. Os endpoints externos do ALB
+  chegam em HTTP, por isso o peer authentication ambient permanece `PERMISSIVE` para permitir a
+  entrada fora da malha.
 
 ## Runtime do app (dx01v2)
 

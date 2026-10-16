@@ -50,6 +50,11 @@ output "ssm_parameter_names" {
   value       = sort([for p in aws_ssm_parameter.contract : p.name])
 }
 
+output "velero_bucket_name" {
+  description = "S3 bucket of the Velero backups (the profile full of platform/install.sh); platform/install.sh derives the same name."
+  value       = module.velero.bucket_name
+}
+
 output "load_balancer_controller_role_arn" {
   description = "Pod Identity role of the AWS Load Balancer Controller."
   value       = module.eks.load_balancer_controller_role_arn

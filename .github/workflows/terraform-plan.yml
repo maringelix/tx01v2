@@ -36,6 +36,8 @@ jobs:
       TF_VAR_allow_endpoint_from_anywhere: ${{ vars.LAB_ALLOW_ENDPOINT_FROM_ANYWHERE || 'false' }}
       TF_VAR_cluster_admin_principal_arns: ${{ vars.LAB_CLUSTER_ADMIN_PRINCIPAL_ARNS }}
       TF_VAR_app_deployer_principal_arns: ${{ vars.LAB_APP_DEPLOYER_PRINCIPAL_ARNS || '[]' }}
+      TF_VAR_node_instance_types: ${{ vars.LAB_NODE_INSTANCE_TYPES || '["t3.medium","t3a.medium"]' }}
+      TF_VAR_node_desired_size: ${{ vars.LAB_NODE_DESIRED_SIZE || '2' }}
     steps:
       - name: Mask the addresses of the operator in the logs
         env:

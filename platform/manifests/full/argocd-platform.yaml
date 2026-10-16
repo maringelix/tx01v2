@@ -1,0 +1,49 @@
+# App of apps of the profile full: the Application platform syncs the chart platform/gitops of this
+# repository (public, read through https, no credential) into the namespace argocd; the chart holds
+# the AppProject and the Application of the app (dx01v2), which Argo CD then syncs from the public
+# repository of the app (automated, self-heal). Argo CD has no admin user and no LoadBalancer (values
+# of platform/local/values/argo-cd.yaml): the UI is reached with kubectl port-forward.
+# platform/render-manifests.sh replaces the placeholders with the repositories of the fork:
+# __TX_REPO_URL__, __DX_REPO_URL__ and __DX_REVISION__ (the branch that the deploy workflow of
+# dx01v2 updates).
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform
+  namespace: argocd
+spec:
+  description: The apps that the platform of tx01v2 registers in Argo CD (docs/RUNBOOK.md)
+  sourceRepos:
+    - __TX_REPO_URL__
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: argocd
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+    - group: argoproj.io
+      kind: Application
+    - group: argoproj.io
+      kind: AppProject
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform
+  namespace: argocd
+spec:
+  project: platform
+  source:
+    repoURL: __TX_REPO_URL__
+    targetRevision: main
+    path: platform/gitops
+    helm:
+      valuesObject:
+        dxRepoURL: __DX_REPO_URL__
+        dxRevision: __DX_REVISION__
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

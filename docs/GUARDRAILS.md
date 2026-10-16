@@ -37,11 +37,13 @@ Tipos: `bloqueante` (falha o CI ou o apply), `alerta` (notifica), `processo` (di
 | K8S-01 | Manifests da plataforma validados com kubeconform estrito e schemas fixados por commit | manifest inválido não chega ao cluster | `kubeconform` | bloqueante |
 | K8S-02 | Namespace, RBAC e ClusterSecretStore conforme o contrato; deployer só lê secrets | menor privilégio no cluster | `contract-platform` | bloqueante |
 | K8S-03 | Service mutator webhook do LBC desligado; ServiceAccounts iguais às associações de Pod Identity; imagens dos charts por digest | sem efeitos colaterais em Services; nada muda sem diff | `contract-platform`, `helm-template` | bloqueante |
+| K8S-04 | No perfil `full`, charts e imagens continuam fixados; Services renderizados não podem ser `LoadBalancer`/`NodePort`; o Gatekeeper só isenta namespaces de sistema/plataforma | a UI do Argo CD e a plataforma não ficam expostas, e o namespace do app segue sob policy | `helm-template-full`, `kubeconform`, `contract-platform` | bloqueante |
 | APP-01 | Contrato com o dx01v2 versionado; mudanças em PRs coordenados nos dois repos | os dois lados evoluem juntos | `docs/CONTRATO.md`, testes do contrato | processo |
 | CUSTO-01 | Budget mensal (padrão 25 USD) com alertas ACTUAL 50/80/100 % e FORECASTED 100 % | quem paga é você | `terraform/bootstrap/budget.tf` + `tests/budget.tftest.hcl` | alerta |
 | CUSTO-02 | Padrões baratos: SPOT, 1 NAT, RDS single-AZ, backup de 1 dia, retenção de logs de 7 dias | custo por hora mínimo | `tests/lab.tftest.hcl` (`defaults_are_lab_friendly`) | bloqueante |
 | CUSTO-03 | Destroy falha alto (sem `\|\| true`/`\|\| echo`), segue para o `terraform destroy` mesmo quando o `platform/uninstall.sh` falha (apagando pela API da AWS o que o controlador criou) e sempre termina com `scripts/leftovers.sh` | erro do v1: destroy que engolia erros; um uninstall que falha não pode deixar o ALB cobrando | `scripts/destroy.sh`, `terraform-destroy.yml`; check `destroy-flow` (CLIs simuladas), `policy-workflows` | bloqueante |
 | CUSTO-04 | Rodada em nuvem termina com destroy no mesmo dia e relatório `cloud_run_report` | evita custo esquecido | `docs/RUNBOOK.md` | processo |
+| CUSTO-05 | `full` usa node group explicitamente dimensionado; o default `core` fica barato; requests e custo são repetíveis | o custo do perfil opcional é visível antes do apply | `platform-sizing`, `docs/CUSTOS.md` | alerta |
 | CI-01 | O CI é o harness: jobs só chamam `make <alvo>` | o que passa local passa no CI | revisão de PR; `ci.yml` | processo |
 | CI-02 | Sem `continue-on-error: true`, `\|\| true`, `\|\| echo` em workflows; sem `sed` em arquivos Terraform | gates honestos; erro do v1 | `policy-workflows` | bloqueante |
 | CI-03 | `permissions: contents: read` no topo, `timeout-minutes`, `concurrency`, `ubuntu-24.04`, `persist-credentials: false` | menor privilégio e previsibilidade | `policy-workflows` | bloqueante |
@@ -96,6 +98,9 @@ pelo deployer (`KSV-0113`).
 - A política IAM do LBC é a do upstream, com recursos `*` limitados por condições de tag.
 - `scripts/leftovers.sh` cobre os serviços que o lab usa; recursos criados à mão fora disso não.
 - O schema do ClusterSecretStore no kubeconform é de 2026-06-02 (ver `docs/HARNESS.md`).
+- O perfil `full` nunca foi instalado na AWS. Sem credencial de ECR, o Trivy Operator pode não
+  produzir relatórios para imagens privadas; as imagens e manifests são validados no render, mas a
+  cobertura de scan em runtime precisa de credencial configurada pelo operador.
 - O lab local prova a plataforma num nó kind, não na AWS; o cloud-provider-kind usa o socket do Docker
   (cria contêineres): rode o lab local só numa máquina descartável ou no CI (`docs/LAB_LOCAL.md`).
 - Os namespaces `istio-system`, `monitoring-agents` e `chaos-mesh` do lab local são `privileged` por

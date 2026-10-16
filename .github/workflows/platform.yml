@@ -1,5 +1,6 @@
-# Installs (or removes) the platform layer on the lab cluster: AWS Load Balancer Controller, External
-# Secrets Operator and platform/manifests. CLOUD-MUTATING: dispatch manually after terraform-apply.
+# Installs (or removes) the platform layer on the lab cluster. Profile `core` installs the AWS Load
+# Balancer Controller, External Secrets Operator and OpenTelemetry Collector; `full` adds the platform
+# of the local lab. CLOUD-MUTATING: dispatch manually after terraform-apply.
 # The apply role must be in LAB_CLUSTER_ADMIN_PRINCIPAL_ARNS and GitHub-hosted runners must reach the
 # public endpoint (LAB_ENDPOINT_PUBLIC_ACCESS_CIDRS, docs/ARQUITETURA.md).
 name: platform
@@ -14,6 +15,13 @@ on:
           - install
           - uninstall
         default: install
+      profile:
+        description: Platform profile to install (uninstall ignores this value)
+        type: choice
+        options:
+          - core
+          - full
+        default: core
 
 permissions:
   contents: read
@@ -63,9 +71,11 @@ jobs:
       - name: Run platform/${{ inputs.action }}.sh
         env:
           ACTION: ${{ inputs.action }}
+          PROFILE: ${{ inputs.profile }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
           case "$ACTION" in
-            install) bash platform/install.sh ;;
+            install) bash platform/install.sh --profile "$PROFILE" --github-owner "$GITHUB_REPOSITORY_OWNER" ;;
             uninstall) bash platform/uninstall.sh ;;
             *) echo "::error::unknown action: $ACTION"; exit 1 ;;
           esac

@@ -1,0 +1,38 @@
+# gator verify suite of the one policy that differs in the cloud (harness check policy-gator): the
+# allowed repositories are the ECR registry of the lab. The other five policies are those of
+# platform/local/policies, verified by their own suite. The template and the shared objects are the
+# ones of the local lab.
+kind: Suite
+apiVersion: test.gatekeeper.sh/v1alpha1
+metadata:
+  name: lab-policies-cloud
+tests:
+  - name: allowed-repos-ecr
+    template: ../../../local/policies/templates/laballowedrepos.yaml
+    constraint: ../constraints/allowed-repos.yaml
+    cases:
+      - name: ecr-registry-of-the-lab
+        object: pod-ecr.yaml
+        inventory:
+          - ../../../local/policies/tests/namespace-dx01v2.yaml
+        assertions:
+          - violations: no
+      - name: docker-hub
+        object: ../../../local/policies/tests/pod-bad.yaml
+        inventory:
+          - ../../../local/policies/tests/namespace-dx01v2.yaml
+        assertions:
+          - violations: yes
+            message: outside the allowed repositories
+      - name: another-region
+        object: pod-other-region.yaml
+        inventory:
+          - ../../../local/policies/tests/namespace-dx01v2.yaml
+        assertions:
+          - violations: 1
+      - name: the-local-registry-is-not-allowed-in-the-cloud
+        object: ../../../local/policies/tests/pod-good.yaml
+        inventory:
+          - ../../../local/policies/tests/namespace-dx01v2.yaml
+        assertions:
+          - violations: 2

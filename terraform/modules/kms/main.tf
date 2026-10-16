@@ -1,5 +1,5 @@
 # One customer managed key for the whole lab: EKS secrets envelope encryption, RDS storage,
-# Secrets Manager, ECR and every CloudWatch log group (flow logs, EKS control plane, RDS, WAF).
+# Secrets Manager, ECR, the Velero backup bucket and every CloudWatch log group (flow logs, EKS control plane, RDS, WAF).
 
 data "aws_caller_identity" "current" {}
 

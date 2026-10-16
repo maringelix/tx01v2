@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: good
+  namespace: dx01v2
+  labels:
+    app.kubernetes.io/name: api
+spec:
+  containers:
+    - name: api
+      image: 123456789012.dkr.ecr.us-east-1.amazonaws.com/dx01v2/api:0000000000000000000000000000000000000000
+      readinessProbe:
+        httpGet:
+          path: /readyz
+          port: 3000
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          memory: 256Mi

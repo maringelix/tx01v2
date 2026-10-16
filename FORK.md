@@ -87,8 +87,8 @@ make local-check                   # the probes of what is installed
 make local-down                    # destroy, then the leftover check
 ```
 
-The app comes next: in your `dx01v2` clone, `make e2e-platform` deploys it on this platform the
-GitOps way (see its [FORK.md](https://github.com/maringelix/dx01v2/blob/main/FORK.md)).
+The app comes next: follow the local integration procedure in your `dx01v2` clone to deploy it on
+this platform the GitOps way (see its [FORK.md](https://github.com/maringelix/dx01v2/blob/main/FORK.md)).
 
 ## 5. Make the fork yours
 
@@ -101,16 +101,16 @@ repositories: change them if you like, nothing depends on them.
 
 Every pull request of your fork runs the same harness as the original, so
 `HARNESS_STRICT=1 make verify` before a push saves a CI round. A change to `platform/local` or
-`terraform/envs/local` is proven only by `make e2e`. To try such a change with the app, run
-`make e2e-platform` in `dx01v2` with `TX01V2_DIR=../tx01v2` (your checkout as it is), or let the CI
-of your `dx01v2` fork clone your `tx01v2` (its FORK.md, step 5).
+`terraform/envs/local` is proven only by `make e2e`. To test a tx change with the app, follow the
+local integration procedure in the matching `dx01v2` runbook or let the dx CI clone this checkout.
 
 ## 7. Your own AWS account (costs money)
 
 Before the first apply:
 
 - Read the [cost section of the README](README.md#cloud-path-costs-money) and [docs/CUSTOS.md](docs/CUSTOS.md) (reference
-  prices: check the current ones). EKS, its nodes, the NAT gateway, the load balancer, the WAF and RDS
+  prices: check the current ones). `core` is estimated at US$0.26–0.32/hour; `full`, with larger
+  nodes, at US$0.29–0.40/hour. EKS, its nodes, the NAT gateway, the load balancer, the WAF and RDS
   bill by the hour while the lab is up, and free tiers and trial credits change often: check what
   your account covers. The bootstrap creates a monthly budget with alerts, but a budget only warns,
   it stops nothing. Destroy on the same day.
@@ -152,10 +152,29 @@ Then, from the root of your `tx01v2` clone:
    `LAB_ENDPOINT_PUBLIC_ACCESS_CIDRS` (`gh secret set LAB_ENDPOINT_PUBLIC_ACCESS_CIDRS -R <you>/tx01v2`):
    [docs/RUNBOOK.md](docs/RUNBOOK.md), section 3. Variables are not secret: never put a credential or
    your home address in one. The workflows mask every CIDR of the secret in their logs.
-3. **Run**: from the Actions tab, `terraform-plan`, `terraform-apply` and `platform` (each one waits
-   for your approval of the `lab` environment), the app deploy from your `dx01v2`, the smoke test,
-   then `terraform-destroy`, which ends with the leftover check: [docs/RUNBOOK.md](docs/RUNBOOK.md),
-   sections 4 to 9. The workflows take `github_owner` from the owner of the repository.
+   For `full`, set the public repository variables before the first plan and keep them through
+   destroy:
+
+   ```bash
+   gh variable set LAB_NODE_INSTANCE_TYPES --body '["t3.large","t3a.large"]' -R <you>/tx01v2
+   gh variable set LAB_NODE_DESIRED_SIZE --body '2' -R <you>/tx01v2
+   ```
+
+   Optionally set the secret `SLACK_WEBHOOK_URL` for warning and critical Alertmanager notifications.
+   `core` uses the defaults and does not need the `LAB_NODE_*` variables.
+3. **Run**: choose `core` (the default) or `full`. For `full`, first merge the R4 code in both the tx
+   and dx repositories, then run `terraform-plan`, review the node types and capacity, and dispatch
+   `terraform-apply`. After approval of the `lab` environment, dispatch `platform` with
+   `action=install` and the same `profile`. Deploy the app through its dx workflow: it commits the
+   image digest to `gitops/aws`; Argo CD syncs it and reports `Synced`/`Healthy`. Then run the smoke
+   and Velero restore drill and dispatch `terraform-destroy`, which ends with the leftover check.
+   See [docs/RUNBOOK.md](docs/RUNBOOK.md), sections 3 to 9. The workflows take `github_owner` from
+   the owner of the repository.
+
+The direct dx push workflow remains available with the `core` profile. With `full`, Argo CD owns the
+application and self-heal can revert changes not committed to `gitops/aws`. Switching from `full` to
+`core` is unsupported: destroy the lab, remove the `LAB_NODE_*` variables, apply again, and install
+`core`.
 
 Your fork is public, and so are its workflow logs: the AWS account ID can show up in them. Never paste
 credentials into an issue or a pull request.
@@ -178,6 +197,8 @@ request. Run `scripts/repo-guardrails.sh` again when `.github/rulesets/main.json
 |---|---|
 | A pull request waits forever for `static`, `test` or `e2e` | Actions are still disabled in the fork: step 2 |
 | `repo-guardrails.sh` fails with "the workflows of this fork are not enabled yet" | step 2, then run it again |
+| `full` pods stay Pending | compare requests with the selected node types in `docs/CUSTOS.md`, check Spot capacity, then inspect `kubectl describe pod`; do not run the full chart set on the default `t3.medium` group |
+| Argo CD reports `ComparisonError` or the app is OutOfSync | confirm the dx `gitops/aws` branch exists, the repo is public or has an Argo CD credential, and the source path is correct; inspect the dx workflow logs |
 | `make e2e` gets killed or Docker freezes | give Docker about 8 GB of memory (Docker Desktop on WSL 2: `memory=8GB` under `[wsl2]` in `%UserProfile%\.wslconfig`, then `wsl --shutdown`) and run one lab at a time; with 7 GB, `LOCAL_SIZE=small make local-up`; with less memory, `LOCAL_PROFILE=core make e2e` proves the base layers |
 | Port 5001 is already in use | another local lab or registry is running: `make local-down`, `docker ps` |
 | Something of the local lab is left after an interruption | `make local-down` (destroy and leftover check) |

@@ -1,0 +1,20 @@
+# Overlay of platform/local/values/velero.yaml for the profile full on EKS (same chart, same images by
+# digest, the same plugin for AWS, same sizes). Backups go to the S3 bucket of terraform/modules/velero
+# with the credentials of EKS Pod Identity (association of the service account velero/velero): there is
+# no credentials Secret. platform/install.sh replaces __VELERO_BUCKET__ and __AWS_REGION__. The
+# location list is replaced as a whole by Helm, so the S3 emulator of the local lab (s3Url, path
+# style) does not survive.
+credentials:
+  useSecret: false
+  existingSecret: null
+serviceAccount:
+  server:
+    name: velero
+configuration:
+  backupStorageLocation:
+    - name: default
+      provider: aws
+      bucket: __VELERO_BUCKET__
+      default: true
+      config:
+        region: __AWS_REGION__

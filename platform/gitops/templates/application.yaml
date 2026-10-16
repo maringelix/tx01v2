@@ -1,0 +1,26 @@
+# Application dx01v2: the app from its public repository (https, no credential), synced automatically
+# with self-heal and prune: a commit to the revision is a deploy, and a change made by hand in the
+# namespace is reverted. The HPA owns the replica count, so Argo CD ignores it.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ .Values.appNamespace }}
+  namespace: argocd
+spec:
+  project: {{ .Values.appNamespace }}
+  source:
+    repoURL: {{ .Values.dxRepoURL | quote }}
+    targetRevision: {{ .Values.dxRevision | quote }}
+    path: {{ .Values.dxPath | quote }}
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: {{ .Values.appNamespace }}
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas

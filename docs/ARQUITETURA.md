@@ -109,10 +109,90 @@ flowchart LR
 | 22 | Velero no S3 emulado; backup por recursos, sem snapshots | o ensaio de restore roda em minutos e sem nuvem (v1 nunca restaurou nada) | `pg_dump` sozinho; snapshots CSI |
 | 23 | Perfis `core`/`observability`/`operations`/`full` | máquinas com pouca memória validam uma camada por vez; o CI roda `full` | um único perfil |
 | 24 | Traces: o OpenTelemetry Collector como único destino OTLP; Tempo no lab local, X-Ray na nuvem | o app e os Gateways falam só OTLP; trocar o backend não muda o app; Tempo monolítico (chart grafana-community) cabe no kind; o spanmetrics do Collector liga métricas a traces por exemplars | SDK do X-Ray no app (prende o app à AWS); Jaeger; Tempo distribuído |
+| 25 | `core` continua padrão; `full` usa Prometheus, Loki e Tempo dentro do EKS | sondas com os mesmos componentes do lab local, sem criar workspaces gerenciados por padrão | AMP + Managed Grafana + CloudWatch |
+| 26 | Istio ambient upstream no EKS, com istio-cni encadeado ao VPC CNI | ztunnel por nó, sem sidecar nos pods; as NetworkPolicies liberam HBONE TCP 15008 e as sondas do kubelet | add-on Istio do AKS ou sidecars |
+| 27 | Gatekeeper não avalia namespaces gerenciados pelo cluster e pela plataforma; `dx01v2` segue coberto | os controladores precisam subir mesmo com a constraint de namespaces privados | isentar todos os namespaces |
+| 28 | Argo CD sincroniza `platform/gitops`; a Application do app lê `gitops/aws` do repositório dx | commit da imagem por digest inicia o deploy; Argo faz self-heal; o repositório público é lido por HTTPS sem credencial | aplicar os manifests diretamente pelo workflow |
+| 29 | Velero guarda objetos do Kubernetes no S3; `snapshotsEnabled: false` | drill de restore sem permissões EC2 nem snapshots EBS | snapshots de volume |
 
 Detalhes do LBC v3: desde a v3.0.0 o chart tem a mesma versão do app (chart 3.6.0); o Gateway API
 vem habilitado por padrão e é desligado explicitamente (o lab usa Ingress); o service mutator webhook
 também fica desligado. A política IAM é a do upstream da tag `v3.6.0`, sem edição.
+
+## R4: plataforma completa em AWS (como código)
+
+O `platform/install.sh --profile core|full` mantém `core` como padrão. `full` acrescenta os mesmos
+charts, versões, SHA256 dos archives e digests de imagem do lab local, com overlays AWS. Os renders,
+o `kubeconform` e os testes do gator verificam manifests e configuração; nada desta plataforma foi
+aplicado na AWS (`não executado em nuvem (v2)`).
+
+### R4.2 — observabilidade no cluster ou gerenciada
+
+Decisão: o perfil `full` instala kube-prometheus-stack, Loki e Tempo no EKS, com armazenamento
+`emptyDir`; `core` continua instalando só o Collector e enviando traces do app ao X-Ray. Esta opção
+reaproveita as sondas do lab para métricas, alertas, logs e traces e não exige workspaces ou retenção
+fora do cluster. Os dados do perfil `full` somem quando os pods/nós são destruídos. Ela não prova
+retenção durável nem capacidade em escala.
+
+A alternativa gerenciada é Amazon Managed Service for Prometheus, Amazon Managed Grafana e CloudWatch
+(Logs e traces). A sondagem pode comprovar `remote_write`, consultas PromQL, painéis, alertas, ingestão
+de logs/traces e permissões AWS; não comprova a operação nem a retenção dos componentes dentro do
+cluster. O custo por rodada fica mais sensível a usuários ativos e volume de telemetria.
+
+Comparação indicativa em `us-east-1`, consulta em 2026-10-16: para uma rodada de 3 horas, dois nós,
+1.000 séries por nó coletadas a cada 60 segundos, 1.000 consultas de 100.000 amostras e 1 GB de logs,
+o AMP ingere cerca de 360 mil amostras (aprox. US$0,03) e as consultas ficam perto de US$0,01; o
+CloudWatch fica em até US$0,50 por GB de logs na hipótese sem crédito de Free Tier; o Managed Grafana
+cobra no mínimo US$9 por um editor ativo no workspace no mês, sem rateio por 3 horas. Total indicativo:
+cerca de US$9,54 no mês dessa rodada, sem contar transferência e outros dados. Os números de AMP
+usam as tarifas publicadas e as quantidades acima; o volume real deve ser medido pelo operador. Fontes:
+[preço do AMP](https://aws.amazon.com/prometheus/pricing/),
+[preço do Managed Grafana](https://aws.amazon.com/grafana/pricing/),
+[preço do CloudWatch](https://aws.amazon.com/cloudwatch/pricing/) (consultados em 2026-10-16).
+
+| Opção (rodada única de 3h) | Estimativa em `us-east-1` | O que as sondas conseguem provar |
+|---|---:|---|
+| `full` no cluster | ~US$0,87 no total do lab com Spot | scrape, alertas, dashboards, logs no Loki e traces no Tempo; valida os componentes in-cluster, sem retenção após destroy |
+| observabilidade gerenciada + cluster `core` | ~US$10,32 na primeira utilização do workspace no mês (`3 × US$0,26 + US$9,54`) | `remote_write`, consultas no AMP, dashboards/alertas gerenciados e ingestão no CloudWatch; exercita IAM e APIs da AWS |
+
+Se o workspace do Managed Grafana já teve um editor ativo no mesmo mês, o componente gerenciado
+estimado para outra rodada cai para cerca de US$0,54, além do cluster `core`. A hipótese de custo não
+inclui tráfego de saída nem volume de traces; eles devem ser somados com o uso real. O usuário é
+cobrado por mês de calendário, então não divida a licença do Grafana por horas de uma única sessão.
+
+Para comparar apenas o acréscimo de capacidade do EKS, o perfil `full` pede 795m CPU e 3104MiB de
+memória com dois nós, conforme `scripts/platform-sizing.sh`. Use `LAB_NODE_INSTANCE_TYPES='["t3.large","t3a.large"]'`
+e `LAB_NODE_DESIRED_SIZE=2`; o default `2 × t3.medium/t3a.medium` não é o perfil documentado para
+`full`. À tabela base do perfil `core` somam-se aproximadamente US$0,03/h com Spot (estimativa de 35%
+do on-demand) ou US$0,0832/h on-demand, usando o preço público de US$0,0832/h do t3.large. Fontes:
+[preço do EKS](https://aws.amazon.com/eks/pricing/) e
+[preço de instância t3.large](https://docs.aws.amazon.com/prescriptive-guidance/latest/optimize-costs-microsoft-workloads/right-size-selection.html)
+(consultados em 2026-10-16). A tabela de `docs/CUSTOS.md` inclui estes valores. O cálculo é de
+requests, não de uso observado; o overhead do sistema e a disponibilidade Spot precisam ser
+confirmados numa conta do operador.
+
+### R4.3 — Istio ambient no EKS
+
+O `full` usa os charts upstream Istio fixados no lab local. O chart istio-cni instala um plugin CNI
+encadeado após o plugin primário, o Amazon VPC CNI; o EKS do lab também ativa NetworkPolicy no VPC
+CNI. Portanto as policies do app precisam permitir o túnel HBONE entre nós em TCP 15008 e as sondas
+do kubelet no endereço link-local `169.254.7.127/32`, como no overlay local do dx01v2. HBONE usa
+TCP 15008 por convenção do Istio e o ztunnel roda em cada nó. Fontes oficiais consultadas em
+2026-10-16: [Istio CNI](https://istio.io/latest/docs/setup/additional-setup/cni/),
+[Istio HBONE](https://istio.io/latest/docs/ambient/architecture/hbone/) e
+[NetworkPolicy no Amazon VPC CNI](https://docs.aws.amazon.com/eks/latest/userguide/cni-network-policy-configure.html).
+Os manifests são renderizados; a compatibilidade em execução ainda não foi testada na AWS.
+
+### R4.6 — políticas e componentes da plataforma
+
+O overlay do Gatekeeper isenta `kube-system`, `kube-public`, `kube-node-lease`, `istio-system`,
+`cert-manager`, `external-secrets`, `monitoring`, `monitoring-agents`, `observability`, `argocd`,
+`trivy-system`, `velero` e `chaos-mesh`, identificando-os pelo label imutável
+`kubernetes.io/metadata.name`. O namespace `dx01v2` não é isento e continua com
+`policy.lab/enforce: "true"`. `monitoring-agents` e `chaos-mesh` usam Pod Security `privileged`;
+`trivy-system` usa `baseline` e alerta `restricted`. O Trivy Operator sem credencial do ECR pode não
+gerar relatórios de vulnerabilidade para as imagens privadas do app; o instalador não cria uma
+credencial de registry.
 
 ## v1 → v2
 
