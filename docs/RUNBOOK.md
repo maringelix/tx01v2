@@ -142,10 +142,12 @@ Pod Identity).
 
 Siga o runbook do dx01v2. O workflow lê os parâmetros `/tx01v2/lab/*`, publica as imagens nos
 repositórios `dx01v2/api` e `dx01v2/web` e usa `dx01v2-gha-deploy` (grupo `dx01v2-deployers`). Com
-`core`, o caminho atual aplica os manifests diretamente. Com `full`, o caminho principal constrói e
-publica a imagem, grava o digest no overlay da branch `gitops/aws` e espera o Argo CD sincronizar e
-deixar a Application `dx01v2` saudável; o push direto continua disponível no dx, mas o self-heal do
-Argo CD pode reverter alterações que não estejam nessa branch.
+`core`, selecione `mode=push`, pois esse perfil não instala Argo CD. Com `full`, use `mode=gitops`
+(padrão): o workflow publica as imagens, registra a tag SHA do commit na branch `gitops/aws`, configura
+na Application viva o overlay e os parâmetros de nuvem e espera o Argo CD sincronizar e deixar `dx01v2`
+saudável. A branch pública recebe apenas parâmetros de exemplo; IDs e CIDRs reais ficam no cluster.
+O modo `push` também serve a clusters sem Argo CD; no perfil `full`, o self-heal pode reverter mudanças
+feitas fora da branch GitOps.
 
 ## 7. Smoke test
 

@@ -43,7 +43,18 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd
+  ignoreDifferences:
+    - group: argoproj.io
+      kind: Application
+      name: dx01v2
+      namespace: argocd
+      jsonPointers:
+        - /spec/source/path
+        - /spec/source/kustomize/images
+        - /spec/source/kustomize/patches
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
+    syncOptions:
+      - RespectIgnoreDifferences=true

@@ -114,6 +114,11 @@ final), que casa com o recurso `parameter/tx01v2/lab/*`; ou leia os nomes com `G
   pública do dx e a revisão `gitops/aws`. O chart registra a Application `dx01v2`, que observa
   `deploy/k8s/overlays/aws` com sync automático, prune e self-heal. Repositórios privados precisam
   de credencial configurada no Argo CD por quem fez o fork.
+- O workflow de deploy atualiza na Application viva o overlay, as imagens e os parâmetros de nuvem.
+  A Application `platform` ignora apenas `spec.source.path`, `spec.source.kustomize.images` e
+  `spec.source.kustomize.patches` da Application `dx01v2`, para o self-heal do pai preservar esses
+  valores. A branch pública `gitops/aws` recebe a revisão e parâmetros de exemplo; IDs e CIDRs reais
+  permanecem no cluster.
 - O grupo Kubernetes `dx01v2-deployers` tem RoleBinding `dx01v2-gitops-sync` em `argocd`: pode
   `get`, `list`, `watch` e `patch` a Application `dx01v2` (a listagem é necessária ao cliente
   Kubernetes; `get/watch/patch` ficam restritos a `resourceNames: [dx01v2]`). Essa permissão permite

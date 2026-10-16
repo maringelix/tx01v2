@@ -666,7 +666,8 @@ check_contract_platform() {
     "kind: Telemetry" "name: mesh-default"
     'istio.io/dataplane-mode: ambient' 'policy.lab/enforce: "true"'
     "https://github.com/example-owner/tx01v2.git" "https://github.com/example-owner/dx01v2.git"
-    "dxRevision: gitops/aws"
+    "dxRevision: gitops/aws" 'RespectIgnoreDifferences=true'
+    '/spec/source/path' '/spec/source/kustomize/images' '/spec/source/kustomize/patches'
   )
   for e in "${expect_full[@]}"; do
     grep -qF -- "$e" <<<"$full" || {
