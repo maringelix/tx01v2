@@ -186,14 +186,25 @@ jq -e '.spec.updatePolicy.updateMode == "Off" and (.status.recommendation.contai
   "$WORK_DIR/vpa.json" >/dev/null || die 'VPA recommendation is missing'
 [[ "$(kubectl -n "$NS" get deployment capacity -o jsonpath='{.spec.template.spec.containers[0].resources.requests.cpu}')" == 50m ]] ||
   die 'recommendation-only VPA changed requests'
-# Query within the cluster; no public cost API.
+# Query within the cluster; no public cost API. Prometheus scrapes and the
+# allocation model converge asynchronously, so poll fresh results for at most
+# five minutes. Every attempt must satisfy the same positive-cost assertion.
 kubectl -n "$NS" run allocation --image="$CAPACITY_NODE_IMAGE" --restart=Never \
-  --overrides='{"spec":{"automountServiceAccountToken":false,"securityContext":{"runAsNonRoot":true,"runAsUser":1000,"seccompProfile":{"type":"RuntimeDefault"}},"containers":[{"name":"allocation","image":"'"$CAPACITY_NODE_IMAGE"'","command":["node","-e","fetch(\"http://opencost.finops:9003/allocation?window=10m&aggregate=namespace&includeIdle=true&step=1m&resolution=1m\").then(r=>{if(!r.ok)throw Error(r.status);return r.text()}).then(console.log).catch(e=>{console.error(e);process.exit(1)})"],"resources":{"requests":{"cpu":"10m","memory":"32Mi"},"limits":{"cpu":"200m","memory":"96Mi"}},"securityContext":{"allowPrivilegeEscalation":false,"readOnlyRootFilesystem":true,"capabilities":{"drop":["ALL"]}}}]}}' >/dev/null
-kubectl -n "$NS" wait pod/allocation --for=jsonpath='{.status.phase}'=Succeeded --timeout=90s >/dev/null
-kubectl -n "$NS" logs allocation >"$WORK_DIR/allocation.json"
-jq -e '[.. | objects | select(.name? == "lab-capacity" or .properties?.namespace? == "lab-capacity") |
-  (.cpuCost // 0) + (.ramCost // 0)] | add > 0' "$WORK_DIR/allocation.json" >/dev/null ||
+  --overrides='{"spec":{"automountServiceAccountToken":false,"securityContext":{"runAsNonRoot":true,"runAsUser":1000,"seccompProfile":{"type":"RuntimeDefault"}},"containers":[{"name":"allocation","image":"'"$CAPACITY_NODE_IMAGE"'","command":["node","-e","setInterval(()=>{},1000)"],"resources":{"requests":{"cpu":"10m","memory":"32Mi"},"limits":{"cpu":"200m","memory":"96Mi"}},"securityContext":{"allowPrivilegeEscalation":false,"readOnlyRootFilesystem":true,"capabilities":{"drop":["ALL"]}}}]}}' >/dev/null
+kubectl -n "$NS" wait pod/allocation --for=condition=Ready --timeout=90s >/dev/null
+allocation_positive() {
+  kubectl -n "$NS" exec allocation -- node -e \
+    'fetch("http://opencost.finops:9003/allocation?window=10m&aggregate=namespace&includeIdle=true&step=1m&resolution=1m",{signal:AbortSignal.timeout(15000)}).then(r=>{if(!r.ok)throw Error(r.status);return r.text()}).then(console.log).catch(e=>{console.error(e);process.exit(1)})' \
+    >"$WORK_DIR/allocation.json" || return 1
+  jq -e '[.. | objects | select(.name? == "lab-capacity" or .properties?.namespace? == "lab-capacity") |
+    (.cpuCost // 0) + (.ramCost // 0)] | add > 0' "$WORK_DIR/allocation.json" >/dev/null
+}
+if ! retry 7 30 allocation_positive; then
+  # Only synthetic namespace allocation metadata; no rates file or credentials.
+  jq -c '{code,status,allocations:[.. | objects | select(has("cpuCost") or has("ramCost")) |
+    {name,namespace:.properties.namespace,cpuCost,ramCost}]}' "$WORK_DIR/allocation.json" >&2
   die 'OpenCost did not allocate positive measured cost to the probe namespace'
+fi
 OUT="${HARNESS_ARTIFACT_DIR:-$WORK_DIR}/capacity-finops.json"
 mkdir -p "$(dirname "$OUT")"
 jq -n --slurpfile slo "$WORK_DIR/slo.json" \

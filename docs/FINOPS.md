@@ -30,7 +30,9 @@ mesh, backup, PITR, observabilidade, políticas e Chaos continuam obrigatórias.
 
 O VPA precisa produzir uma recomendação, mantendo updateMode Off e os requests
 originais. OpenCost precisa retornar custo positivo medido para o namespace da
-fixture pela API /allocation. As tarifas locais são uma simulação determinística,
+fixture pela API /allocation. A sonda consulta novamente por até cinco minutos
+para aguardar as amostras assíncronas, mantendo a exigência de custo positivo.
+As tarifas locais são uma simulação determinística,
 explicitamente identificada em platform/finops/pricing/local.json.
 
 ## EKS Cluster Autoscaler e Spot
