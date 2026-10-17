@@ -54,13 +54,19 @@ resource "aws_iam_policy" "lab_boundary" {
         Sid      = "VeleroBucketOnly"
         Effect   = "Allow"
         Action   = local.lab_velero_bucket_actions
-        Resource = local.velero_bucket_arn
+        Resource = local.velero_bucket_arns
       },
       {
         Sid      = "VeleroObjectsOnly"
         Effect   = "Allow"
         Action   = local.lab_velero_object_actions
-        Resource = "${local.velero_bucket_arn}/*"
+        Resource = local.velero_object_arns
+      },
+      {
+        Sid      = "ReplicateTheLabBackupOnly"
+        Effect   = "Allow"
+        Action   = ["s3:GetReplicationConfiguration", "s3:GetObjectVersionForReplication", "s3:GetObjectVersionAcl", "s3:GetObjectVersionTagging", "s3:ReplicateObject", "s3:ReplicateTags"]
+        Resource = concat(local.velero_bucket_arns, local.velero_object_arns)
       },
       ], local.lab_route53_boundary_statements, [
       {

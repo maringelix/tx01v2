@@ -14,6 +14,7 @@ locals {
     "ecr/web-url"                 = module.ecr.repository_urls["dx01v2/web"]
     "waf/acl-arn"                 = module.waf.web_acl_arn
     "db/secret-name"              = module.rds.secret_name
+    "db/endpoint"                 = module.rds.address
     "app/admin-token-secret-name" = aws_secretsmanager_secret.admin_token.name
     "eso/cluster-secret-store"    = "aws-secrets-manager"
     "dns/enabled"                 = local.dns_enabled ? "true" : "false"

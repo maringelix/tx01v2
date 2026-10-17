@@ -11,8 +11,8 @@ PVC vazio não atende a esse check. A execução pesada fica no GitHub Actions.
 O FSB precisa de root/hostPath no namespace Velero local; o servidor continua non-root
 e a aplicação mantém Pod Security `restricted`. A senha aleatória do repositório
 Kopia é criada antes do primeiro backup e preservada nas reinstalações. Não publique
-essa senha nem os backups de Secrets. Cloud usa seu driver CSI e requer ensaio
-autorizado próprio; o resultado kind não certifica snapshots gerenciados.
+essa senha nem os backups de Secrets. EKS usa FSB/data mover para cópias portáveis;
+o resultado kind não certifica a recuperação gerenciada nem a durabilidade regional.
 
 Este exercício separa quatro coisas que têm modos de falha diferentes: HA do RDS, backups nativos do
 banco, backup de objetos/volumes do Kubernetes e recuperação da aplicação. O Velero não restaura um
@@ -68,10 +68,59 @@ não promova um banco divergente. Depois da troca, registre o último commit dis
 falha e da recuperação para medir RPO/RTO observados, e trate o primário antigo como somente leitura
 até a reconciliação. Os comandos e gates de aplicação entram no par `dx01v2` R9.
 
-A replicação automatizada entre regiões no perfil `dr` é um pilot light de dados: ela **não** cria
-um cluster EKS ou banco em execução no destino. Para DR completo ainda são necessários runtime,
-artefatos, segredos/configuração, roteamento e um ensaio de perda da região primária seguido de
-failback. O planejamento e o custo dessa etapa estão no [roadmap](https://github.com/maringelix/tx00v2/blob/main/ROADMAP.md).
+## Runtime e recuperação regional
+
+O perfil `dr` provisiona outra VPC/EKS, RDS read replica privado e criptografado,
+ECR, WAF, ACM regional, contrato SSM e Velero em us-west-2 (configurável). A origem
+continua Multi-AZ. Antes do incidente, instale ambas as plataformas, promova os
+digests assinados ao registry secundário e confirme a réplica e os segredos atuais.
+Secrets Manager replica valores existentes com KMS regional, mantendo os nomes;
+o DX usa o endpoint RDS do contrato v7 para substituir somente DB_HOST.
+
+O S3 de origem e o destino de recuperação têm versioning. A role de replicação
+acessa apenas um bucket de origem, um destino e as chaves regionais respectivas;
+delete markers não são propagados. A identidade Velero DR lê o bucket de recuperação
+e grava apenas no seu bucket próprio. A BSL `primary-recovery` é ReadOnly.
+Live replication copia objetos novos, não o histórico anterior à configuração:
+execute um backup novo, aguarde ReplicationStatus COMPLETED e confira o checksum
+no destino antes de declarar recuperação possível. Não prometa RPO zero.
+
+Defina `enable_state_dr=true` no bootstrap para uma segunda cópia versionada do
+state, protegida contra remoção automática. A cópia assíncrona não cria outro
+backend ativo. Recupere a versão escolhida em diretório privado, compare lineage/
+serial e faça fencing do apply anterior antes de migrar o backend. Nunca publique
+state nem faça state push sem revisão.
+
+Configure `LAB_VELERO_REPOSITORY_PASSWORD` no environment com 64 caracteres hex
+aleatórios e mantenha escrow privado fora das regiões. O mesmo segredo é exigido
+na primeira instalação das duas regiões; uma chave divergente é recusada. Não
+rotacione a chave Kopia depois de criar o repositório. O namespace Velero permite
+root/hostPath apenas para o node agent; aplicação continua restricted. FSB copia
+arquivos vivos: quiesça aplicações que precisam de consistência transacional ou use
+seus mecanismos nativos. PostgreSQL gerenciado continua com RDS/PITR separado.
+Lifecycle por idade limita-se a `backups/`; os chunks Kopia dependem de seu GC.
+
+Instale `platform/install.sh --profile full --github-owner OWNER --target secondary`
+com AWS_REGION da região DR. O GitOps usa `gitops/aws-dr`; ExternalDNS nasce com
+zero réplicas. Após fencing comprovado do primário, promoção humana do RDS e smoke
+HTTPS/escrita no endereço secundário, repita com `--activate-dns` (ou o input do
+workflow). Um segundo deploy não deve reativar o escritor primário.
+
+O uninstall pausa seu ExternalDNS e remove A/TXT somente se o alias ainda aponta
+para um ALB daquele cluster. Um alias de outra região e mudanças concorrentes são
+preservados. O destroy trata os dois clusters/regiões antes da IaC e inventaria
+sobras nos dois destinos. Para failback, faça reseed a partir do escritor atual,
+confira lag/dados, congele escrita e cerque o secundário antes de trocar a rota.
+Revise a topologia Terraform após promoção; não reaplique cegamente a configuração
+de réplica sobre a nova principal.
+
+Os alertas Velero de idade (>30 h) e restore malsucedido seguem o Slack configurado.
+CloudWatch acompanha ReplicaLag >60 s por cinco períodos; associe a notificação
+desejada no exercício cloud. Ausência de telemetria não prova recuperação possível.
+Registre um restore isolado recente com checksum, registros e RPO/RTO. Os destinos
+de recuperação usam force_destroy=false: antes do teardown, decida o que arquivar/
+apagar e preserve também suas chaves KMS. Um bucket retido perde utilidade se a
+chave que o cifra for excluída. Nenhuma ação gerenciada desta rodada rodou na AWS.
 
 Fontes: [backups/PITR do RDS](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_WorkingWithAutomatedBackups.html),
 [replicação entre regiões](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_ReplicateBackups.html),

@@ -1,5 +1,11 @@
 # Inputs are validated by the calling root (terraform/envs/lab); this module trusts them.
 
+variable "secret_replica_keys" {
+  description = "Optional destination region => KMS ARN for native Secrets Manager credential replication."
+  type        = map(string)
+  default     = {}
+}
+
 variable "name" {
   description = "Name prefix of the lab (tx01v2-lab). The secret becomes <name>/db/app."
   type        = string

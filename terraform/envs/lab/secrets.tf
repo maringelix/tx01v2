@@ -11,6 +11,13 @@ resource "aws_secretsmanager_secret" "admin_token" {
   description             = "ADMIN_TOKEN of dx01v2 (plain string, 48 alphanumeric characters)."
   kms_key_id              = module.kms.key_arn
   recovery_window_in_days = var.secret_recovery_window_days
+  dynamic "replica" {
+    for_each = var.db_profile == "dr" ? { (var.dr_region) = module.kms_dr[0].key_arn } : {}
+    content {
+      region     = replica.key
+      kms_key_id = replica.value
+    }
+  }
 }
 
 resource "aws_secretsmanager_secret_version" "admin_token" {

@@ -321,6 +321,22 @@ variable "db_profile" {
   }
 }
 
+variable "dr_vpc_cidr" {
+  description = "Independent secondary VPC, canonical RFC1918 /16 to /19 and disjoint from the primary."
+  type        = string
+  default     = "10.10.0.0/16"
+  validation {
+    condition = var.db_profile != "dr" || try(
+      can(regex("^(10\\.|172\\.(1[6-9]|2[0-9]|3[01])\\.|192\\.168\\.)", var.dr_vpc_cidr)) &&
+      contains([16, 17, 18, 19], tonumber(split("/", var.dr_vpc_cidr)[1])) &&
+      cidrsubnet(var.dr_vpc_cidr, 0, 0) == var.dr_vpc_cidr &&
+      cidrhost("${split("/", var.dr_vpc_cidr)[0]}/${min(tonumber(split("/", var.dr_vpc_cidr)[1]), tonumber(split("/", var.vpc_cidr)[1]))}", 0) !=
+      cidrhost("${split("/", var.vpc_cidr)[0]}/${min(tonumber(split("/", var.dr_vpc_cidr)[1]), tonumber(split("/", var.vpc_cidr)[1]))}", 0),
+    false)
+    error_message = "dr_vpc_cidr must be a private canonical /16 to /19 that does not overlap vpc_cidr."
+  }
+}
+
 variable "dr_region" {
   description = "Destination AWS Region for the opt-in dr profile; it must differ from aws_region."
   type        = string

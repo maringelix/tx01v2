@@ -22,6 +22,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$HERE/../scripts/lib/common.sh"
 # shellcheck source=scripts/lib/aws.sh
 source "$REPO_ROOT/scripts/lib/aws.sh"
+# shellcheck source=scripts/lib/regional-dns.sh
+source "$REPO_ROOT/scripts/lib/regional-dns.sh"
 export PATH="$REPO_ROOT/.tools/bin:$PATH"
 
 LB_WAIT_SECONDS="${LB_WAIT_SECONDS:-900}"
@@ -85,7 +87,9 @@ wait_for_controller_resources() {
 # Keep ExternalDNS running until it has removed only its app alias and TXT ownership record. With the
 # chart's sync policy and the ingress deleted above, these Route53 records are no longer desired.
 wait_for_dns_records() {
-  local enabled domain zone records remaining deadline=$((SECONDS + 360))
+  local enabled domain zone arn
+  local owned="$WORK_DIR/owned-alb-dns"
+  : >"$owned"
   enabled="$(lab_param dns/enabled)"
   [[ "$enabled" == false ]] && return 0
   [[ "$enabled" == true ]] || die "DNS contract dns/enabled must be true or false"
@@ -94,19 +98,16 @@ wait_for_dns_records() {
   [[ "$domain" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$ ]] ||
     die "DNS contract has an invalid app domain name; refusing to query Route53"
   [[ "$zone" =~ ^Z[A-Z0-9]+$ ]] || die "DNS contract has an invalid Route53 public hosted zone ID"
-  while :; do
-    records="$(aws route53 list-resource-record-sets --hosted-zone-id "$zone" --output json)" ||
-      die "could not inspect the app DNS records in the configured Route53 zone"
-    remaining="$(jq -r --arg app "${domain}." --arg ownership "a-_external-dns-${domain}." \
-      '[.ResourceRecordSets[]? | select((.Name == $app and .Type == "A") or (.Name == $ownership and .Type == "TXT"))] | length' <<<"$records")"
-    [[ "$remaining" == 0 ]] && {
-      log "ExternalDNS removed the app alias and TXT ownership record"
-      return 0
-    }
-    ((SECONDS < deadline)) || die "ExternalDNS did not remove the app records within 360s; inspect the ExternalDNS events and Route53 records before destroying the lab"
-    log "waiting for ExternalDNS to remove the app alias and TXT ownership record"
-    sleep 10
-  done
+  # Stop this writer before removing routes; it cannot race the other region during teardown.
+  if kubectl -n kube-system get deployment external-dns >/dev/null 2>&1; then
+    kubectl -n kube-system scale deployment external-dns --replicas=0 >/dev/null
+    kubectl -n kube-system rollout status deployment/external-dns --timeout=180s >/dev/null
+  fi
+  while IFS= read -r arn; do
+    [[ -n "$arn" ]] || continue
+    aws elbv2 describe-load-balancers --load-balancer-arns "$arn" --query 'LoadBalancers[].DNSName' --output text | words_to_lines >>"$owned"
+  done < <(elbv2_arns_with_tag lb elbv2.k8s.aws/cluster "$LAB_CLUSTER")
+  remove_owned_app_dns "$zone" "$domain" "$owned"
 }
 
 capture_observability_pvcs() {
@@ -177,6 +178,10 @@ delete_observability_volumes() {
 }
 
 main() {
+  if (($#)); then
+    [[ $# == 2 && "$1" == --target ]] || die 'usage: uninstall.sh [--target primary|secondary]'
+    select_lab_target "$2"
+  fi
   require_cmd aws kubectl helm jq
   require_aws_region
 
@@ -194,9 +199,9 @@ main() {
     kubectl delete imagevalidatingpolicy dx01v2-release-signatures --ignore-not-found --wait=true
   fi
   kubectl delete -f "$HERE/manifests/full/rbac-dx01v2-deployer-extra.yaml" --ignore-not-found --wait=true
+  wait_for_dns_records
   log "deleting every Ingress in $cluster"
   kubectl delete ingress --all --all-namespaces --wait=true --timeout=10m
-  wait_for_dns_records
   delete_load_balancer_services
   wait_for_controller_resources "$cluster"
 

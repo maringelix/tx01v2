@@ -48,3 +48,8 @@ output "secret_name" {
   description = "Name of the credentials secret (contract: tx01v2-lab/db/app)."
   value       = aws_secretsmanager_secret.db.name
 }
+
+output "secret_replica_regions" {
+  description = "Regions receiving the current stored credential through native replication."
+  value       = [for replica in aws_secretsmanager_secret.db.replica : replica.region]
+}

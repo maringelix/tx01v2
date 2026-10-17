@@ -25,6 +25,11 @@ main() {
   dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/manifests"
   while (($# > 0)); do
     case "$1" in
+      --target)
+        [[ "${2:-}" == primary || "${2:-}" == secondary ]] || usage
+        [[ "$2" != secondary ]] || DX_REVISION=gitops/aws-dr
+        shift 2
+        ;;
       --full)
         [[ "${2:-}" =~ $OWNER_RE ]] || usage
         full=1
@@ -60,6 +65,7 @@ main() {
       content="${content//__DX_REPO_URL__/https://github.com/$owner/dx01v2.git}"
       content="${content//__GITHUB_OWNER__/$owner}"
       content="${content//__DX_REVISION__/$DX_REVISION}"
+      if [[ "$DX_REVISION" == *-dr ]]; then content="${content//__BACKUP_SCHEDULE__/lab-daily-dr}"; else content="${content//__BACKUP_SCHEDULE__/lab-daily}"; fi
       content="${content//__ALB_SOURCE_CIDR__/$alb_source_cidr}"
     fi
     out+="---"$'\n'"# Source: platform/manifests/${f#"$dir"/}"$'\n'"$content"$'\n'

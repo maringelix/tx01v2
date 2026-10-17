@@ -55,13 +55,13 @@ de US$25 é um alerta, não bloqueia faturamento.
 `scripts/platform-sizing.sh 2 <diretório-dos-renders>` soma os requests dos charts do perfil `full`,
 incluindo réplicas, init containers, DaemonSets multiplicados por dois nós e `spec.resources` do
 Prometheus e Alertmanager. Kyverno soma 520m CPU / 576MiB RAM no perfil `full`; o resultado
-reproduzível atualizado é **1315m CPU / 3680MiB RAM**. Requests não são
+reproduzível atualizado é **1335m CPU / 3808MiB RAM**. Requests não são
 uso medido e o cálculo não inclui os pods gerenciados do EKS.
 
 | Perfil | Requests do perfil | Node group recomendado | Total estimado em Spot | Total estimado on-demand |
 |---|---:|---|---:|---:|
 | core | — | 2 × `t3.medium`/`t3a.medium` | ~US$0,26/h | ~US$0,32/h |
-| full | 1315m CPU / 3680MiB RAM | 2 × `t3.large`/`t3a.large` | **~US$0,29/h** | **~US$0,40/h** |
+| full | 1335m CPU / 3808MiB RAM | 2 × `t3.large`/`t3a.large` | **~US$0,29/h** | **~US$0,40/h** |
 
 O perfil `full` também reserva **36 GiB de EBS gp3** para Prometheus (12 GiB), Alertmanager (2 GiB),
 Grafana (2 GiB), Loki (10 GiB) e Tempo (10 GiB). A US$0,08/GiB-mês em `us-east-1`, isso soma
@@ -121,3 +121,19 @@ fixos por 1 e nós on-demand por SPOT, e ainda inclui KMS, WAF com 5 regras e IP
 - A chave KMS fica `PendingDeletion` por 7 dias depois do destroy; consulte a página de preços do KMS.
 - Créditos promocionais escondem a fatura: o budget exclui créditos e reembolsos de propósito.
 - Logs com retenção de 7 dias; o log de auditoria do EKS é o maior volume — desligue a rodada cedo.
+## R9: segunda região e cópias de recuperação
+
+O perfil DR agora mantém runtime em duas regiões: dois control planes EKS,
+node groups em ambas, RDS Multi-AZ primário mais read replica, redes/NAT,
+ALBs/WAF, ECR, segredos KMS e três buckets Velero (origem, recovery e backup
+próprio do secundário). Some computação, armazenamento/IOPS, WAL/PITR, S3 requests,
+versões, transferência inter-regional e retenção; o custo não é apenas backup RDS.
+O state pode ter outro bucket versionado com `enable_state_dr=true`.
+
+Calcule antes da rodada:
+`horas × (2 × EKS + nós das duas regiões + RDS HA + réplica + NAT/LB/WAF) +
+GB/mês de dados/backups/registry + requests + egress`, com as tarifas oficiais
+da região, data e descontos da conta. Não multiplique o total core por um fator
+e trate como cotação. O budget é alerta e não interrompe cobrança. Estabeleça
+duração, responsable e teardown; buckets recovery retidos continuam armazenando
+objetos/versões até a limpeza deliberada, mesmo após remover os clusters.

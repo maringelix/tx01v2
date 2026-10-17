@@ -10,6 +10,10 @@ locals {
 
   lab_route53_zone_arn    = var.lab_route53_zone_id == "" ? "" : "arn:${local.partition}:route53:::hostedzone/${var.lab_route53_zone_id}"
   lab_acm_certificate_arn = "arn:${local.partition}:acm:${local.region}:${local.account_id}:certificate/*"
+  lab_acm_certificate_arns = distinct([
+    local.lab_acm_certificate_arn,
+    "arn:${local.partition}:acm:${var.dr_region}:${local.account_id}:certificate/*",
+  ])
 
   # The apply identity can manage only service families used by this lab. Most create/delete APIs do
   # not support useful resource scoping before a resource exists; IAM, S3 and Route53 get narrower
@@ -157,11 +161,18 @@ locals {
   ]
 
   ecr_repository_arns = [
-    for repo in ["dx01v2/api", "dx01v2/web"] : "arn:${local.partition}:ecr:${local.region}:${local.account_id}:repository/${repo}"
+    for pair in setproduct(distinct([local.region, var.dr_region]), ["dx01v2/api", "dx01v2/web"]) :
+    "arn:${local.partition}:ecr:${pair[0]}:${local.account_id}:repository/${pair[1]}"
   ]
 
   # The backup bucket of Velero (terraform/modules/velero): the plan reads its settings, never an object.
   velero_bucket_arn = "arn:${local.partition}:s3:::${local.lab_name}-velero-${local.account_id}-${local.region}"
+  velero_bucket_arns = [
+    local.velero_bucket_arn,
+    "arn:${local.partition}:s3:::${local.lab_name}-dr-velero-${local.account_id}-${var.dr_region}",
+    "arn:${local.partition}:s3:::${local.lab_name}-recovery-${local.account_id}-${var.dr_region}",
+  ]
+  velero_object_arns = [for bucket in local.velero_bucket_arns : "${bucket}/*"]
   plan_read_velero_bucket_actions = [
     "s3:ListBucket",
     "s3:GetBucket*",
@@ -198,13 +209,13 @@ resource "aws_iam_role_policy" "plan_read_lab" {
         Sid      = "DescribeTheVeleroBucket"
         Effect   = "Allow"
         Action   = local.plan_read_velero_bucket_actions
-        Resource = local.velero_bucket_arn
+        Resource = local.velero_bucket_arns
       },
       {
         Sid      = "DescribeLabAcmCertificates"
         Effect   = "Allow"
         Action   = ["acm:DescribeCertificate", "acm:ListTagsForCertificate"]
-        Resource = local.lab_acm_certificate_arn
+        Resource = local.lab_acm_certificate_arns
       },
     ], local.plan_route53_statements)
   })
@@ -360,14 +371,22 @@ resource "aws_iam_role_policy" "apply_services" {
           "s3:ListBucket", "s3:GetBucketLocation",
           "s3:PutEncryptionConfiguration", "s3:GetEncryptionConfiguration",
           "s3:PutLifecycleConfiguration", "s3:GetLifecycleConfiguration",
+          "s3:PutBucketVersioning", "s3:GetBucketVersioning",
+          "s3:PutReplicationConfiguration", "s3:GetReplicationConfiguration",
         ]
-        Resource = local.velero_bucket_arn
+        Resource = local.velero_bucket_arns
       },
       {
         Sid      = "ManageObjectsInTheVeleroBucket"
         Effect   = "Allow"
         Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:DeleteObjectVersion"]
-        Resource = "${local.velero_bucket_arn}/*"
+        Resource = local.velero_object_arns
+      },
+      {
+        Sid      = "ManageOwnedReplicaLagAlarms"
+        Effect   = "Allow"
+        Action   = ["cloudwatch:PutMetricAlarm", "cloudwatch:DeleteAlarms", "cloudwatch:DescribeAlarms", "cloudwatch:ListTagsForResource", "cloudwatch:TagResource", "cloudwatch:UntagResource"]
+        Resource = [for region in distinct([local.region, var.dr_region]) : "arn:${local.partition}:cloudwatch:${region}:${local.account_id}:alarm:tx01v2-lab-*"]
       },
       {
         Sid      = "NoAccountAdministration"
@@ -417,16 +436,22 @@ resource "aws_iam_role_policy" "deploy" {
         Resource = local.ecr_repository_arns
       },
       {
-        Sid      = "DescribeLabCluster"
-        Effect   = "Allow"
-        Action   = "eks:DescribeCluster"
-        Resource = "arn:${local.partition}:eks:${local.region}:${local.account_id}:cluster/${local.lab_name}"
+        Sid    = "DescribeLabCluster"
+        Effect = "Allow"
+        Action = "eks:DescribeCluster"
+        Resource = [
+          "arn:${local.partition}:eks:${local.region}:${local.account_id}:cluster/${local.lab_name}",
+          "arn:${local.partition}:eks:${var.dr_region}:${local.account_id}:cluster/${local.lab_name}-dr",
+        ]
       },
       {
-        Sid      = "ReadContractParameters"
-        Effect   = "Allow"
-        Action   = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
-        Resource = "arn:${local.partition}:ssm:${local.region}:${local.account_id}:parameter/${local.project}/${local.environment}/*"
+        Sid    = "ReadContractParameters"
+        Effect = "Allow"
+        Action = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
+        Resource = [
+          "arn:${local.partition}:ssm:${local.region}:${local.account_id}:parameter/${local.project}/${local.environment}/*",
+          "arn:${local.partition}:ssm:${var.dr_region}:${local.account_id}:parameter/${local.project}/lab-dr/*",
+        ]
       },
     ]
   })

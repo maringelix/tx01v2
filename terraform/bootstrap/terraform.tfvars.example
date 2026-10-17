@@ -1,6 +1,7 @@
 # Copy to terraform.tfvars (git-ignored). Placeholder values only.
 
 aws_region = "us-east-1"
+dr_region  = "us-west-2" # named secondary resources permitted by the scoped deploy/backup grants
 
 # Required: your GitHub user, the owner of your forks of tx01v2 and dx01v2 (the roles trust only their
 # workflows). The placeholder is refused, so is the e-mail below.
@@ -28,3 +29,6 @@ monthly_budget_usd  = 25
 
 # Only for the final teardown (deletes every state version):
 # state_bucket_force_destroy = true
+
+# Opt-in state recovery copy for the DR curriculum:
+# enable_state_dr = true

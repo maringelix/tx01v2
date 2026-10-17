@@ -1,0 +1,12 @@
+apiVersion: velero.io/v1
+kind: Schedule
+metadata:
+  name: __BACKUP_SCHEDULE__
+  namespace: velero
+spec:
+  schedule: "0 2 * * *"
+  template:
+    includedNamespaces: [dx01v2, monitoring]
+    snapshotVolumes: false
+    defaultVolumesToFsBackup: true
+    ttl: 840h0m0s

@@ -9,6 +9,15 @@ LAB_PROJECT=tx01v2
 # shellcheck disable=SC2034 # used by the scripts that source this file
 LAB_CLUSTER=tx01v2-lab
 LAB_SSM_PREFIX=/tx01v2/lab
+select_lab_target() {
+  LAB_TARGET="${1:-primary}"
+  case "$LAB_TARGET" in
+    primary) LAB_CLUSTER=tx01v2-lab; LAB_SSM_PREFIX=/tx01v2/lab ;;
+    secondary) LAB_CLUSTER=tx01v2-lab-dr; LAB_SSM_PREFIX=/tx01v2/lab-dr ;;
+    *) die 'target must be primary or secondary' ;;
+  esac
+  export LAB_TARGET LAB_CLUSTER LAB_SSM_PREFIX
+}
 
 require_aws_region() {
   [[ -n "${AWS_REGION:-}" ]] || die "set AWS_REGION to the lab region (for example: export AWS_REGION=us-east-1)."

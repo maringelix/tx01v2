@@ -1,4 +1,11 @@
-# Contrato tx01v2 <-> dx01v2 — versão 6 (2026-10-16)
+# Contrato tx01v2 <-> dx01v2 — versão 7 (2026-10-17)
+
+Versão 7 (R9) adiciona `db/endpoint` aos 16 parâmetros. O perfil `dr` publica também
+`/tx01v2/lab-dr/` na região secundária, para cluster, VPC, registry, WAF, certificado
+regional e réplica privados. Secrets Manager replica os valores **já armazenados**
+sob KMS da região secundária; não gera outra senha ao habilitar DR. Os nomes dos
+segredos permanecem iguais nas duas regiões e o ESO regional substitui apenas
+`DB_HOST` pelo endpoint de seu contrato. O plano não lê credenciais.
 
 Versão 5 adiciona DNS público e HTTPS opcionais: o tx valida ACM por DNS na hosted zone Route53 já
 existente, publica `dns/*` no SSM e instala ExternalDNS com Pod Identity restrito ao hostname e à zona.
@@ -109,6 +116,7 @@ final), que casa com o recurso `parameter/tx01v2/lab/*`; ou leia os nomes com `G
 | `ecr/web-url` | URL do repositório `dx01v2/web` |
 | `waf/acl-arn` | ARN do web ACL WAFv2 REGIONAL para o ALB do app |
 | `db/secret-name` | `tx01v2-lab/db/app` |
+| `db/endpoint` | hostname privado do RDS selecionado; substitui o host do JSON replicado |
 | `app/admin-token-secret-name` | `tx01v2-lab/app/admin-token` |
 | `eso/cluster-secret-store` | `aws-secrets-manager` |
 | `dns/enabled` | `true` quando domínio e zona forem configurados; caso contrário `false` |

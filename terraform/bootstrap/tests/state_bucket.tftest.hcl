@@ -1,3 +1,8 @@
+mock_provider "aws" {
+  alias  = "dr"
+  source = "../tests/mocks"
+}
+
 # Remote state bucket hardening.
 
 mock_provider "aws" {
@@ -88,5 +93,13 @@ run "force_destroy_is_an_explicit_choice" {
   assert {
     condition     = aws_s3_bucket.state.force_destroy
     error_message = "state_bucket_force_destroy must reach the bucket."
+  }
+}
+run "state_recovery_is_opt_in_versioned_and_remote" {
+  command = apply
+  variables { enable_state_dr = true }
+  assert {
+    condition     = output.state_recovery_bucket == "tx01v2-tfstate-dr-123456789012-us-west-2"
+    error_message = "The enabled state recovery bucket must be in the selected second region."
   }
 }

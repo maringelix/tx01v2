@@ -88,6 +88,9 @@ module "rds" {
   password_version            = var.db_password_version
   secret_recovery_window_days = var.secret_recovery_window_days
   log_retention_days          = var.log_retention_days
+  # Native replication preserves the CURRENT stored credential without a read in the plan or
+  # regenerating an unrelated ephemeral value when DR is enabled on an existing primary.
+  secret_replica_keys = var.db_profile == "dr" ? { (var.dr_region) = module.kms_dr[0].key_arn } : {}
 }
 
 module "ecr" {

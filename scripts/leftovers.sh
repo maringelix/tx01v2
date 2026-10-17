@@ -160,6 +160,14 @@ main() {
   local retry_for=0 deadline
   while (($# > 0)); do
     case "$1" in
+      --target)
+        [[ "${2:-}" == primary || "${2:-}" == secondary ]] || exit 2
+        select_lab_target "$2"
+        CLUSTER=$LAB_CLUSTER
+        NAME_PREFIX=$LAB_CLUSTER
+        LOG_GROUP_PREFIXES=("/aws/eks/$NAME_PREFIX" "/aws/vpc/$NAME_PREFIX" "/aws/rds/instance/$NAME_PREFIX" "aws-waf-logs-$NAME_PREFIX")
+        shift 2
+        ;;
       --retry-for)
         [[ "${2:-}" =~ ^[0-9]+$ ]] || { echo "usage: $0 [--retry-for SECONDS]" >&2; exit 2; }
         retry_for=$2

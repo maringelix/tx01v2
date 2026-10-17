@@ -34,6 +34,8 @@ source "$HERE/../scripts/lib/common.sh"
 source "$REPO_ROOT/scripts/lib/aws.sh"
 # shellcheck source=scripts/lib/platform.sh
 source "$REPO_ROOT/scripts/lib/platform.sh"
+# shellcheck source=scripts/lib/backup-credentials.sh
+source "$REPO_ROOT/scripts/lib/backup-credentials.sh"
 export PATH="$REPO_ROOT/.tools/bin:$PATH"
 
 # The Gateway API CRDs that Istio uses for waypoints and the mesh lab's HTTPRoute retries; EKS has none.
@@ -41,6 +43,8 @@ GATEWAY_API_RELEASES=https://github.com/kubernetes-sigs/gateway-api/releases/dow
 OWNER_RE='^[A-Za-z0-9]([A-Za-z0-9-]{0,38})$'
 WORK_DIR=""
 PROFILE=core
+TARGET=primary
+ACTIVATE_DNS=false
 OWNER=""
 REGION=""
 VELERO_BUCKET=""
@@ -51,7 +55,7 @@ DNS_CERTIFICATE_ARN=""
 ALB_SOURCE_CIDR=""
 
 usage() {
-  echo "usage: $0 [--profile core|full] [--github-owner OWNER]" >&2
+  echo "usage: $0 [--profile core|full] [--github-owner OWNER] [--target primary|secondary] [--activate-dns]" >&2
   exit 2
 }
 
@@ -77,7 +81,7 @@ apply_manifests() {
 apply_full() {
   local attempt
   for attempt in 1 2 3 4 5; do
-    if "$HERE/render-manifests.sh" "$REGION" --full "$OWNER" --alb-source-cidr "$ALB_SOURCE_CIDR" --only "$1" | kubectl apply -f - >/dev/null; then
+    if "$HERE/render-manifests.sh" "$REGION" --full "$OWNER" --alb-source-cidr "$ALB_SOURCE_CIDR" --target "$TARGET" --only "$1" | kubectl apply -f - >/dev/null; then
       return 0
     fi
     log "kubectl apply of platform/manifests/$1 failed (attempt $attempt/5); retrying in 15 s"
@@ -137,7 +141,8 @@ install_waypoint() {
 }
 
 install_external_dns() {
-  local tgz
+  local tgz replicas=1
+  [[ "$TARGET" != secondary || "$ACTIVATE_DNS" == true ]] || replicas=0
   [[ "$DNS_ENABLED" == true ]] || {
     log "public DNS is disabled; ExternalDNS is not installed"
     return 0
@@ -148,6 +153,7 @@ install_external_dns() {
   helm upgrade --install external-dns "$tgz" \
     --namespace kube-system \
     --values "$HERE/values/external-dns.yaml" \
+    --set "replicaCount=$replicas" \
     --set-string "domainFilters[0]=$DNS_DOMAIN_NAME" \
     --set-string "extraArgs.aws-zone-id-filter=$DNS_ZONE_ID" \
     --set-string "image.tag=${EXTERNAL_DNS_IMAGE_TAG}@${EXTERNAL_DNS_IMAGE_DIGEST}" \
@@ -227,7 +233,27 @@ install_policies() {
 }
 
 install_backup() {
+  ensure_velero_repository_credentials
   install_chart velero
+  apply_full full/backup-schedule.yaml
+  if [[ "$TARGET" == secondary ]]; then
+    local recovery_bucket
+    recovery_bucket="tx01v2-lab-recovery-$(aws sts get-caller-identity --query Account --output text)-$REGION"
+    kubectl apply -f - >/dev/null <<EOF
+apiVersion: velero.io/v1
+kind: BackupStorageLocation
+metadata:
+  name: primary-recovery
+  namespace: velero
+spec:
+  provider: aws
+  objectStorage:
+    bucket: $recovery_bucket
+  accessMode: ReadOnly
+  config:
+    region: $REGION
+EOF
+  fi
   # shellcheck disable=SC2016 # expanded by the inner bash
   retry 30 5 bash -c '[[ "$(kubectl -n velero get backupstoragelocation default -o jsonpath="{.status.phase}")" == Available ]]' ||
     die "Velero: the backup storage location (S3 bucket of the lab) is not Available (is the Pod Identity association of terraform/modules/velero applied?)"
@@ -260,6 +286,7 @@ install_full() {
   kubectl label namespace observability istio.io/dataplane-mode=ambient --overwrite >/dev/null
   install_observability
   apply_full full/app-monitoring.yaml
+  apply_full full/continuity-monitoring.yaml
   install_policies "$account.dkr.ecr.$REGION.amazonaws.com/dx01v2/"
   install_image_admission
   # Argo CD may create application Pods as soon as its root Application is applied. Install both
@@ -284,12 +311,15 @@ main() {
         OWNER=$2
         shift 2
         ;;
+      --target) [[ "${2:-}" == primary || "${2:-}" == secondary ]] || usage; TARGET=$2; shift 2 ;;
+      --activate-dns) ACTIVATE_DNS=true; shift ;;
       *) usage ;;
     esac
   done
   [[ "$PROFILE" == core || -n "$OWNER" ]] || die "the profile full needs --github-owner, the GitHub user or organization of your forks"
   require_cmd aws kubectl helm
   require_aws_region
+  select_lab_target "$TARGET"
   load_pins "$HERE/versions.env"
 
   local cluster vpc_id store tgz

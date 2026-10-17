@@ -30,6 +30,11 @@ resource "aws_s3_bucket_ownership_controls" "this" {
   }
 }
 
+resource "aws_s3_bucket_versioning" "this" {
+  bucket = aws_s3_bucket.this.id
+  versioning_configuration { status = "Enabled" }
+}
+
 resource "aws_s3_bucket_public_access_block" "this" {
   bucket = aws_s3_bucket.this.id
 
@@ -59,7 +64,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "this" {
     id     = "expire-backups"
     status = "Enabled"
 
-    filter {}
+    # Kopia repository chunks are reference counted, not safe to expire by object age.
+    filter { prefix = "backups/" }
 
     expiration {
       days = var.retention_days

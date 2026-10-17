@@ -70,7 +70,7 @@ resource "aws_iam_role_policy" "external_secrets" {
         Sid      = "ReadLabSecrets"
         Effect   = "Allow"
         Action   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
-        Resource = "arn:${local.partition}:secretsmanager:${local.region}:${local.account_id}:secret:${var.name}/*"
+        Resource = "arn:${local.partition}:secretsmanager:${local.region}:${local.account_id}:secret:${coalesce(var.secrets_name_prefix, var.name)}/*"
       },
       {
         Sid      = "DecryptThroughSecretsManagerOnly"

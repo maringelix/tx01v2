@@ -5,6 +5,19 @@ mock_provider "aws" {
 mock_provider "aws" {
   alias  = "dr"
   source = "../../tests/mocks"
+  mock_data "aws_region" {
+    defaults = {
+      region      = "us-west-2"
+      description = "US West (Oregon)"
+      endpoint    = "ec2.us-west-2.amazonaws.com"
+    }
+  }
+  mock_data "aws_availability_zones" {
+    defaults = {
+      names    = ["us-west-2a", "us-west-2b", "us-west-2c"]
+      zone_ids = ["usw2-az1", "usw2-az2", "usw2-az3"]
+    }
+  }
 
   mock_resource "aws_kms_key" {
     defaults = {
@@ -94,4 +107,56 @@ run "unknown_profile_is_rejected" {
   }
 
   expect_failures = [var.db_profile]
+}
+
+run "dr_has_a_private_independent_runtime_and_current_credentials" {
+  command = apply
+  variables {
+    db_profile = "dr"
+  }
+  assert {
+    condition = (
+      module.eks_dr[0].cluster_name == "tx01v2-lab-dr" &&
+      module.rds.secret_replica_regions == ["us-west-2"] &&
+      module.network_dr[0].vpc_cidr == "10.10.0.0/16" &&
+      aws_db_instance.dr[0].replicate_source_db == module.rds.arn &&
+      aws_db_instance.dr[0].kms_key_id == module.kms_dr[0].key_arn &&
+      !aws_db_instance.dr[0].publicly_accessible &&
+      aws_db_instance.dr[0].backup_retention_period >= 7 &&
+      aws_vpc_security_group_ingress_rule.db_dr[0].referenced_security_group_id == module.eks_dr[0].cluster_security_group_id &&
+      length(aws_ssm_parameter.contract_dr) == 16 &&
+      aws_ssm_parameter.contract_dr["region"].insecure_value == "us-west-2" &&
+      aws_ssm_parameter.contract_dr["db/endpoint"].insecure_value == aws_db_instance.dr[0].address &&
+      aws_ssm_parameter.contract_dr["db/secret-name"].insecure_value == module.rds.secret_name &&
+      module.velero_dr[0].bucket_name == "tx01v2-lab-dr-velero-123456789012-us-west-2" &&
+      output.dr_contract_prefix == "/tx01v2/lab-dr"
+    )
+    error_message = "DR must have its own network/EKS/registry/KMS/database/contract, private DB access and inherited current credentials."
+  }
+  assert {
+    condition = (
+      length(aws_secretsmanager_secret.admin_token.replica) == 1 &&
+      one(aws_secretsmanager_secret.admin_token.replica).region == "us-west-2" &&
+      one(aws_secretsmanager_secret.admin_token.replica).kms_key_id == module.kms_dr[0].key_arn
+    )
+    error_message = "The existing admin credential must be natively replicated under the destination key."
+  }
+}
+
+run "dr_rejects_overlapping_vpc" {
+  command = plan
+  variables {
+    db_profile  = "dr"
+    dr_vpc_cidr = "10.0.0.0/16"
+  }
+  expect_failures = [var.dr_vpc_cidr]
+}
+
+run "dr_rejects_public_vpc" {
+  command = plan
+  variables {
+    db_profile  = "dr"
+    dr_vpc_cidr = "192.0.2.0/16"
+  }
+  expect_failures = [var.dr_vpc_cidr]
 }

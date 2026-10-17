@@ -6,6 +6,9 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- R9: complete the independent AWS recovery region, current-secret replication, contract v7,
+  encrypted/versioned backup replication and optional state copy; fence DNS writers and monitor recovery.
+
 ### Added
 
 - R9 Velero PVC recovery exercise: remove the original claim, PV and bytes, restore through

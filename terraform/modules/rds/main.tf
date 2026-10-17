@@ -120,6 +120,13 @@ resource "aws_secretsmanager_secret" "db" {
   description             = "PostgreSQL credentials of dx01v2 (JSON: username, password, host, port, dbname)."
   kms_key_id              = var.kms_key_arn
   recovery_window_in_days = var.secret_recovery_window_days
+  dynamic "replica" {
+    for_each = var.secret_replica_keys
+    content {
+      region     = replica.key
+      kms_key_id = replica.value
+    }
+  }
 }
 
 resource "aws_secretsmanager_secret_version" "db" {
