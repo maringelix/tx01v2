@@ -1,5 +1,19 @@
 # Continuidade de dados no lab AWS (R9)
 
+## Prova adicional de PVC pelo Velero
+
+O CI local executa `scripts/local/volume-restore-drill.sh`: grava bytes num volume
+`local` do kind por um Pod restrito, exige `PodVolumeBackup Completed`, remove o
+namespace/PVC/PV e os dados originais, e restaura. Só passa com PVC de novo UID,
+`PodVolumeRestore Completed` e SHA256 idêntico. Restaurar apenas um ConfigMap ou um
+PVC vazio não atende a esse check. A execução pesada fica no GitHub Actions.
+
+O FSB precisa de root/hostPath no namespace Velero local; o servidor continua non-root
+e a aplicação mantém Pod Security `restricted`. A senha aleatória do repositório
+Kopia é criada antes do primeiro backup e preservada nas reinstalações. Não publique
+essa senha nem os backups de Secrets. Cloud usa seu driver CSI e requer ensaio
+autorizado próprio; o resultado kind não certifica snapshots gerenciados.
+
 Este exercício separa quatro coisas que têm modos de falha diferentes: HA do RDS, backups nativos do
 banco, backup de objetos/volumes do Kubernetes e recuperação da aplicação. O Velero não restaura um
 RDS gerenciado. Nenhuma operação desta página foi executada numa conta AWS v2; os testes Terraform

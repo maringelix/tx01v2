@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- R9 Velero PVC recovery exercise: remove the original claim, PV and bytes, restore through
+  Kopia, require a new claim UID and identical SHA256. The local Velero node agent needs root
+  and kubelet hostPath; the server and application keep their restricted security contexts.
+  A private random repository password is generated before the first backup and preserved.
+
 - Start R9 database continuity with explicit `core|ha|dr` RDS profiles: Multi-AZ and at least seven
   days of PITR are opt-in; `dr` replicates encrypted automated backups to a second AWS Region. A local
   PostgreSQL 17 physical base backup plus archived WAL restores a named point, rejects a corrupted
