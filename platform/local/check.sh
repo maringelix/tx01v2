@@ -1164,7 +1164,7 @@ EOF
   pass "backup: namespace deleted and restored from the backup with its data"
   kubectl -n velero delete restore lab-probe >/dev/null
   kubectl -n velero delete backup lab-probe >/dev/null
-  bash "$REPO_C:/Users/bruno/OneDrive/Documents/VSCode/tx01v2/scripts/local/volume-restore-drill.sh"
+  bash "$REPO_ROOT/scripts/local/volume-restore-drill.sh"
   pass "backup: Velero restored PVC bytes after original data loss (new claim UID and SHA256)"
 }
 

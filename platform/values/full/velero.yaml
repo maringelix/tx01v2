@@ -7,6 +7,8 @@
 credentials:
   useSecret: false
   existingSecret: null
+# Cloud CSI snapshots use the managed storage driver; local FSB hostPath does not carry into EKS.
+deployNodeAgent: false
 serviceAccount:
   server:
     name: velero
