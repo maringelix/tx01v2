@@ -19,12 +19,17 @@ if kubectl get namespace "$NS" >/dev/null 2>&1 || kubectl get pv "$PV" >/dev/nul
 fi
 docker exec "$NODE" test ! -e "$NODE_PATH" || die 'PVC drill: backing path already exists'
 cleanup() {
-  local rc=$?
+  local rc=$? server_pod=''
   trap - EXIT
   if ((CREATED)); then
     if ((rc)); then
-      kubectl -n velero get backups,restores,podvolumebackups,podvolumerestores -o wide >&2 || rc=1
-      kubectl -n velero logs deployment/velero --tail=100 >&2 || rc=1
+      # CR status contains repository/volume errors, not the Secrets or backed-up object contents.
+      kubectl -n velero get backups,restores,backuprepositories,podvolumebackups,podvolumerestores -o yaml >&2 || rc=1
+      kubectl -n velero logs -l velero.io/component=server -c velero --tail=150 --prefix=true >&2 || rc=1
+      server_pod="$(kubectl -n velero get pods -l velero.io/component=server -o jsonpath='{.items[0].metadata.name}')" || rc=1
+      if [[ -n "$server_pod" ]]; then
+        kubectl -n velero exec "$server_pod" -c velero -- /velero backup logs "$NS" >&2 || rc=1
+      fi
     fi
     kubectl delete namespace "$NS" --ignore-not-found --wait=true --timeout=120s >/dev/null || rc=1
     kubectl delete pv "$PV" --ignore-not-found --wait=true --timeout=60s >/dev/null || rc=1
