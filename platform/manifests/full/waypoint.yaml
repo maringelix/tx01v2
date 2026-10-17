@@ -1,0 +1,15 @@
+# L7 waypoint for the application namespace. The full profile enables ambient mode plus this waypoint;
+# the core profile keeps the lightweight network path and does not deploy this Gateway.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: dx01v2-waypoint
+  namespace: dx01v2
+  labels:
+    istio.io/waypoint-for: service
+spec:
+  gatewayClassName: istio-waypoint
+  listeners:
+    - name: mesh
+      port: 15008
+      protocol: HBONE

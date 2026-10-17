@@ -1,0 +1,82 @@
+# Cloud-full security policy for the AWS application. Ambient mTLS is strict for service traffic.
+# The ALB terminates public TLS and connects to web over HTTP inside its public subnets. The web:8080
+# plaintext exception is restricted to the ALB subnet CIDRs by the app NetworkPolicy.
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: dx01v2
+spec:
+  mtls:
+    mode: STRICT
+---
+apiVersion: security.istio.io/v1
+kind: PeerAuthentication
+metadata:
+  name: aws-alb-web-edge
+  namespace: dx01v2
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: web
+  mtls:
+    mode: STRICT
+  portLevelMtls:
+    "8080":
+      mode: PERMISSIVE
+---
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: api
+  namespace: dx01v2
+spec:
+  targetRefs:
+    - group: ""
+      kind: Service
+      name: api
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/dx01v2/sa/web
+      to:
+        - operation:
+            ports: ["3000"]
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/monitoring/sa/kube-prometheus-stack-prometheus
+      to:
+        - operation:
+            ports: ["9464"]
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/observability/sa/opentelemetry-collector
+      to:
+        - operation:
+            ports: ["3000"]
+            paths: ["/readyz"]
+---
+# ztunnel-level guard: a pod-IP connection must not bypass the namespace waypoint. The waypoint's
+# targetRef policy above checks the original caller identity and HTTP operation.
+apiVersion: security.istio.io/v1
+kind: AuthorizationPolicy
+metadata:
+  name: api-require-waypoint
+  namespace: dx01v2
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: api
+  action: ALLOW
+  rules:
+    - from:
+        - source:
+            principals:
+              - cluster.local/ns/dx01v2/sa/dx01v2-waypoint
+      to:
+        - operation:
+            ports: ["3000", "9464"]

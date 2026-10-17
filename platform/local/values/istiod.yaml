@@ -6,6 +6,10 @@ autoscaleEnabled: false
 replicaCount: 1
 seccompProfile:
   type: RuntimeDefault
+pilot:
+  env:
+    # The local app's external Gateway API Gateway routes through its waypoint as well as mesh clients.
+    ENABLE_INGRESS_WAYPOINT_ROUTING: "true"
 # Gateways (and waypoints) run in app namespaces with Pod Security "restricted": without an explicit
 # RuntimeDefault seccomp profile their pods are refused there.
 gateways:

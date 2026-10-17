@@ -53,7 +53,7 @@ A família do lab (v2):
 | Scan dentro do cluster: Trivy Operator (relatórios de vulnerabilidade e de configuração) | `verificado no CI` | `make e2e` |
 | Ensaio de backup e restore: Velero no S3 emulado (namespace apagado e restaurado com os dados) | `verificado no CI` | `make e2e` |
 | Chaos engineering com hipóteses: pod kill, 100 ms de latência de rede, stress de CPU e memória (Chaos Mesh); disponibilidade, latência e reinícios medidos | `verificado no CI` | `make e2e` |
-| Plataforma completa no EKS (15 charts fixados, GitOps, Velero, Gatekeeper, Trivy Operator, Chaos Mesh) | `implementado como código; não executado em nuvem (v2)` | `platform/install.sh --profile full`; `helm-template-full`, `kubeconform`, `contract-platform`; `.github/workflows/platform.yml` |
+| Plataforma completa no EKS (16 charts fixados, waypoint do mesh, observabilidade durável, Gatekeeper, admissão Kyverno de imagens, Trivy Operator, Velero, Chaos Mesh) | `implementado como código; não executado em nuvem (v2)` | `platform/install.sh --profile full`; `helm-template-full`, `platform-sizing`, `kubeconform`, `contract-platform`; `.github/workflows/platform.yml` |
 
 As linhas `verificado no CI` rodam em todo pull request, em todo push para a `main` e toda semana
 (jobs `static` e `test` do CI). Uma linha de nuvem só muda com uma issue `cloud_run_report` (data,

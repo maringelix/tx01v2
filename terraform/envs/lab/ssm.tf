@@ -9,6 +9,7 @@ locals {
     "cluster-name"                = module.eks.cluster_name
     "vpc-id"                      = module.network.vpc_id
     "vpc-cidr"                    = module.network.vpc_cidr
+    "alb/source-cidr"             = module.network.alb_source_cidr
     "ecr/api-url"                 = module.ecr.repository_urls["dx01v2/api"]
     "ecr/web-url"                 = module.ecr.repository_urls["dx01v2/web"]
     "waf/acl-arn"                 = module.waf.web_acl_arn

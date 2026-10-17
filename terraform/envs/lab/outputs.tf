@@ -20,6 +20,11 @@ output "vpc_id" {
   value       = module.network.vpc_id
 }
 
+output "alb_source_cidr" {
+  description = "Public subnet CIDR range used to restrict ALB-to-web traffic."
+  value       = module.network.alb_source_cidr
+}
+
 output "ecr_repository_urls" {
   description = "ECR repository URLs by name."
   value       = module.ecr.repository_urls
@@ -63,6 +68,11 @@ output "load_balancer_controller_role_arn" {
 output "external_secrets_role_arn" {
   description = "Pod Identity role of External Secrets Operator."
   value       = module.eks.external_secrets_role_arn
+}
+
+output "kyverno_image_verifier_role_arn" {
+  description = "Pod Identity role of Kyverno, read-only on the dx01v2 ECR images used by admission verification."
+  value       = module.eks.kyverno_image_verifier_role_arn
 }
 
 output "app_domain_name" {

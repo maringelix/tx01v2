@@ -122,8 +122,8 @@ export KUBECONFIG=~/.kube/tx01v2-lab.kubeconfig   # só neste terminal
 ## 5. Plataforma
 
 Dispare `platform` com `action=install` e escolha `profile=core` (padrão) ou `profile=full`, com a
-aprovação do environment `lab`. Use `full` apenas depois que os PRs de tx01v2 e dx01v2 do R4 estiverem
-mesclados. Localmente (o script usa kubeconfig e cache Helm temporários e só instala no cluster
+aprovação do environment `lab`. Use `full` depois que os PRs coordenados do R4 e R8 de tx01v2 e
+dx01v2 estiverem mesclados. Localmente (o script usa kubeconfig e cache Helm temporários e só instala no cluster
 `tx01v2-lab` com a tag `Project=tx01v2`):
 
 ```bash
@@ -136,7 +136,9 @@ kubectl -n observability rollout status deployment/opentelemetry-collector
 
 Para instalar `full` localmente, exporte `GITHUB_OWNER=<seu-usuario-ou-org>` e rode
 `platform/install.sh --profile full --github-owner "$GITHUB_OWNER"`. O modo `full` cria o AppProject e
-a Application `platform` no Argo CD; a Application do app segue a branch `gitops/aws` do dx. Se o fork
+a Application `platform` no Argo CD; a Application do app segue a branch `gitops/aws` do dx. O perfil
+`full` também instala o waypoint, as regras de tráfego e a validação Kyverno da declaração assinada
+no ECR. Se o fork
 do app for privado, configure a credencial do repositório no Argo CD antes de instalar. Para enviar
 alertas ao Slack, configure o secret `SLACK_WEBHOOK_URL` no GitHub (ou exporte-o apenas no terminal
 local da rodada).
@@ -158,6 +160,15 @@ kubectl get storageclass tx01v2-gp3
 `platform/uninstall.sh` captura os PVCs dos StatefulSets dos releases do lab, remove apenas esses
 claims após desinstalar os charts e espera o EBS CSI apagar os volumes. O `terraform-destroy` roda o
 uninstall antes de remover o cluster e o add-on EBS CSI.
+
+O `dx01v2` usa o mesmo waypoint para o exercício de canary 80/20, retries limitados e circuit
+breaking. O job `e2e-platform` do CI de dx01v2 verifica também a identidade SPIFFE autorizada, a
+negação do intruso e as métricas/SLO do app. No cluster AWS, confira as regras com
+`kubectl -n monitoring get servicemonitor,prometheusrule` e a policy de assinatura com
+`kubectl get imagevalidatingpolicy dx01v2-release-signatures`. Se um Pod falhar na admissão, veja
+`kubectl -n kyverno logs deployment/kyverno-admission-controller` e os eventos do namespace `dx01v2`;
+o ECR precisa conter a attestation produzida pelo workflow exato do fork antes do deploy. Render e
+contrato são validados no CI; esse runtime AWS ainda está `não executado em nuvem (v2)`.
 
 ## 6. Deploy do app (dx01v2)
 

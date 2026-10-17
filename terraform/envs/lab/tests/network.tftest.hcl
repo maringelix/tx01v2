@@ -34,6 +34,11 @@ run "defaults" {
   }
 
   assert {
+    condition     = output.alb_source_cidr == "10.0.0.0/23"
+    error_message = "The ALB source CIDR must cover only the adjacent public /24 subnets, not the private subnets or full VPC."
+  }
+
+  assert {
     condition     = aws_subnet.public[*].availability_zone == ["us-east-1a", "us-east-1b"] && aws_subnet.private[*].availability_zone == ["us-east-1a", "us-east-1b"]
     error_message = "Subnets must come from aws_availability_zones, one pair per AZ."
   }
@@ -113,5 +118,10 @@ run "nat_per_az_and_three_azs" {
   assert {
     condition     = aws_subnet.private[*].cidr_block == ["10.20.16.0/20", "10.20.32.0/20", "10.20.48.0/20"] && aws_subnet.public[2].cidr_block == "10.20.2.0/24"
     error_message = "Subnet CIDRs must follow vpc_cidr, never hardcoded values."
+  }
+
+  assert {
+    condition     = output.alb_source_cidr == "10.20.0.0/22"
+    error_message = "Three AZs: the ALB source CIDR must include the three public /24s and exclude private subnets."
   }
 }

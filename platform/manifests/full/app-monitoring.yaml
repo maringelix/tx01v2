@@ -1,0 +1,88 @@
+# App telemetry and SLO alerts in the cloud-full profile. Prometheus scrapes the API's real
+# prom-client metrics; the Collector checks /healthz and /readyz every 30 seconds and exports the
+# HTTP status as metrics with its other spanmetrics to Prometheus.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: dx01v2-api
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: dx01v2
+spec:
+  namespaceSelector:
+    matchNames: [dx01v2]
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: api
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: dx01v2-slo
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/name: dx01v2
+spec:
+  groups:
+    - name: dx01v2.sli
+      rules:
+        - record: dx01v2:api_requests:rate5m
+          expr: sum(rate(http_request_duration_seconds_count{namespace="dx01v2", service="api"}[5m]))
+        - record: dx01v2:api_errors:rate5m
+          expr: sum(rate(http_request_duration_seconds_count{namespace="dx01v2", service="api", status_code=~"5.."}[5m]))
+        - record: dx01v2:availability:ratio_rate5m
+          expr: 1 - (dx01v2:api_errors:rate5m / clamp_min(dx01v2:api_requests:rate5m, 1e-9))
+        - record: dx01v2:error_budget:remaining_ratio7d
+          expr: clamp_min(1 - ((sum(increase(http_request_duration_seconds_count{namespace="dx01v2", service="api", status_code=~"5.."}[7d])) / clamp_min(sum(increase(http_request_duration_seconds_count{namespace="dx01v2", service="api"}[7d])), 1)) / 0.005), 0)
+        - alert: Dx01v2ApiDown
+          expr: absent(up{namespace="dx01v2", service="api"} == 1)
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: No API pod of dx01v2 is being scraped successfully
+        - alert: Dx01v2HighErrorRate
+          expr: (dx01v2:api_errors:rate5m / clamp_min(dx01v2:api_requests:rate5m, 1e-9)) > 0.05
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: More than 5% of the API responses are 5xx
+        - alert: Dx01v2HighLatencyP95
+          expr: histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{namespace="dx01v2", service="api"}[5m]))) > 1
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: The API p95 latency is above 1 second
+        - alert: Dx01v2ErrorBudgetBurnFast
+          expr: (dx01v2:api_errors:rate5m / clamp_min(dx01v2:api_requests:rate5m, 1e-9)) > 0.072
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: The 99.5% availability error budget is burning above 14.4x
+        - alert: Dx01v2SyntheticProbeFailed
+          expr: sum by (http_url) (httpcheck_status{http_status_class="2xx"} == 0) > 0
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: A synthetic HTTP check of dx01v2 is not returning 2xx
+        - alert: Dx01v2PodRestarting
+          expr: increase(kube_pod_container_status_restarts_total{namespace="dx01v2"}[15m]) > 2
+          labels:
+            severity: warning
+          annotations:
+            summary: A container of dx01v2 restarted more than twice in 15 minutes
+        - alert: Dx01v2PodNotReady
+          expr: sum by (pod) (kube_pod_status_ready{namespace="dx01v2", condition="true"}) == 0
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: A pod of dx01v2 has not been ready for 5 minutes

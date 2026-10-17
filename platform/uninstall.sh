@@ -40,6 +40,19 @@ stop_gitops() {
   kubectl delete applications.argoproj.io --all --all-namespaces --wait=true --timeout=5m
 }
 
+remove_waypoint() {
+  local waypoint
+  if kubectl get crd gateways.gateway.networking.k8s.io >/dev/null 2>&1; then
+    kubectl delete gateway --namespace dx01v2 dx01v2-waypoint --ignore-not-found --wait=true --timeout=5m
+  fi
+  if kubectl get namespace dx01v2 >/dev/null 2>&1; then
+    waypoint="$(kubectl get namespace dx01v2 -o jsonpath='{.metadata.labels.istio\.io/use-waypoint}')"
+    if [[ "$waypoint" == dx01v2-waypoint ]]; then
+      kubectl label namespace dx01v2 istio.io/use-waypoint- >/dev/null
+    fi
+  fi
+}
+
 delete_load_balancer_services() {
   local out svc
   out="$(kubectl get services --all-namespaces \
@@ -123,6 +136,7 @@ uninstall_full_releases() {
     'chaos-mesh chaos-mesh' \
     'velero velero' \
     'trivy-operator trivy-system' \
+    'kyverno kyverno' \
     'gatekeeper gatekeeper-system' \
     'argo-cd argocd' \
     'tempo monitoring' \
@@ -175,6 +189,11 @@ main() {
   kubectl get --raw /readyz >/dev/null || die "the Kubernetes API of $cluster is not reachable"
 
   stop_gitops
+  remove_waypoint
+  if kubectl get crd imagevalidatingpolicies.policies.kyverno.io >/dev/null 2>&1; then
+    kubectl delete imagevalidatingpolicy dx01v2-release-signatures --ignore-not-found --wait=true
+  fi
+  kubectl delete -f "$HERE/manifests/full/rbac-dx01v2-deployer-extra.yaml" --ignore-not-found --wait=true
   log "deleting every Ingress in $cluster"
   kubectl delete ingress --all --all-namespaces --wait=true --timeout=10m
   wait_for_dns_records

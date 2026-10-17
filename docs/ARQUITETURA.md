@@ -161,8 +161,9 @@ estimado para outra rodada cai para cerca de US$0,54, além do cluster `core`. A
 inclui tráfego de saída nem volume de traces; eles devem ser somados com o uso real. O usuário é
 cobrado por mês de calendário, então não divida a licença do Grafana por horas de uma única sessão.
 
-Para comparar apenas o acréscimo de capacidade do EKS, o perfil `full` pede 795m CPU e 3104MiB de
-memória com dois nós, conforme `scripts/platform-sizing.sh`. Use `LAB_NODE_INSTANCE_TYPES='["t3.large","t3a.large"]'`
+Para comparar apenas o acréscimo de capacidade do EKS, o perfil `full` pede 1315m CPU e 3680MiB de
+memória com dois nós, conforme `scripts/platform-sizing.sh`. Kyverno responde por 520m CPU e 576MiB.
+Use `LAB_NODE_INSTANCE_TYPES='["t3.large","t3a.large"]'`
 e `LAB_NODE_DESIRED_SIZE=2`; o default `2 × t3.medium/t3a.medium` não é o perfil documentado para
 `full`. À tabela base do perfil `core` somam-se aproximadamente US$0,03/h com Spot (estimativa de 35%
 do on-demand) ou US$0,0832/h on-demand, usando o preço público de US$0,0832/h do t3.large. Fontes:

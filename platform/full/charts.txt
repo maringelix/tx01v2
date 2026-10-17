@@ -21,6 +21,7 @@ GRAFANA_COMMUNITY_REPO TEMPO_VERSION TEMPO_SHA256 tempo tempo monitoring local/v
 OTEL_COLLECTOR_REPO OTEL_COLLECTOR_CHART_VERSION OTEL_COLLECTOR_CHART_SHA256 opentelemetry-collector opentelemetry-collector observability values/otel-collector.yaml,values/full/otel-collector.yaml
 ARGOCD_REPO ARGOCD_VERSION ARGOCD_SHA256 argo-cd argocd argocd local/values/argo-cd.yaml
 GATEKEEPER_REPO GATEKEEPER_VERSION GATEKEEPER_SHA256 gatekeeper gatekeeper gatekeeper-system local/values/gatekeeper.yaml,values/full/gatekeeper.yaml
+KYVERNO_REPO KYVERNO_VERSION KYVERNO_SHA256 kyverno kyverno kyverno values/full/kyverno.yaml
 TRIVY_OPERATOR_REPO TRIVY_OPERATOR_VERSION TRIVY_OPERATOR_SHA256 trivy-operator trivy-operator trivy-system local/values/trivy-operator.yaml,values/full/trivy-operator.yaml
 VELERO_REPO VELERO_VERSION VELERO_SHA256 velero velero velero local/values/velero.yaml,values/full/velero.yaml
 CHAOS_MESH_REPO CHAOS_MESH_VERSION CHAOS_MESH_SHA256 chaos-mesh chaos-mesh chaos-mesh local/values/chaos-mesh.yaml

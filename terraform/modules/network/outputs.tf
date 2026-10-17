@@ -8,6 +8,11 @@ output "vpc_cidr" {
   value       = aws_vpc.this.cidr_block
 }
 
+output "alb_source_cidr" {
+  description = "Smallest canonical CIDR containing only the public /24 subnets that host the internet-facing ALB nodes."
+  value       = cidrsubnet(var.vpc_cidr, var.az_count == 2 ? 7 : 6, 0)
+}
+
 output "azs" {
   description = "Availability zones in use."
   value       = local.azs

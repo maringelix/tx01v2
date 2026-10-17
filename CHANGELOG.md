@@ -8,6 +8,12 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Complete the AWS `full` platform profile for R8.2–R8.4: install an ambient waypoint with STRICT
+  mTLS and workload-identity authorization, application SLO alerts and persistent telemetry, and
+  fail-closed Kyverno verification of signed GHCR-to-ECR digest promotions. The tx/dx contract is
+  version 6; the app deploy workflow selects `core|full` and the EKS deploy role remains scoped to
+  the app. The cloud profile remains `not run in the cloud (v2)`.
+
 - Add the R8.1 local proof with Pebble/challtestsrv: HTTP-01 issuance and automatic rotation of a
   short-lived certificate; add an ephemeral ModSecurity/OWASP CRS proxy for SQLi and rate-limit probes.
 - Configure the Trivy Operator with read-only EKS Pod Identity for private ECR images; keep Kubernetes

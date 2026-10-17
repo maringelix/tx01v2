@@ -41,6 +41,7 @@ run "control_plane" {
         aws_iam_role.external_secrets,
         aws_iam_role.otel_collector,
         aws_iam_role.trivy_operator,
+        aws_iam_role.kyverno_image_verifier,
         aws_iam_role.ebs_csi,
       ] : r.permissions_boundary == "arn:aws:iam::123456789012:policy/tx01v2-lab-boundary"
     ])
@@ -222,6 +223,8 @@ run "pod_identity" {
       aws_eks_pod_identity_association.otel_collector.service_account == "opentelemetry-collector" &&
       aws_eks_pod_identity_association.trivy_operator.namespace == "trivy-system" &&
       aws_eks_pod_identity_association.trivy_operator.service_account == "trivy-operator" &&
+      aws_eks_pod_identity_association.kyverno_image_verifier.namespace == "kyverno" &&
+      aws_eks_pod_identity_association.kyverno_image_verifier.service_account == "kyverno-admission-controller" &&
       aws_eks_pod_identity_association.ebs_csi.namespace == "kube-system" &&
       aws_eks_pod_identity_association.ebs_csi.service_account == "ebs-csi-controller-sa"
     )
@@ -240,7 +243,7 @@ run "pod_identity" {
 
   assert {
     condition = alltrue([
-      for r in [aws_iam_role.load_balancer_controller, aws_iam_role.external_secrets, aws_iam_role.otel_collector, aws_iam_role.trivy_operator, aws_iam_role.ebs_csi] :
+      for r in [aws_iam_role.load_balancer_controller, aws_iam_role.external_secrets, aws_iam_role.otel_collector, aws_iam_role.trivy_operator, aws_iam_role.kyverno_image_verifier, aws_iam_role.ebs_csi] :
       jsondecode(r.assume_role_policy).Statement == [{
         Sid       = "EksPodIdentityOfThisCluster"
         Effect    = "Allow"
@@ -293,6 +296,27 @@ run "pod_identity" {
       },
     ]
     error_message = "Trivy may authenticate to ECR and read only the two app repositories."
+  }
+
+  assert {
+    condition = jsondecode(aws_iam_role_policy.kyverno_image_verifier_ecr.policy).Statement == [
+      {
+        Sid      = "AuthenticateToEcr"
+        Effect   = "Allow"
+        Action   = "ecr:GetAuthorizationToken"
+        Resource = "*"
+      },
+      {
+        Sid    = "ReadOnlyTheAppRepositories"
+        Effect = "Allow"
+        Action = ["ecr:BatchCheckLayerAvailability", "ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer"]
+        Resource = [
+          "arn:aws:ecr:us-east-1:123456789012:repository/dx01v2/api",
+          "arn:aws:ecr:us-east-1:123456789012:repository/dx01v2/web",
+        ]
+      },
+    ]
+    error_message = "Kyverno may authenticate to ECR and read only the two app repositories."
   }
 
   assert {

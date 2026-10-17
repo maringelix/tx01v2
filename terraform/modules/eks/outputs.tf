@@ -62,3 +62,8 @@ output "trivy_operator_role_arn" {
   description = "Pod Identity role of trivy-system/trivy-operator, read-only on the two dx01v2 ECR repositories."
   value       = aws_iam_role.trivy_operator.arn
 }
+
+output "kyverno_image_verifier_role_arn" {
+  description = "Pod Identity role of Kyverno, read-only on the two dx01v2 ECR repositories for signature verification."
+  value       = aws_iam_role.kyverno_image_verifier.arn
+}

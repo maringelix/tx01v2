@@ -39,6 +39,7 @@ case "\$1 \$2" in
   "eks list-clusters") if [[ "\$*" == *"contains(clusters"* ]]; then echo True; fi ;;
   "eks describe-cluster") echo tx01v2 ;;
   "eks update-kubeconfig") exit 0 ;;
+  "ssm get-parameter") [[ "\$*" == *"/dns/enabled"* ]] && echo false ;;
   "elbv2 describe-load-balancers") [[ -e "\$S/lb.gone" ]] || echo "$LB_ARN" ;;
   "elbv2 describe-target-groups") [[ -e "\$S/tg.gone" ]] || echo "$TG_ARN" ;;
   "elbv2 describe-tags")
@@ -64,6 +65,18 @@ fi
 if [[ "$1 $2 $3" == "get crd applications.argoproj.io" && "${FAKE_NO_ARGOCD:-0}" == 1 ]]; then
   echo "Error from server (NotFound): customresourcedefinitions.apiextensions.k8s.io not found" >&2
   exit 1
+fi
+if [[ "$1 $2 $3" == "get crd gateways.gateway.networking.k8s.io" && "${FAKE_NO_WAYPOINT:-0}" == 1 ]]; then
+  echo "Error from server (NotFound): customresourcedefinitions.apiextensions.k8s.io not found" >&2
+  exit 1
+fi
+if [[ "$1 $2 $3" == "get namespace dx01v2" && "$*" == *"jsonpath="* && "${FAKE_NO_WAYPOINT:-0}" != 1 ]]; then
+  echo dx01v2-waypoint
+fi
+if [[ "$*" == "get pv -o json" ]]; then
+  echo '{"items":[]}'
+elif [[ "$1 $2" == "get statefulsets" && "$*" == *"--output json"* ]]; then
+  echo '{"items":[]}'
 fi
 if [[ "$1 $2" == "delete ingress" ]]; then
   touch "$FAKE_STATE/lb.gone" "$FAKE_STATE/tg.gone" "$FAKE_STATE/sg.gone"
@@ -121,6 +134,10 @@ expect() { # NAME DESCRIPTION CONDITION(0 = true)
     echo "PASS $1: $2"
   else
     echo "FAIL $1: $2"
+    if [[ -z "${CALLS_PRINTED:-}" && -f "$WORK/$1.calls" ]]; then
+      CALLS_PRINTED=1
+      sed 's/^/    /' "$WORK/$1.calls"
+    fi
     FAILED=1
   fi
 }
@@ -131,6 +148,10 @@ absent() { # NAME REGEX -> 0 when no call of the case matches
 
 both() { # NAME REGEX_A REGEX_B -> 0 when both kinds of call happened
   if [[ -n "$(line_of "$1" "$2")" && -n "$(line_of "$1" "$3")" ]]; then echo 0; else echo 1; fi
+}
+
+present() { # NAME REGEX -> 0 when a matching call happened
+  if [[ -n "$(line_of "$1" "$2")" ]]; then echo 0; else echo 1; fi
 }
 
 output_has() { # NAME TEXT -> 0 when the output of the case contains TEXT
@@ -160,13 +181,23 @@ main() {
     "$(ordered healthy 'kubectl delete applications.argoproj.io --all' 'kubectl delete ingress')"
   expect healthy "the parent Application goes before its children" \
     "$(ordered healthy 'argocd delete applications.argoproj.io platform' 'kubectl delete applications.argoproj.io --all')"
+  expect healthy "the installed waypoint is removed before Istio is uninstalled" \
+    "$(ordered healthy 'kubectl delete gateway --namespace dx01v2 dx01v2-waypoint' 'helm uninstall ztunnel')"
+  expect healthy "the installed namespace reference is removed" \
+    "$(present healthy 'kubectl label namespace dx01v2 istio.io/use-waypoint-')"
+  expect healthy "the namespace reference is cleared before Istio is uninstalled" \
+    "$(ordered healthy 'kubectl label namespace dx01v2 istio.io/use-waypoint-' 'helm uninstall ztunnel')"
 
   # 1b. The profile core has no Argo CD: no Application is touched, the Ingress is deleted all the same.
-  run_case core-profile 0 FAKE_NO_ARGOCD=1
+  run_case core-profile 0 FAKE_NO_ARGOCD=1 FAKE_NO_WAYPOINT=1
   expect core-profile "no Application is deleted when Argo CD is not installed" \
     "$(absent core-profile 'delete applications.argoproj.io')"
   expect core-profile "the Ingress is deleted and terraform destroy runs" \
     "$(ordered core-profile 'kubectl delete ingress' 'terraform .*destroy')"
+  expect core-profile "the core profile does not delete a waypoint it never installed" \
+    "$(absent core-profile 'kubectl delete gateway --namespace dx01v2 dx01v2-waypoint')"
+  expect core-profile "the core profile does not remove a waypoint label it never set" \
+    "$(absent core-profile 'kubectl label namespace dx01v2 istio.io/use-waypoint-')"
 
   # 2. The cluster API is unreachable: the uninstall fails, the API cleanup removes the load
   #    balancer, the destroy and the leftover check still run, and the run passes.

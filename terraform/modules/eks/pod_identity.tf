@@ -4,7 +4,7 @@
 locals {
   # Must match LBC_CHART_VERSION in platform/versions.env (checked by the harness).
   load_balancer_controller_version = "3.6.0"
-  trivy_ecr_repository_arns = [
+  app_ecr_repository_arns = [
     for repo in ["dx01v2/api", "dx01v2/web"] : "arn:${local.partition}:ecr:${local.region}:${local.account_id}:repository/${repo}"
   ]
 
@@ -145,7 +145,7 @@ resource "aws_iam_role_policy" "trivy_operator_ecr" {
           "ecr:BatchGetImage",
           "ecr:GetDownloadUrlForLayer",
         ]
-        Resource = local.trivy_ecr_repository_arns
+        Resource = local.app_ecr_repository_arns
       },
     ]
   })
@@ -156,6 +156,49 @@ resource "aws_eks_pod_identity_association" "trivy_operator" {
   namespace       = "trivy-system"
   service_account = "trivy-operator"
   role_arn        = aws_iam_role.trivy_operator.arn
+}
+
+# --- Kyverno: kyverno/kyverno-admission-controller (verify signatures in the two private ECR repos) ---
+
+resource "aws_iam_role" "kyverno_image_verifier" {
+  name                 = "${var.name}-kyverno-image-verifier"
+  description          = "Kyverno of ${var.name}: verify signed dx01v2 images in private ECR."
+  assume_role_policy   = local.pod_identity_trust_policy
+  permissions_boundary = var.permissions_boundary_arn
+}
+
+resource "aws_iam_role_policy" "kyverno_image_verifier_ecr" {
+  name = "verify-private-app-images"
+  role = aws_iam_role.kyverno_image_verifier.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "AuthenticateToEcr"
+        Effect   = "Allow"
+        Action   = "ecr:GetAuthorizationToken"
+        Resource = "*"
+      },
+      {
+        Sid    = "ReadOnlyTheAppRepositories"
+        Effect = "Allow"
+        Action = [
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:BatchGetImage",
+          "ecr:GetDownloadUrlForLayer",
+        ]
+        Resource = local.app_ecr_repository_arns
+      },
+    ]
+  })
+}
+
+resource "aws_eks_pod_identity_association" "kyverno_image_verifier" {
+  cluster_name    = aws_eks_cluster.this.name
+  namespace       = "kyverno"
+  service_account = "kyverno-admission-controller"
+  role_arn        = aws_iam_role.kyverno_image_verifier.arn
 }
 
 # --- EBS CSI: kube-system/ebs-csi-controller-sa (encrypted gp3 PVCs for observability) ---

@@ -31,13 +31,14 @@ páginas oficiais de preço da AWS antes de cada rodada; impostos e transferênc
 
 `scripts/platform-sizing.sh 2 <diretório-dos-renders>` soma os requests dos charts do perfil `full`,
 incluindo réplicas, init containers, DaemonSets multiplicados por dois nós e `spec.resources` do
-Prometheus e Alertmanager. O resultado reproduzível é **795m CPU / 3104MiB RAM**. Requests não são
+Prometheus e Alertmanager. Kyverno soma 520m CPU / 576MiB RAM no perfil `full`; o resultado
+reproduzível atualizado é **1315m CPU / 3680MiB RAM**. Requests não são
 uso medido e o cálculo não inclui os pods gerenciados do EKS.
 
 | Perfil | Requests do perfil | Node group recomendado | Total estimado em Spot | Total estimado on-demand |
 |---|---:|---|---:|---:|
 | core | — | 2 × `t3.medium`/`t3a.medium` | ~US$0,26/h | ~US$0,32/h |
-| full | 795m CPU / 3104MiB RAM | 2 × `t3.large`/`t3a.large` | **~US$0,29/h** | **~US$0,40/h** |
+| full | 1315m CPU / 3680MiB RAM | 2 × `t3.large`/`t3a.large` | **~US$0,29/h** | **~US$0,40/h** |
 
 O perfil `full` também reserva **36 GiB de EBS gp3** para Prometheus (12 GiB), Alertmanager (2 GiB),
 Grafana (2 GiB), Loki (10 GiB) e Tempo (10 GiB). A US$0,08/GiB-mês em `us-east-1`, isso soma

@@ -48,8 +48,12 @@ jobs:
           APP_DOMAIN_NAME: ${{ secrets.LAB_APP_DOMAIN_NAME }}
           ROUTE53_PUBLIC_ZONE_ID: ${{ secrets.LAB_ROUTE53_PUBLIC_ZONE_ID }}
         run: |
-          [[ -z "$APP_DOMAIN_NAME" ]] || echo "::add-mask::$APP_DOMAIN_NAME"
-          [[ -z "$ROUTE53_PUBLIC_ZONE_ID" ]] || echo "::add-mask::$ROUTE53_PUBLIC_ZONE_ID"
+          if [[ -n "$APP_DOMAIN_NAME" ]]; then
+            echo "::add-mask::$APP_DOMAIN_NAME"
+          fi
+          if [[ -n "$ROUTE53_PUBLIC_ZONE_ID" ]]; then
+            echo "::add-mask::$ROUTE53_PUBLIC_ZONE_ID"
+          fi
           if [[ -n "$CIDRS" ]]; then
             addresses="$(jq -r '.[]' <<<"$CIDRS")"
             while IFS= read -r cidr; do

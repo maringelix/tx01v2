@@ -55,6 +55,7 @@ run "contract_ssm_parameters_and_wiring" {
       "/tx01v2/lab/cluster-name",
       "/tx01v2/lab/vpc-id",
       "/tx01v2/lab/vpc-cidr",
+      "/tx01v2/lab/alb/source-cidr",
       "/tx01v2/lab/ecr/api-url",
       "/tx01v2/lab/ecr/web-url",
       "/tx01v2/lab/waf/acl-arn",
@@ -66,7 +67,7 @@ run "contract_ssm_parameters_and_wiring" {
       "/tx01v2/lab/dns/zone-id",
       "/tx01v2/lab/dns/acm-certificate-arn",
     ])
-    error_message = "The lab must publish exactly the fourteen contract SSM parameters."
+    error_message = "The lab must publish exactly the fifteen contract SSM parameters."
   }
 
   assert {
@@ -76,12 +77,13 @@ run "contract_ssm_parameters_and_wiring" {
 
   assert {
     condition = {
-      for k in ["region", "cluster-name", "vpc-cidr", "db/secret-name", "app/admin-token-secret-name", "eso/cluster-secret-store"] :
+      for k in ["region", "cluster-name", "vpc-cidr", "alb/source-cidr", "db/secret-name", "app/admin-token-secret-name", "eso/cluster-secret-store"] :
       k => aws_ssm_parameter.contract[k].insecure_value
       } == {
       "region"                      = "us-east-1"
       "cluster-name"                = "tx01v2-lab"
       "vpc-cidr"                    = "10.0.0.0/16"
+      "alb/source-cidr"             = "10.0.0.0/23"
       "db/secret-name"              = "tx01v2-lab/db/app"
       "app/admin-token-secret-name" = "tx01v2-lab/app/admin-token"
       "eso/cluster-secret-store"    = "aws-secrets-manager"
@@ -90,8 +92,8 @@ run "contract_ssm_parameters_and_wiring" {
   }
 
   assert {
-    condition     = aws_ssm_parameter.contract["waf/acl-arn"].insecure_value == module.waf.web_acl_arn && aws_ssm_parameter.contract["vpc-id"].insecure_value == module.network.vpc_id
-    error_message = "waf/acl-arn and vpc-id must come from the modules."
+    condition     = aws_ssm_parameter.contract["waf/acl-arn"].insecure_value == module.waf.web_acl_arn && aws_ssm_parameter.contract["vpc-id"].insecure_value == module.network.vpc_id && aws_ssm_parameter.contract["alb/source-cidr"].insecure_value == module.network.alb_source_cidr
+    error_message = "waf/acl-arn, vpc-id, and the ALB source CIDR must come from their modules."
   }
 
   assert {
@@ -120,8 +122,8 @@ run "contract_ssm_parameters_and_wiring" {
   }
 
   assert {
-    condition     = length(output.ssm_parameter_names) == 14
-    error_message = "ssm_parameter_names must list the fourteen parameters."
+    condition     = length(output.ssm_parameter_names) == 15
+    error_message = "ssm_parameter_names must list the fifteen parameters."
   }
 }
 

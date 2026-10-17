@@ -53,7 +53,7 @@ The lab family (v2):
 | In-cluster scanning: Trivy Operator (vulnerability and configuration reports) | `verified in CI` | `make e2e` |
 | Backup and restore drill: Velero to the S3 emulator (namespace deleted, restored with its data) | `verified in CI` | `make e2e` |
 | Chaos engineering with hypotheses: Chaos Mesh pod kill, 100 ms network latency, CPU and memory stress; availability, latency and restarts measured | `verified in CI` | `make e2e` |
-| Full platform on EKS (15 pinned charts, GitOps, Velero, Gatekeeper, Trivy Operator, Chaos Mesh) | `implemented as code; not run in the cloud (v2)` | `platform/install.sh --profile full`; `helm-template-full`, `kubeconform`, `contract-platform`; `.github/workflows/platform.yml` |
+| Full platform on EKS (16 pinned charts, waypoint mesh, durable observability, Gatekeeper, Kyverno image admission, Trivy Operator, Velero, Chaos Mesh) | `implemented as code; not run in the cloud (v2)` | `platform/install.sh --profile full`; `helm-template-full`, `platform-sizing`, `kubeconform`, `contract-platform`; `.github/workflows/platform.yml` |
 
 `verified in CI` rows run on every pull request, on every push to `main` and weekly (CI jobs
 `static` and `test`). A cloud row changes only with a `cloud_run_report` issue (date, region,

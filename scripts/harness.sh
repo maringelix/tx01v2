@@ -58,10 +58,13 @@ REQUIRED_FILES=(
   platform/manifests/full/argocd-platform.yaml platform/manifests/full/namespaces.yaml
   platform/manifests/full/storageclass.yaml
   platform/manifests/full/rbac-argocd-deployer.yaml platform/manifests/full/tracing.yaml
+  platform/manifests/full/rbac-dx01v2-deployer-extra.yaml platform/manifests/full/waypoint.yaml
+  platform/manifests/full/app-security.yaml platform/manifests/full/app-monitoring.yaml
+  platform/manifests/full/image-verification.yaml
   platform/values/full/gatekeeper.yaml platform/values/full/istiod.yaml
   platform/values/full/kube-prometheus-stack.yaml platform/values/full/kube-prometheus-stack-slack.yaml
   platform/values/full/otel-collector.yaml platform/values/full/trivy-operator.yaml platform/values/full/velero.yaml
-  platform/values/full/loki.yaml platform/values/full/tempo.yaml
+  platform/values/full/loki.yaml platform/values/full/tempo.yaml platform/values/full/kyverno.yaml
   platform/values/full/kube-prometheus-stack-storage.yaml
   terraform/modules/velero/main.tf terraform/modules/velero/outputs.tf
   terraform/modules/velero/variables.tf terraform/modules/velero/versions.tf
@@ -421,6 +424,7 @@ check_policy_identifiers() {
 # scripts/destroy.sh with simulated aws, terraform, kubectl and helm: an uninstall that fails still
 # ends in the API cleanup, terraform destroy and the leftover check (docs/GUARDRAILS.md, CUSTO-03).
 check_destroy_flow() {
+  need jq
   bash scripts/tests/destroy-flow.sh
 }
 
@@ -675,7 +679,7 @@ check_contract_platform() {
   full="$(bash platform/render-manifests.sh us-east-1 --full example-owner)"
   local -a expect_full=(
     "name: istio-system" "name: cert-manager" "name: monitoring" "name: monitoring-agents"
-    "name: argocd" "name: gatekeeper-system" "name: trivy-system" "name: velero" "name: chaos-mesh"
+    "name: argocd" "name: gatekeeper-system" "name: trivy-system" "name: velero" "name: chaos-mesh" "name: kyverno"
     "kind: AppProject" "name: platform" "kind: Application" "name: platform"
     "kind: Role" "name: dx01v2-gitops-sync" "name: dx01v2-deployers"
     "kind: Telemetry" "name: mesh-default"
@@ -683,6 +687,11 @@ check_contract_platform() {
     "https://github.com/example-owner/tx01v2.git" "https://github.com/example-owner/dx01v2.git"
     "dxRevision: gitops/aws" 'RespectIgnoreDifferences=true'
     '/spec/source/path' '/spec/source/kustomize/images' '/spec/source/kustomize/patches'
+    'kind: ImageValidatingPolicy' 'failurePolicy: Fail' 'required: true' 'verifyDigest: true'
+    'kind: AuthorizationPolicy' 'name: api-require-waypoint'
+    'https://token.actions.githubusercontent.com'
+    'https://github.com/example-owner/dx01v2/.github/workflows/deploy-aws.yml@refs/heads/main'
+    'https://github.com/maringelix/tx00v2/attestations/promoted-image/v1'
   )
   for e in "${expect_full[@]}"; do
     grep -qF -- "$e" <<<"$full" || {
@@ -1011,7 +1020,7 @@ check_helm_template_local() {
   return "$rc"
 }
 
-# Render the fifteen pinned charts of profile full. Runtime placeholders are replaced by reserved
+# Render the pinned charts of profile full. Runtime placeholders are replaced by reserved
 # example values and the verified chart archives are cached between checks in HARNESS_WORK_DIR.
 full_chart_values() {
   local list=$1 v out="$HARNESS_WORK_DIR/full-values" f
@@ -1159,6 +1168,24 @@ check_helm_template_full() {
     }
   done
 
+  rendered="$out/kyverno.yaml"
+  for entry in 'ghcr.io/kyverno/kyverno:v1.18.2@sha256:' \
+    'ghcr.io/kyverno/kyvernopre:v1.18.2@sha256:' \
+    'ghcr.io/kyverno/background-controller:v1.18.2@sha256:' \
+    'ghcr.io/kyverno/cleanup-controller:v1.18.2@sha256:' \
+    'ghcr.io/kyverno/reports-controller:v1.18.2@sha256:' \
+    'ghcr.io/kyverno/readiness-checker:v1.18.2@sha256:' \
+    'ghcr.io/kyverno/kyverno-cli:v1.18.2@sha256:'; do
+    grep -qF -- "$entry" "$rendered" || {
+      echo "Kyverno full render: missing pinned image '$entry'"
+      rc=1
+    }
+  done
+  if grep -qE '^[[:space:]]*image:[[:space:]]*"?ghcr.io/kyverno/[^[:space:]"]+:(latest|v1\.18\.2)"?$' "$rendered"; then
+    echo "Kyverno full render must use the release digest for every image"
+    rc=1
+  fi
+
   alertmanager_b64="$(awk '/^  alertmanager.yaml:/ { sub(/^  alertmanager.yaml: "/, ""); sub(/"$/, ""); print; exit }' "$out/kube-prometheus-stack.yaml")"
   alertmanager_config="$(base64 -d <<<"$alertmanager_b64")"
   grep -qF 'receiver: "null"' <<<"$alertmanager_config" || {
@@ -1213,6 +1240,43 @@ check_platform_sizing() {
     return 1
   }
   echo "full profile, ${nodes} nodes: ${cpu}m CPU / ${memory}MiB RAM"
+}
+
+check_image_admission_policy() {
+  local policy=platform/manifests/full/image-verification.yaml
+  grep -qF 'failurePolicy: Fail' "$policy" || {
+    echo "Kyverno image verification must fail closed when the verifier is unavailable"
+    return 1
+  }
+  grep -qF 'required: true' "$policy" && grep -qF 'verifyDigest: true' "$policy" || {
+    echo "Kyverno must require image validation and a digest"
+    return 1
+  }
+  grep -qF 'glob: "*.dkr.ecr.*.amazonaws.com/dx01v2/api@sha256:*"' "$policy" &&
+    grep -qF 'glob: "*.dkr.ecr.*.amazonaws.com/dx01v2/web@sha256:*"' "$policy" || {
+    echo "Kyverno must match only the app API and web repositories by digest"
+    return 1
+  }
+  grep -qF '      - amazon' "$policy" || {
+    echo "Kyverno must use the AWS credential provider for private ECR"
+    return 1
+  }
+  grep -A1 '^  validationActions:$' "$policy" | grep -q '^    - Deny$' || {
+    echo "Kyverno image verification must deny an invalid promotion attestation"
+    return 1
+  }
+}
+
+check_full_install_order() {
+  local order
+  order="$(sed -n '/^install_full() {/,/^}/p' platform/install.sh |
+    grep -E '^[[:space:]]*install_(policies|image_admission|gitops)([[:space:]]|$)' |
+    sed -E 's/^[[:space:]]+//; s/[[:space:]].*$//')"
+  [[ "$order" == $'install_policies\ninstall_image_admission\ninstall_gitops' ]] || {
+    echo "profile full must install Gatekeeper and Kyverno admission before Argo CD can sync app Pods; got:"
+    printf '%s\n' "$order"
+    return 1
+  }
 }
 
 # R4.8: catch stale paths, Make targets, workflow names and GitHub/Terraform variables in the
@@ -1317,6 +1381,8 @@ register_checks() {
   register static helm-template-local check_helm_template_local
   register static helm-template-full check_helm_template_full
   register static platform-sizing check_platform_sizing
+  register static image-admission-policy check_image_admission_policy
+  register static full-install-order check_full_install_order
   register static kubeconform-local check_kubeconform_local
   register static acme-renewal-fixture check_acme_renewal_fixture
   register static policy-gator check_policy_gator
