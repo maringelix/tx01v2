@@ -32,4 +32,5 @@ jq 'del(.resources.fixture_database)' "$WORK_DIR/pricing.json" >"$WORK_DIR/missi
 if bash "$REPO_ROOT/scripts/cost-plan.sh" "${args[@]}" --pricing "$WORK_DIR/missing.json" --budget 2 >/dev/null 2>&1; then die 'unpriced resources accepted'; fi
 grep -q 'updateMode: "Off"' "$REPO_ROOT/platform/finops/manifests/app-policy.yaml"
 grep -q 'enabled: false' "$REPO_ROOT/platform/finops/values/vpa.yaml"
+grep -q 'serviceName: kube-prometheus-stack-prometheus' "$REPO_ROOT/platform/finops/values/opencost.yaml"
 echo 'PASS FinOps: deterministic costs, regional prices, budget rejection, expiry and stale/missing rates'

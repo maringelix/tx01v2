@@ -57,7 +57,7 @@ opencost:
     internal:
       enabled: true
       namespaceName: monitoring
-      serviceName: prometheus-kube-prometheus-stack-prometheus
+      serviceName: kube-prometheus-stack-prometheus
       port: 9090
 extraVolumes:
   - name: runtime-configs

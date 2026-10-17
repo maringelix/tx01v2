@@ -33,7 +33,7 @@ finops_pricing_values() {
     ((age >= 0 && age <= 31)) || die 'FinOps regional rates must be reviewed within 31 days'
   fi
   jq '{opencost:{customPricing:{costModel:{
-    description:.description,CPU:.cpuPerCoreHour,RAM:.ramPerGiBHour,storage:.storagePerGiBHour,
+    CustomPricesEnabled:"true",description:.description,CPU:.cpuPerCoreHour,RAM:.ramPerGiBHour,storage:.storagePerGiBHour,
     spotCPU:.cpuPerCoreHour,spotRAM:.ramPerGiBHour
   }}}}' "$file" >"$out"
   # Conservative Spot accounting: no unmeasured discount is assumed.
