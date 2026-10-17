@@ -370,7 +370,10 @@ spec:
     - matches:
         - path:
             type: PathPrefix
-            value: /waf
+            # Keep the trailing slash in the matched prefix so replacing it with `/`
+            # preserves a single slash before the remaining path (for example,
+            # `/waf/hostname` becomes `/hostname`, not `//hostname`).
+            value: /waf/
       filters:
         - type: URLRewrite
           urlRewrite:
@@ -392,7 +395,7 @@ EOF
     --resolve "$PROBE_HOST:443:$ACME_PROBE_IP" "https://$PROBE_HOST/waf/hostname")" ||
     die "waf: the benign probe could not reach the local WAF"
   [[ "$status" == 200 && "$(cat "$WORK_DIR/waf-benign.body")" == echo-* ]] ||
-    die "waf: benign traffic did not reach the backend (HTTP $status)"
+    die "waf: benign traffic did not reach the backend (HTTP $status, body: $(head -c 160 "$WORK_DIR/waf-benign.body" | tr '\r\n' ' '))"
   pass "waf: benign request passes through the local ModSecurity/OWASP CRS proxy"
 
   status="$(curl -sS -m 10 -o /dev/null -w '%{http_code}' --cacert "$WORK_DIR/ca.pem" \
