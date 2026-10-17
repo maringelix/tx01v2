@@ -370,9 +370,9 @@ spec:
     - matches:
         - path:
             type: PathPrefix
-            # Keep the trailing slash in the matched prefix so replacing it with `/`
-            # preserves a single slash before the remaining path (for example,
-            # `/waf/hostname` becomes `/hostname`, not `//hostname`).
+            # Keep the trailing slash in the matched prefix so replacing it with /
+            # preserves a single slash before the remaining path. For example,
+            # /waf/hostname becomes /hostname.
             value: /waf/
       filters:
         - type: URLRewrite
@@ -391,9 +391,16 @@ EOF
   done
   [[ "$status" == True ]] || die "waf: Gateway API did not attach the local WAF route"
 
-  status="$(curl -sS -m 10 -o "$WORK_DIR/waf-benign.body" -w '%{http_code}' --cacert "$WORK_DIR/ca.pem" \
-    --resolve "$PROBE_HOST:443:$ACME_PROBE_IP" "https://$PROBE_HOST/waf/hostname")" ||
-    die "waf: the benign probe could not reach the local WAF"
+  # Accepted means that the controller has validated the route; Envoy may still be serving its
+  # previous catch-all route for a few seconds. Require the backend's /hostname response before
+  # continuing, so the SQLi and rate-limit probes cannot accidentally bypass the WAF.
+  for i in $(seq 1 60); do
+    if status="$(curl -sS -m 10 -o "$WORK_DIR/waf-benign.body" -w '%{http_code}' --cacert "$WORK_DIR/ca.pem" \
+      --resolve "$PROBE_HOST:443:$ACME_PROBE_IP" "https://$PROBE_HOST/waf/hostname")"; then
+      [[ "$status" == 200 && "$(cat "$WORK_DIR/waf-benign.body")" == echo-* ]] && break
+    fi
+    sleep 2
+  done
   [[ "$status" == 200 && "$(cat "$WORK_DIR/waf-benign.body")" == echo-* ]] ||
     die "waf: benign traffic did not reach the backend (HTTP $status, body: $(head -c 160 "$WORK_DIR/waf-benign.body" | tr '\r\n' ' '))"
   pass "waf: benign request passes through the local ModSecurity/OWASP CRS proxy"
