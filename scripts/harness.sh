@@ -672,6 +672,10 @@ check_contract_platform() {
     echo "platform/manifests: missing the namespace observability of the OpenTelemetry Collector (docs/CONTRATO.md)"
     rc=1
   }
+  grep -qE '^    istio\.io/dataplane-mode: ambient$' platform/manifests/namespace-observability.yaml || {
+    echo "the namespace observability must carry istio.io/dataplane-mode: ambient: the AuthorizationPolicy api trusts the Collector by mesh identity, and STRICT mTLS refuses its plaintext probes"
+    rc=1
+  }
   grep -qE '^  name: opentelemetry-collector$' platform/values/otel-collector.yaml || {
     echo "the OpenTelemetry Collector service account must be opentelemetry-collector (Pod Identity association)"
     rc=1

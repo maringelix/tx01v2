@@ -1,5 +1,8 @@
 # Namespace of the OpenTelemetry Collector (contract v2, docs/CONTRATO.md): the dx01v2 API sends its
-# traces to opentelemetry-collector.observability.svc:4318.
+# traces to opentelemetry-collector.observability.svc:4318. The ambient label is read only by the
+# profile full and is inert without it: the Collector joins the mesh so that its synthetic probes
+# reach the API with an identity (the AuthorizationPolicy api allows exactly that principal on /readyz;
+# a plaintext client is refused by STRICT mTLS).
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -7,3 +10,4 @@ metadata:
   labels:
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/enforce-version: latest
+    istio.io/dataplane-mode: ambient
