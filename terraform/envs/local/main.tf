@@ -32,6 +32,7 @@ locals {
   # TLS only from the network (the local twin of rds.force_ssl = 1). The unix socket inside the
   # container (docker exec for backups and pg_isready) needs no password.
   pg_hba = <<-EOT
+    local   replication  all         trust
     local   all  all                trust
     hostssl all  all  0.0.0.0/0     scram-sha-256
     host    all  all  0.0.0.0/0     reject
@@ -39,9 +40,10 @@ locals {
   # PostgreSQL refuses a key readable by others: copy it with the right owner before starting.
   db_start = join(" && ", [
     "install -d -o postgres -g postgres -m 0700 /run/pgtls",
+    "install -d -o postgres -g postgres -m 0700 /wal-archive /db-backups",
     "install -o postgres -g postgres -m 0600 /etc/postgresql/tls/server.key /run/pgtls/server.key",
     "install -o postgres -g postgres -m 0644 /etc/postgresql/tls/server.crt /run/pgtls/server.crt",
-    "exec docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/run/pgtls/server.crt -c ssl_key_file=/run/pgtls/server.key -c ssl_min_protocol_version=TLSv1.2 -c hba_file=/etc/postgresql/pg_hba.conf -c 'listen_addresses=*'",
+    "exec docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/run/pgtls/server.crt -c ssl_key_file=/run/pgtls/server.key -c ssl_min_protocol_version=TLSv1.2 -c hba_file=/etc/postgresql/pg_hba.conf -c 'listen_addresses=*' -c archive_mode=on -c \"archive_command=(test ! -f /wal-archive/%f && cp %p /wal-archive/%f) || cmp -s %p /wal-archive/%f\"",
   ])
 }
 
@@ -75,7 +77,7 @@ resource "docker_image" "this" {
 # Named, labelled volumes for the data directories the images declare: anonymous volumes would carry
 # no label and could survive the destroy unnoticed.
 resource "docker_volume" "data" {
-  for_each = toset(["registry", "db", "s3", "git"])
+  for_each = toset(["registry", "db", "db-basebackups", "db-wal", "s3", "git"])
 
   name = "${local.name}-${each.key}"
 
@@ -236,6 +238,16 @@ resource "docker_container" "db" {
   volumes {
     volume_name    = docker_volume.data["db"].name
     container_path = "/var/lib/postgresql/data"
+  }
+
+  volumes {
+    volume_name    = docker_volume.data["db-basebackups"].name
+    container_path = "/db-backups"
+  }
+
+  volumes {
+    volume_name    = docker_volume.data["db-wal"].name
+    container_path = "/wal-archive"
   }
 
   networks_advanced {

@@ -7,6 +7,9 @@ locals {
   environment = "lab"
   name        = "${local.project}-${local.environment}"
 
+  db_ha                    = contains(["ha", "dr"], var.db_profile)
+  db_backup_retention_days = local.db_ha ? max(7, var.db_backup_retention_days) : var.db_backup_retention_days
+
   default_tags = {
     Project     = local.project
     Environment = local.environment
@@ -77,10 +80,11 @@ module "rds" {
   instance_class              = var.db_instance_class
   allocated_storage_gb        = var.db_allocated_storage_gb
   max_allocated_storage_gb    = var.db_max_allocated_storage_gb
-  multi_az                    = var.db_multi_az
-  backup_retention_days       = var.db_backup_retention_days
+  multi_az                    = local.db_ha || var.db_multi_az
+  backup_retention_days       = local.db_backup_retention_days
   deletion_protection         = var.db_deletion_protection
   skip_final_snapshot         = var.db_skip_final_snapshot
+  delete_automated_backups    = var.db_delete_automated_backups
   password_version            = var.db_password_version
   secret_recovery_window_days = var.secret_recovery_window_days
   log_retention_days          = var.log_retention_days

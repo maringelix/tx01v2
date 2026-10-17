@@ -61,8 +61,8 @@ run "database_is_tls_only_with_the_lab_ca" {
   }
 
   assert {
-    condition     = strcontains(local.db_start, "ssl=on") && strcontains(local.db_start, "ssl_min_protocol_version=TLSv1.2")
-    error_message = "PostgreSQL must start with TLS on (minimum TLS 1.2)."
+    condition     = strcontains(local.db_start, "ssl=on") && strcontains(local.db_start, "ssl_min_protocol_version=TLSv1.2") && strcontains(local.db_start, "archive_mode=on") && strcontains(local.db_start, "archive_command=")
+    error_message = "PostgreSQL must start with TLS on (minimum TLS 1.2) and archive WAL for PITR."
   }
 
   assert {

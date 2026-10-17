@@ -79,6 +79,12 @@ variable "skip_final_snapshot" {
   default     = true
 }
 
+variable "delete_automated_backups" {
+  description = "Delete automated backups with the instance; disable for a recovery window after teardown."
+  type        = bool
+  default     = true
+}
+
 variable "password_version" {
   description = "Increment to rotate the password: it drives password_wo_version and secret_string_wo_version together."
   type        = number

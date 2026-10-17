@@ -8,6 +8,11 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Start R9 database continuity with explicit `core|ha|dr` RDS profiles: Multi-AZ and at least seven
+  days of PITR are opt-in; `dr` replicates encrypted automated backups to a second AWS Region. A local
+  PostgreSQL 17 physical base backup plus archived WAL restores a named point, rejects a corrupted
+  backup and reports recovery duration. AWS has not been run in v2.
+
 - Complete the AWS `full` platform profile for R8.2–R8.4: install an ambient waypoint with STRICT
   mTLS and workload-identity authorization, application SLO alerts and persistent telemetry, and
   fail-closed Kyverno verification of signed GHCR-to-ECR digest promotions. The tx/dx contract is

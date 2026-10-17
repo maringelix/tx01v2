@@ -45,6 +45,21 @@ output "db_secret_name" {
   value       = module.rds.secret_name
 }
 
+output "db_continuity_profile" {
+  description = "Selected PostgreSQL continuity profile."
+  value       = var.db_profile
+}
+
+output "db_continuity_settings" {
+  description = "Effective RDS Multi-AZ, PITR and teardown settings."
+  value       = module.rds.continuity_settings
+}
+
+output "dr_region" {
+  description = "Destination of replicated RDS automated backups, or disabled."
+  value       = var.db_profile == "dr" ? var.dr_region : "disabled"
+}
+
 output "admin_token_secret_name" {
   description = "Secrets Manager secret with the dx01v2 admin token."
   value       = aws_secretsmanager_secret.admin_token.name

@@ -67,6 +67,16 @@ output "db_password" {
   sensitive   = true
 }
 
+output "db_basebackup_volume" {
+  description = "Throwaway local volume holding PostgreSQL physical base backups for the PITR exercise."
+  value       = docker_volume.data["db-basebackups"].name
+}
+
+output "db_wal_volume" {
+  description = "Throwaway local volume holding archived PostgreSQL WAL for the PITR exercise."
+  value       = docker_volume.data["db-wal"].name
+}
+
 output "admin_token" {
   description = "ADMIN_TOKEN of dx01v2 (48 alphanumeric characters, like the cloud contract)."
   value       = random_password.admin_token.result

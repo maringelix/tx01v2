@@ -27,6 +27,29 @@ páginas oficiais de preço da AWS antes de cada rodada; impostos e transferênc
 | **Total `core` com SPOT (padrão)** | | | **~0,26** | **~6,3–6,5** |
 | **Total `core` com ON_DEMAND** | | | **~0,32** | **~7,6–7,8** |
 
+## Continuidade do banco: perfis `ha` e `dr` (R9)
+
+O padrão `core` acima continua com uma instância RDS em uma zona e um dia de backup. `ha` cria um
+standby Multi-AZ e mantém pelo menos sete dias de backups automáticos para PITR. Uma estimativa
+inicial para a rodada de 3 horas em `us-east-1` é **mais uma instância equivalente** à linha do RDS
+(~US$0,048 adicionais usando a tarifa de referência de US$0,016/h), além do armazenamento da cópia
+e dos backups acima da franquia aplicável. A cobrança real depende da classe, região, modalidade de
+armazenamento, alterações gravadas e retenção; confirme no [AWS Pricing Calculator](https://calculator.aws/)
+e na [tabela RDS PostgreSQL](https://aws.amazon.com/rds/postgresql/pricing/) antes do apply.
+
+`dr` acrescenta a cópia automática dos snapshots e logs para `dr_region` e uma chave KMS nessa região.
+Orce **bytes dos snapshots + logs transferidos × tarifa de transferência entre regiões**, mais
+**bytes dos snapshots retidos × tarifa de snapshot no destino** e a chave/requisições KMS. A AWS cobra
+a transferência e os snapshots de destino; os logs não têm cobrança adicional de armazenamento
+([preços RDS](https://aws.amazon.com/rds/pricing/)). O volume real de WAL depende das escritas.
+Essa cópia é um pilot light de **dados**: não existe instância de banco, EKS, ALB, NAT ou app ativo no
+destino neste estágio. Um restore/failover real gerará todos esses custos e egress da aplicação.
+
+`db_deletion_protection`, snapshot final e retenção de backups após a exclusão são escolhas separadas;
+os defaults continuam destrutíveis para o fork não deixar cobrança. Se forem ativados, o operador
+precisa planejar a desativação da proteção e a limpeza dos snapshots/backups remanescentes. O budget
+de US$25 é um alerta, não bloqueia faturamento.
+
 ## Perfil `full` (R4.7)
 
 `scripts/platform-sizing.sh 2 <diretório-dos-renders>` soma os requests dos charts do perfil `full`,

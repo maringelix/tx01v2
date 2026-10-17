@@ -107,7 +107,7 @@ resource "aws_db_instance" "this" {
   skip_final_snapshot         = var.skip_final_snapshot
   final_snapshot_identifier   = var.skip_final_snapshot ? null : "${local.identifier}-final"
   copy_tags_to_snapshot       = true
-  delete_automated_backups    = true
+  delete_automated_backups    = var.delete_automated_backups
   auto_minor_version_upgrade  = true
   allow_major_version_upgrade = false
   apply_immediately           = true

@@ -46,6 +46,12 @@ jobs:
       TF_VAR_app_deployer_principal_arns: ${{ vars.LAB_APP_DEPLOYER_PRINCIPAL_ARNS || '[]' }}
       TF_VAR_node_instance_types: ${{ vars.LAB_NODE_INSTANCE_TYPES || '["t3.medium","t3a.medium"]' }}
       TF_VAR_node_desired_size: ${{ vars.LAB_NODE_DESIRED_SIZE || '2' }}
+      TF_VAR_db_profile: ${{ vars.LAB_DB_PROFILE || 'core' }}
+      TF_VAR_dr_region: ${{ vars.LAB_DR_REGION || 'us-west-2' }}
+      TF_VAR_db_backup_retention_days: ${{ vars.LAB_DB_BACKUP_RETENTION_DAYS || '1' }}
+      TF_VAR_db_deletion_protection: ${{ vars.LAB_DB_DELETION_PROTECTION || 'false' }}
+      TF_VAR_db_skip_final_snapshot: ${{ vars.LAB_DB_SKIP_FINAL_SNAPSHOT || 'true' }}
+      TF_VAR_db_delete_automated_backups: ${{ vars.LAB_DB_DELETE_AUTOMATED_BACKUPS || 'true' }}
       TF_VAR_app_domain_name: ${{ secrets.LAB_APP_DOMAIN_NAME }}
       TF_VAR_route53_public_zone_id: ${{ secrets.LAB_ROUTE53_PUBLIC_ZONE_ID }}
     steps:
