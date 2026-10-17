@@ -145,6 +145,10 @@ spec:
               cpu: "1"
               memory: 512Mi
           securityContext:
+            # Kubernetes cannot validate the image's named "nginx" user against runAsNonRoot.
+            # The upstream Alpine image's nginx account uses UID/GID 101.
+            runAsUser: 101
+            runAsGroup: 101
             allowPrivilegeEscalation: false
             capabilities:
               drop: [ALL]
