@@ -37,7 +37,8 @@ docker exec -u postgres "$source_db" sh -ec \
   'rm -rf /db-backups/r9-base && pg_basebackup -h /var/run/postgresql -U dx01v2 -D /db-backups/r9-base -Fp -Xs -c fast && pg_verifybackup /db-backups/r9-base'
 
 docker exec -u postgres "$source_db" psql -U dx01v2 -X -v ON_ERROR_STOP=1 -d dx01v2 \
-  -c "INSERT INTO lab_pitr_probe (id) VALUES ('keep'); SELECT pg_create_restore_point('tx01v2_r9_keep');" >/dev/null
+  -c "INSERT INTO lab_pitr_probe (id) VALUES ('keep');" \
+  -c "SELECT pg_create_restore_point('tx01v2_r9_keep');" >/dev/null
 segment="$(docker exec -u postgres "$source_db" psql -U dx01v2 -X -v ON_ERROR_STOP=1 -d dx01v2 -Atc 'SELECT pg_walfile_name(pg_current_wal_lsn())')"
 docker exec -u postgres "$source_db" psql -U dx01v2 -X -v ON_ERROR_STOP=1 -d dx01v2 -Atc 'SELECT pg_switch_wal()' >/dev/null
 
