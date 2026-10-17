@@ -42,7 +42,7 @@ fi
 
 if ! grep -qF 'kubectl delete gateway --namespace dx01v2 dx01v2-waypoint --ignore-not-found --wait=true --timeout=5m' platform/uninstall.sh ||
   ! grep -qF 'kubectl label namespace dx01v2 istio.io/use-waypoint-' platform/uninstall.sh ||
-  ! grep -qF 'if [[ "$waypoint" == dx01v2-waypoint ]]; then' platform/uninstall.sh; then
+  ! grep -qF "if [[ \"\$waypoint\" == dx01v2-waypoint ]]; then" platform/uninstall.sh; then
   echo "platform/uninstall.sh must remove its ambient waypoint and namespace reference" >&2
   exit 1
 fi

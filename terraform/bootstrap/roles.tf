@@ -30,13 +30,7 @@ locals {
     "wafv2:*",
     "xray:*",
   ]
-  # Workload roles receive Route53 only for the configured zone and Velero S3 only for its bucket.
-  # These are separate statements in the boundary instead of account-wide service permissions.
-  lab_route53_workload_actions = [
-    "route53:ListHostedZones",
-    "route53:ListResourceRecordSets",
-    "route53:ChangeResourceRecordSets",
-  ]
+  # Route53 permissions are limited to the configured zone; Velero S3 is limited to its bucket.
   lab_velero_bucket_actions = ["s3:ListBucket", "s3:GetBucketLocation"]
   lab_velero_object_actions = [
     "s3:GetObject",

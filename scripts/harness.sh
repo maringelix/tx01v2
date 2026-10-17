@@ -1248,15 +1248,15 @@ check_image_admission_policy() {
     echo "Kyverno image verification must fail closed when the verifier is unavailable"
     return 1
   }
-  grep -qF 'required: true' "$policy" && grep -qF 'verifyDigest: true' "$policy" || {
+  if ! grep -qF 'required: true' "$policy" || ! grep -qF 'verifyDigest: true' "$policy"; then
     echo "Kyverno must require image validation and a digest"
     return 1
-  }
-  grep -qF 'glob: "*.dkr.ecr.*.amazonaws.com/dx01v2/api@sha256:*"' "$policy" &&
-    grep -qF 'glob: "*.dkr.ecr.*.amazonaws.com/dx01v2/web@sha256:*"' "$policy" || {
+  fi
+  if ! grep -qF 'glob: "*.dkr.ecr.*.amazonaws.com/dx01v2/api@sha256:*"' "$policy" ||
+    ! grep -qF 'glob: "*.dkr.ecr.*.amazonaws.com/dx01v2/web@sha256:*"' "$policy"; then
     echo "Kyverno must match only the app API and web repositories by digest"
     return 1
-  }
+  fi
   grep -qF '      - amazon' "$policy" || {
     echo "Kyverno must use the AWS credential provider for private ECR"
     return 1
