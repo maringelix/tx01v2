@@ -1477,6 +1477,10 @@ main() {
     check_chaos_latency
     check_chaos_stress
   fi
+  if [[ "${LOCAL_FINOPS:-0}" == 1 ]]; then
+    bash "$REPO_ROOT/scripts/local/capacity-drill.sh"
+    pass "capacity and FinOps: actual HPA, PDB, drain, SLO, recommendation and allocation"
+  fi
   printf 'SUMMARY: local platform probes: %d passed\n' "$PASSED"
 }
 

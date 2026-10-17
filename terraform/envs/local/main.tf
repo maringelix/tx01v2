@@ -362,6 +362,8 @@ resource "terraform_data" "cluster" {
     docker_network.lab.name,
     filesha256("${path.module}/kind-config.yaml"),
     filesha256("${path.module}/kind-config-small.yaml"),
+    filesha256("${path.module}/kind-config-ha.yaml"),
+    var.local_topology,
     var.registry_host_port,
     local.registry_name,
   ]
@@ -370,7 +372,7 @@ resource "terraform_data" "cluster" {
     command = "bash ${path.module}/../../../scripts/local/kind-cluster.sh create"
     environment = {
       CLUSTER                          = local.name
-      KIND_CONFIG                      = abspath("${path.module}/kind-config.yaml")
+      KIND_CONFIG                      = abspath("${path.module}/${var.local_topology == "ha" ? "kind-config-ha.yaml" : "kind-config.yaml"}")
       KIND_EXPERIMENTAL_DOCKER_NETWORK = docker_network.lab.name
       REGISTRY_HOSTS                   = "localhost:${var.registry_host_port} ${local.registry_name}"
       REGISTRY_ENDPOINT                = "http://${local.ip.registry}:5000"

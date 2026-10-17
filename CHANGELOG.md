@@ -233,3 +233,7 @@ All notable changes to this project are documented here. The format follows
   for those rows.
 - The README family table links the Azure pair (`tx02v2`, `dx02v2`), now public.
 - The README family table and AGENTS.md link the Google Cloud pair (`tx03v2`, `dx03v2`), now public.
+
+## R10: capacidade e FinOps
+
+- OpenCost/VPA Off, carga/HPA/PDB e kind HA; orçamento/expiração e Spot opcionais. Prova pesada no CI; nada executado na nuvem (v2).

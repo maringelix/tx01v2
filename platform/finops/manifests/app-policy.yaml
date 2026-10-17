@@ -1,0 +1,42 @@
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: api-recommendation
+  namespace: __APP__
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: api
+  updatePolicy:
+    updateMode: "Off"
+  resourcePolicy:
+    containerPolicies:
+      - containerName: api
+        controlledValues: RequestsOnly
+        minAllowed: {cpu: 25m, memory: 64Mi}
+        maxAllowed: {cpu: "1", memory: 2Gi}
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: lab-capacity-defaults
+  namespace: __APP__
+spec:
+  limits:
+    - type: Container
+      default: {cpu: "1", memory: 512Mi}
+      defaultRequest: {cpu: 10m, memory: 64Mi}
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: lab-capacity
+  namespace: __APP__
+spec:
+  hard:
+    requests.cpu: "8"
+    requests.memory: 16Gi
+    limits.cpu: "16"
+    limits.memory: 32Gi
+    pods: "64"

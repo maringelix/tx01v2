@@ -1,4 +1,9 @@
 # Inputs are validated by the calling root (terraform/envs/lab); this module trusts them.
+variable "enable_spot_pool" {
+  description = "Opt-in 0-2 tainted Spot nodes; forces the default pool to on-demand."
+  type        = bool
+  default     = false
+}
 
 variable "secrets_name_prefix" {
   description = "Optional credential name prefix, for native Secrets Manager replicas that retain the primary name."

@@ -1,5 +1,10 @@
 # Arquitetura do tx01v2
 
+> A tabela de decisões e as lições preservam o estado inicial de cada rodada. O escopo
+> atual de HA/backup/PITR/DR está em [CONTINUIDADE.md](CONTINUIDADE.md), e capacidade,
+> OpenCost/VPA/Spot e estimativa em [FINOPS.md](FINOPS.md). Decisões antigas marcadas
+> como fora de escopo não revogam as construções posteriores R7–R10.
+
 Visão da infraestrutura AWS do lab, as decisões por trás dela (ADRs curtos) e o que mudou em relação
 ao v1. Nada disto foi aplicado em nuvem na v2 (`não executado em nuvem (v2)`); as decisões estão
 cobertas pelos testes e checks citados.
@@ -106,14 +111,14 @@ flowchart LR
 | 19 | GitOps com Argo CD lendo um servidor git do lab | um único dono do namespace do app (v1 tinha dois); o push usa a chave do state, a leitura é anônima | Flux; apontar para o GitHub (exigiria credenciais e internet no caminho do deploy) |
 | 20 | Gatekeeper com políticas próprias testadas no `gator` | as regras do v1, em `deny`, com casos que provam aceitação e recusa | gatekeeper-library inteira (mais regras do que o lab explica); Kyverno |
 | 21 | Alertmanager → `alert-sink` dentro do cluster; receiver do Slack com o webhook num Secret opcional | entrega de alerta provada sem credencial externa (v1 dependia de um webhook do Slack nunca testado); sem webhook, a mensagem no formato do Slack vai para o sink e a sonda confere o conteúdo | webhook do Slack nos values versionados (v1) |
-| 22 | Velero no S3 emulado; backup por recursos, sem snapshots | o ensaio de restore roda em minutos e sem nuvem (v1 nunca restaurou nada) | `pg_dump` sozinho; snapshots CSI |
+| 22 | Velero no S3 emulado; objetos e dados de PVC por FSB/Kopia (R9), sem snapshots | o ensaio de restore roda em minutos e sem nuvem (v1 nunca restaurou nada) | `pg_dump` sozinho; snapshots CSI |
 | 23 | Perfis `core`/`observability`/`operations`/`full` | máquinas com pouca memória validam uma camada por vez; o CI roda `full` | um único perfil |
 | 24 | Traces: o OpenTelemetry Collector como único destino OTLP; Tempo no lab local, X-Ray na nuvem | o app e os Gateways falam só OTLP; trocar o backend não muda o app; Tempo monolítico (chart grafana-community) cabe no kind; o spanmetrics do Collector liga métricas a traces por exemplars | SDK do X-Ray no app (prende o app à AWS); Jaeger; Tempo distribuído |
 | 25 | `core` continua padrão; `full` usa Prometheus, Loki e Tempo dentro do EKS | sondas com os mesmos componentes do lab local, sem criar workspaces gerenciados por padrão | AMP + Managed Grafana + CloudWatch |
 | 26 | Istio ambient upstream no EKS, com istio-cni encadeado ao VPC CNI | ztunnel por nó, sem sidecar nos pods; as NetworkPolicies liberam HBONE TCP 15008 e as sondas do kubelet | add-on Istio do AKS ou sidecars |
 | 27 | Gatekeeper não avalia namespaces gerenciados pelo cluster e pela plataforma; `dx01v2` segue coberto | os controladores precisam subir mesmo com a constraint de namespaces privados | isentar todos os namespaces |
 | 28 | Argo CD sincroniza `platform/gitops`; a Application do app lê `gitops/aws` do repositório dx | commit da imagem por digest inicia o deploy; Argo faz self-heal; o repositório público é lido por HTTPS sem credencial | aplicar os manifests diretamente pelo workflow |
-| 29 | Velero guarda objetos do Kubernetes no S3; `snapshotsEnabled: false` | drill de restore sem permissões EC2 nem snapshots EBS | snapshots de volume |
+| 29 | Velero guarda objetos e dados de volume por FSB/Kopia no S3 (R9); `snapshotsEnabled: false` | drill de restore sem permissões EC2 nem snapshots EBS | snapshots de volume |
 
 Detalhes do LBC v3: desde a v3.0.0 o chart tem a mesma versão do app (chart 3.6.0); o Gateway API
 vem habilitado por padrão e é desligado explicitamente (o lab usa Ingress); o service mutator webhook

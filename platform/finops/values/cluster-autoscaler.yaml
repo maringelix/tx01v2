@@ -1,0 +1,28 @@
+fullnameOverride: cluster-autoscaler
+cloudProvider: aws
+image:
+  repository: registry.k8s.io/autoscaling/cluster-autoscaler
+  tag: "v1.36.1@sha256:461388d03eb5b55db58941ee7a81d9a619dd15302b01cbab9f5a9946715994b4"
+rbac:
+  serviceAccount:
+    name: cluster-autoscaler
+priorityClassName: system-cluster-critical
+podDisruptionBudget:
+  minAvailable: 1
+  maxUnavailable: null
+resources:
+  requests: {cpu: 50m, memory: 128Mi}
+  limits: {cpu: 500m, memory: 512Mi}
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 65534
+  seccompProfile: {type: RuntimeDefault}
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities: {drop: [ALL]}
+extraArgs:
+  expander: least-waste
+  balance-similar-node-groups: true
+  scale-down-delay-after-add: 5m
+  scale-down-unneeded-time: 5m

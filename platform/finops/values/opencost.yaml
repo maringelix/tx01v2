@@ -1,0 +1,66 @@
+# ClusterIP only. Rates are supplied separately and are estimates, never invoices.
+fullnameOverride: opencost
+podLabels:
+  app.kubernetes.io/part-of: devops-lab
+  cost.lab/environment: lab
+  cost.lab/owner: learner
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1001
+  runAsGroup: 1001
+  fsGroup: 1001
+  seccompProfile:
+    type: RuntimeDefault
+service:
+  type: ClusterIP
+opencost:
+  mcp:
+    enabled: false
+  exporter:
+    extraEnv:
+      CLOUD_PROVIDER_API_KEY: ""
+    image:
+      registry: ghcr.io
+      repository: opencost/opencost
+      tag: "1.121.3@sha256:4cdd173253e5abba048dfe2cfa968707a5b59d774157d5356940d0d923a6c281"
+    defaultClusterId: lab
+    resources:
+      requests: {cpu: 100m, memory: 128Mi}
+      limits: {cpu: "1", memory: 1Gi}
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop: [ALL]
+    extraVolumeMounts:
+      - {name: runtime-configs, mountPath: /var/configs}
+      - {name: runtime-tmp, mountPath: /tmp}
+    persistence:
+      enabled: false
+  ui:
+    enabled: false
+  cloudCost:
+    enabled: false
+  customPricing:
+    enabled: true
+    provider: custom
+    costModel:
+      description: "Configured estimate; reconcile separately with provider invoices."
+  metrics:
+    kubeStateMetrics:
+      emitKsmV1Metrics: false
+      emitKsmV1MetricsOnly: false
+    serviceMonitor:
+      enabled: true
+      namespace: monitoring
+  prometheus:
+    internal:
+      enabled: true
+      namespaceName: monitoring
+      serviceName: kube-prometheus-stack-prometheus
+      port: 9090
+extraVolumes:
+  - name: runtime-configs
+    emptyDir: {sizeLimit: 128Mi}
+  - name: runtime-tmp
+    emptyDir: {sizeLimit: 128Mi}

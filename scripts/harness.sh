@@ -1359,6 +1359,8 @@ register_checks() {
   register static policy-terraform check_policy_terraform
   register static policy-identifiers check_policy_identifiers
   register static volume-restore-wiring 'bash scripts/tests/volume-restore-wiring.sh'
+  register static finops 'bash scripts/tests/finops.sh'
+  register static finops-charts 'bash scripts/tests/finops-charts.sh'
   register static backup-credentials 'bash scripts/tests/backup-credentials.sh'
   register static regional-dns 'bash scripts/tests/regional-dns.sh'
   register static region-target 'bash scripts/tests/region-target.sh'

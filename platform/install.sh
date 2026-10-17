@@ -34,6 +34,8 @@ source "$HERE/../scripts/lib/common.sh"
 source "$REPO_ROOT/scripts/lib/aws.sh"
 # shellcheck source=scripts/lib/platform.sh
 source "$REPO_ROOT/scripts/lib/platform.sh"
+# shellcheck source=scripts/lib/finops.sh
+source "$REPO_ROOT/scripts/lib/finops.sh"
 # shellcheck source=scripts/lib/backup-credentials.sh
 source "$REPO_ROOT/scripts/lib/backup-credentials.sh"
 export PATH="$REPO_ROOT/.tools/bin:$PATH"
@@ -43,6 +45,7 @@ GATEWAY_API_RELEASES=https://github.com/kubernetes-sigs/gateway-api/releases/dow
 OWNER_RE='^[A-Za-z0-9]([A-Za-z0-9-]{0,38})$'
 WORK_DIR=""
 PROFILE=core
+ENABLE_FINOPS=false
 TARGET=primary
 ACTIVATE_DNS=false
 OWNER=""
@@ -55,7 +58,7 @@ DNS_CERTIFICATE_ARN=""
 ALB_SOURCE_CIDR=""
 
 usage() {
-  echo "usage: $0 [--profile core|full] [--github-owner OWNER] [--target primary|secondary] [--activate-dns]" >&2
+  echo "usage: $0 [--profile core|full] [--github-owner OWNER] [--target primary|secondary] [--finops] [--activate-dns]" >&2
   exit 2
 }
 
@@ -311,12 +314,14 @@ main() {
         OWNER=$2
         shift 2
         ;;
+      --finops) ENABLE_FINOPS=true; shift ;;
       --target) [[ "${2:-}" == primary || "${2:-}" == secondary ]] || usage; TARGET=$2; shift 2 ;;
       --activate-dns) ACTIVATE_DNS=true; shift ;;
       *) usage ;;
     esac
   done
   [[ "$PROFILE" == core || -n "$OWNER" ]] || die "the profile full needs --github-owner, the GitHub user or organization of your forks"
+  [[ "$ENABLE_FINOPS" == false || "$PROFILE" == full ]] || die '--finops requires profile full'
   require_cmd aws kubectl helm
   require_aws_region
   select_lab_target "$TARGET"
@@ -375,6 +380,7 @@ main() {
     --wait=watcher --rollback-on-failure --timeout 10m
 
   install_external_dns
+  install_cluster_autoscaler "$cluster" "$REGION"
 
   log "installing external-secrets chart $ESO_CHART_VERSION"
   helm upgrade --install external-secrets external-secrets/external-secrets \
@@ -403,6 +409,9 @@ main() {
 
   if [[ "$PROFILE" == full ]]; then
     install_full
+    if [[ "$ENABLE_FINOPS" == true ]]; then
+      install_finops_stack aws "$cluster" "$REGION" dx01v2
+    fi
   fi
 }
 

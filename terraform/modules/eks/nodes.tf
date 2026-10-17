@@ -81,7 +81,7 @@ resource "aws_eks_node_group" "default" {
   subnet_ids      = var.private_subnet_ids
   version         = aws_eks_cluster.this.version
   ami_type        = "AL2023_x86_64_STANDARD"
-  capacity_type   = var.node_capacity_type
+  capacity_type   = var.enable_spot_pool ? "ON_DEMAND" : var.node_capacity_type
   instance_types  = var.node_instance_types
 
   scaling_config {

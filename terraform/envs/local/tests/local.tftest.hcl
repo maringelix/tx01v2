@@ -170,3 +170,18 @@ run "refuses_a_privileged_port" {
 
   expect_failures = [var.registry_host_port]
 }
+
+run "ha_topology_is_explicit" {
+  command = plan
+  variables { local_topology = "ha" }
+  assert {
+    condition     = contains(terraform_data.cluster.triggers_replace, "ha")
+    error_message = "HA topology must change the owned cluster identity."
+  }
+}
+
+run "reject_unknown_topology" {
+  command = plan
+  variables { local_topology = "foreign" }
+  expect_failures = [var.local_topology]
+}

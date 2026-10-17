@@ -35,6 +35,7 @@ module "eks_dr" {
   endpoint_public_access_cidrs = var.endpoint_public_access_cidrs
   kms_key_arn                  = module.kms_dr[0].key_arn
   log_retention_days           = var.log_retention_days
+  enable_spot_pool             = var.enable_spot_pool
   node_capacity_type           = var.node_capacity_type
   node_instance_types          = var.node_instance_types
   node_desired_size            = var.node_desired_size

@@ -24,6 +24,10 @@ on:
           - install
           - uninstall
         default: install
+      finops:
+        description: Install configured OpenCost and recommendation-only VPA (full)
+        type: boolean
+        default: false
       profile:
         description: Platform profile to install (uninstall ignores this value)
         type: choice
@@ -82,6 +86,8 @@ jobs:
       - name: Run platform/${{ inputs.action }}.sh
         env:
           ACTION: ${{ inputs.action }}
+          FINOPS: ${{ inputs.finops }}
+          FINOPS_PRICING_JSON: ${{ vars.LAB_FINOPS_PRICING_JSON }}
           PROFILE: ${{ inputs.profile }}
           VELERO_REPOSITORY_PASSWORD: ${{ secrets.LAB_VELERO_REPOSITORY_PASSWORD }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
@@ -89,6 +95,12 @@ jobs:
           case "$ACTION" in
             install)
               args=(--target "$TARGET")
+              if [[ "$FINOPS" == true ]]; then
+                umask 077
+                printf '%s\n' "$FINOPS_PRICING_JSON" > "$RUNNER_TEMP/finops-pricing.json"
+                export FINOPS_PRICING_FILE="$RUNNER_TEMP/finops-pricing.json"
+                args+=(--finops)
+              fi
               [[ "$ACTIVATE_DNS" != true ]] || args+=(--activate-dns)
               bash platform/install.sh --profile "$PROFILE" --github-owner "$GITHUB_REPOSITORY_OWNER" "${args[@]}"
               ;;

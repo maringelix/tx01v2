@@ -25,6 +25,7 @@ jobs:
       TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
       TF_IN_AUTOMATION: "1"
       TF_INPUT: "0"
+      TF_VAR_enable_spot_pool: ${{ vars.LAB_ENABLE_SPOT_POOL || 'false' }}
       TF_VAR_aws_region: ${{ vars.AWS_REGION }}
       TF_VAR_github_owner: ${{ github.repository_owner }}
       # A secret, not a variable: the logs of a public repository are public, and a secret is masked.
@@ -99,6 +100,14 @@ jobs:
 
       - name: terraform plan
         run: terraform -chdir=terraform/envs/lab plan -input=false -no-color -out=tfplan
+
+      - name: Reviewed estimate, budget and expiration gate
+        env:
+          FINOPS_PRICING_JSON: ${{ vars.LAB_FINOPS_PRICING_JSON }}
+          COST_BUDGET_USD: ${{ vars.LAB_COST_BUDGET_USD }}
+          COST_HOURS: ${{ vars.LAB_COST_HOURS }}
+          COST_EXPIRES_AT: ${{ vars.LAB_COST_EXPIRES_AT }}
+        run: bash scripts/cost-workflow.sh aws "$TF_VAR_aws_region"
 
       - name: terraform apply
         run: terraform -chdir=terraform/envs/lab apply -input=false -no-color tfplan

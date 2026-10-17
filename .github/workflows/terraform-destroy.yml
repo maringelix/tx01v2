@@ -37,6 +37,7 @@ jobs:
       TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
       TF_IN_AUTOMATION: "1"
       TF_INPUT: "0"
+      TF_VAR_enable_spot_pool: ${{ vars.LAB_ENABLE_SPOT_POOL || 'false' }}
       TF_VAR_aws_region: ${{ vars.AWS_REGION }}
       TF_VAR_github_owner: ${{ github.repository_owner }}
       # A secret, not a variable: the logs of a public repository are public, and a secret is masked.
