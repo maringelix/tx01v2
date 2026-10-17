@@ -17,7 +17,7 @@ cleanup() {
   local rc=$?
   docker rm -f "$recovery_db" >/dev/null 2>&1 || true
   docker volume rm "$recovery_volume" >/dev/null 2>&1 || true
-  docker exec -u postgres "$source_db" psql -X -v ON_ERROR_STOP=1 -d dx01v2 \
+  docker exec -u postgres "$source_db" psql -U dx01v2 -X -v ON_ERROR_STOP=1 -d dx01v2 \
     -c 'DROP TABLE IF EXISTS lab_pitr_probe' >/dev/null 2>&1 || true
   exit "$rc"
 }
@@ -28,7 +28,7 @@ if docker volume inspect "$recovery_volume" >/dev/null 2>&1 || docker container 
 fi
 trap cleanup EXIT
 
-docker exec -u postgres "$source_db" psql -X -v ON_ERROR_STOP=1 -d dx01v2 \
+docker exec -u postgres "$source_db" psql -U dx01v2 -X -v ON_ERROR_STOP=1 -d dx01v2 \
   -c 'CREATE TABLE IF NOT EXISTS lab_pitr_probe (id text PRIMARY KEY, recorded_at timestamptz NOT NULL DEFAULT clock_timestamp()); TRUNCATE lab_pitr_probe; INSERT INTO lab_pitr_probe (id) VALUES ('"'"'baseline'"'"');' >/dev/null
 
 # pg_basebackup writes a physical copy plus a manifest. -X stream makes the base independently
@@ -36,10 +36,10 @@ docker exec -u postgres "$source_db" psql -X -v ON_ERROR_STOP=1 -d dx01v2 \
 docker exec -u postgres "$source_db" sh -ec \
   'rm -rf /db-backups/r9-base && pg_basebackup -h /var/run/postgresql -U dx01v2 -D /db-backups/r9-base -Fp -Xs -c fast && pg_verifybackup /db-backups/r9-base'
 
-docker exec -u postgres "$source_db" psql -X -v ON_ERROR_STOP=1 -d dx01v2 \
+docker exec -u postgres "$source_db" psql -U dx01v2 -X -v ON_ERROR_STOP=1 -d dx01v2 \
   -c "INSERT INTO lab_pitr_probe (id) VALUES ('keep'); SELECT pg_create_restore_point('tx01v2_r9_keep');" >/dev/null
-segment="$(docker exec -u postgres "$source_db" psql -X -v ON_ERROR_STOP=1 -d dx01v2 -Atc 'SELECT pg_walfile_name(pg_current_wal_lsn())')"
-docker exec -u postgres "$source_db" psql -X -v ON_ERROR_STOP=1 -d dx01v2 -Atc 'SELECT pg_switch_wal()' >/dev/null
+segment="$(docker exec -u postgres "$source_db" psql -U dx01v2 -X -v ON_ERROR_STOP=1 -d dx01v2 -Atc 'SELECT pg_walfile_name(pg_current_wal_lsn())')"
+docker exec -u postgres "$source_db" psql -U dx01v2 -X -v ON_ERROR_STOP=1 -d dx01v2 -Atc 'SELECT pg_switch_wal()' >/dev/null
 
 archived=0
 for _ in $(seq 1 30); do
@@ -53,9 +53,9 @@ done
 
 # Model a bad write and an operator deleting the target row after the chosen point. Recovery must
 # return 'keep' and discard 'lost'. The pre-restore database demonstrably no longer has 'keep'.
-docker exec -u postgres "$source_db" psql -X -v ON_ERROR_STOP=1 -d dx01v2 \
+docker exec -u postgres "$source_db" psql -U dx01v2 -X -v ON_ERROR_STOP=1 -d dx01v2 \
   -c "INSERT INTO lab_pitr_probe (id) VALUES ('lost'); DELETE FROM lab_pitr_probe WHERE id = 'keep';" >/dev/null
-before="$(docker exec -u postgres "$source_db" psql -X -v ON_ERROR_STOP=1 -d dx01v2 -Atc "SELECT string_agg(id, ',' ORDER BY id) FROM lab_pitr_probe")"
+before="$(docker exec -u postgres "$source_db" psql -U dx01v2 -X -v ON_ERROR_STOP=1 -d dx01v2 -Atc "SELECT string_agg(id, ',' ORDER BY id) FROM lab_pitr_probe")"
 [[ "$before" == "baseline,lost" ]] || die "PITR: expected the damaged source to hold baseline,lost, got $before"
 
 docker volume create --label tx01v2.lab=local --name "$recovery_volume" >/dev/null
@@ -85,7 +85,7 @@ docker run -d --name "$recovery_db" --label tx01v2.lab=local --network "$network
 
 promoted=0
 for _ in $(seq 1 60); do
-  if docker exec -u postgres "$recovery_db" psql -X -v ON_ERROR_STOP=1 -d dx01v2 \
+  if docker exec -u postgres "$recovery_db" psql -U dx01v2 -X -v ON_ERROR_STOP=1 -d dx01v2 \
     -Atc 'SELECT NOT pg_is_in_recovery()' 2>/dev/null | grep -qx t; then
     promoted=1
     break
@@ -94,7 +94,7 @@ for _ in $(seq 1 60); do
 done
 ((promoted == 1)) || { docker logs "$recovery_db" >&2; die "PITR: recovered PostgreSQL did not promote"; }
 
-restored="$(docker exec -u postgres "$recovery_db" psql -X -v ON_ERROR_STOP=1 -d dx01v2 \
+restored="$(docker exec -u postgres "$recovery_db" psql -U dx01v2 -X -v ON_ERROR_STOP=1 -d dx01v2 \
   -Atc "SELECT string_agg(id, ',' ORDER BY id) FROM lab_pitr_probe")"
 [[ "$restored" == "baseline,keep" ]] || die "PITR: expected baseline,keep after recovery, got $restored"
 recovery_seconds="$(($(date +%s) - started_at))"
