@@ -42,7 +42,7 @@ data:
         PROXY_SSL_CONFIG
         location / {
             client_max_body_size 0;
-            limit_req zone=waf_probe burst=0 nodelay;
+            limit_req zone=waf_probe burst=1 nodelay;
             if ($always_redirect = on) {
                 return 301 https://$host$request_uri;
             }
@@ -73,7 +73,7 @@ data:
         PROXY_SSL_CONFIG
         location / {
             client_max_body_size 0;
-            limit_req zone=waf_probe burst=0 nodelay;
+            limit_req zone=waf_probe burst=1 nodelay;
             include includes/cors.conf;
             include includes/proxy_backend.conf;
             index index.html index.htm;
