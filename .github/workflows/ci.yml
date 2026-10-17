@@ -92,6 +92,8 @@ jobs:
       - run: make tools
       - run: make e2e
         env:
+          LOCAL_TOPOLOGY: ha
+          LOCAL_FINOPS: "1"
           LOCAL_DIAGNOSTICS_DIR: ${{ runner.temp }}/local-lab-diagnostics
 
       # The job log keeps only the tail of the run (the destroy); the full log shows the failed probe.

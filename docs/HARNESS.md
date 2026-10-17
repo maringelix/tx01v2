@@ -98,3 +98,7 @@ consegue compilá-la ("could not find schema"). O harness usa a revisão anterio
 `f3e4382`, 2026-06-02), que valida o ClusterSecretStore deste repositório em modo estrito (um campo
 com erro de digitação é rejeitado). Reavalie a cada atualização trimestral do harness
 (`docs/SUSTENTACAO.md`).
+
+## R10: capacidade e FinOps
+
+Veja [FinOps e escala](FINOPS.md) para kind HA, carga/HPA/PDB, Cluster Autoscaler, OpenCost, VPA Off, Spot opt-in, pre?os regionais, or?amento/expira??o e limpeza. O perfil com pool Spot dedicado preserva on-demand e altera custo; defaults baratos permanecem. Nada executado na nuvem (v2).

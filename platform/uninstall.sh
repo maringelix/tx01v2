@@ -132,6 +132,8 @@ capture_observability_pvcs() {
 }
 
 uninstall_full_releases() {
+  helm uninstall opencost --namespace finops --ignore-not-found --wait=watcher --timeout 10m
+  helm uninstall lab-vpa --namespace finops --ignore-not-found --wait=watcher --timeout 10m
   local entry release namespace
   for entry in \
     'chaos-mesh chaos-mesh' \
@@ -210,6 +212,7 @@ main() {
   uninstall_full_releases
   delete_observability_volumes
   helm uninstall opentelemetry-collector --namespace observability --ignore-not-found --wait=watcher --timeout 10m
+  helm uninstall cluster-autoscaler --namespace kube-system --ignore-not-found --wait=watcher --timeout 10m
   helm uninstall external-dns --namespace kube-system --ignore-not-found --wait=watcher --timeout 10m
   helm uninstall external-secrets --namespace external-secrets --ignore-not-found --wait=watcher --timeout 10m
   helm uninstall aws-load-balancer-controller --namespace kube-system --ignore-not-found --wait=watcher --timeout 10m

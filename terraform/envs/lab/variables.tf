@@ -99,6 +99,12 @@ variable "cluster_version" {
   }
 }
 
+variable "enable_spot_pool" {
+  description = "Opt-in bounded tainted Spot pool alongside an on-demand default pool. Changes default-pool cost/capacity."
+  type        = bool
+  default     = false
+}
+
 variable "node_capacity_type" {
   description = "SPOT (default, cheapest, can be interrupted) or ON_DEMAND."
   type        = string

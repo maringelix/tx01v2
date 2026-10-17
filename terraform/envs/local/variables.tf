@@ -35,3 +35,12 @@ variable "registry_host_port" {
     error_message = "The registry_host_port must be an unprivileged TCP port (1024-65535)."
   }
 }
+variable "local_topology" {
+  description = "single for the cheap local default, ha for three-node capacity/eviction exercises."
+  type        = string
+  default     = "single"
+  validation {
+    condition     = contains(["single", "ha"], var.local_topology)
+    error_message = "local_topology must be single or ha."
+  }
+}

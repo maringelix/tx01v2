@@ -110,6 +110,10 @@ mock_resource "aws_eks_node_group" {
     # Sentinel for a computed attribute: it survives only when the configuration does NOT
     # set disk_size, which is what tests/eks.tftest.hcl asserts.
     disk_size = -1
+    resources = [{
+      autoscaling_groups              = [{ name = "eks-default-example" }]
+      remote_access_security_group_id = ""
+    }]
   }
 }
 

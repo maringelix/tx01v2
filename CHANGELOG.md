@@ -233,3 +233,7 @@ All notable changes to this project are documented here. The format follows
   for those rows.
 - The README family table links the Azure pair (`tx02v2`, `dx02v2`), now public.
 - The README family table and AGENTS.md link the Google Cloud pair (`tx03v2`, `dx03v2`), now public.
+
+## R10: capacidade e FinOps
+
+Veja [FinOps e escala](docs/FINOPS.md) para kind HA, carga/HPA/PDB, Cluster Autoscaler, OpenCost, VPA Off, Spot opt-in, pre?os regionais, or?amento/expira??o e limpeza. O perfil com pool Spot dedicado preserva on-demand e altera custo; defaults baratos permanecem. Nada executado na nuvem (v2).

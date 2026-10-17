@@ -25,6 +25,34 @@ variables {
   permissions_boundary_arn     = "arn:aws:iam::123456789012:policy/tx01v2-lab-boundary"
 }
 
+run "capacity_controller_and_spot" {
+  command = plan
+  module { source = "../../modules/eks" }
+  variables { enable_spot_pool = true }
+  assert {
+    condition = (
+      aws_eks_node_group.default.capacity_type == "ON_DEMAND" &&
+      aws_eks_node_group.spot[0].capacity_type == "SPOT" &&
+      aws_eks_node_group.spot[0].scaling_config[0].min_size == 0 &&
+      aws_eks_node_group.spot[0].scaling_config[0].max_size == 2 &&
+      one(aws_eks_node_group.spot[0].taint).effect == "NO_SCHEDULE" &&
+      aws_eks_pod_identity_association.cluster_autoscaler.namespace == "kube-system" &&
+      aws_eks_pod_identity_association.cluster_autoscaler.service_account == "cluster-autoscaler" &&
+      aws_iam_role.cluster_autoscaler.permissions_boundary == var.permissions_boundary_arn
+    )
+    error_message = "Capacity profile needs an actual Pod Identity controller and tainted bounded Spot alongside on-demand."
+  }
+  assert {
+    condition = (
+      jsondecode(aws_iam_role_policy.cluster_autoscaler.policy).Statement[2].Condition.StringEquals["aws:ResourceTag/k8s.io/cluster-autoscaler/tx01v2-lab"] == "owned" &&
+      jsondecode(aws_iam_role_policy.cluster_autoscaler.policy).Statement[2].Condition.StringEquals["aws:ResourceTag/k8s.io/cluster-autoscaler/enabled"] == "true" &&
+      length(aws_autoscaling_group_tag.default_discovery) == 2 &&
+      length(aws_autoscaling_group_tag.spot_discovery) == 4
+    )
+    error_message = "Scaling writes and auto-discovery must be limited to tagged owned groups."
+  }
+}
+
 run "control_plane" {
   command = plan
 

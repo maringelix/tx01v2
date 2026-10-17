@@ -29,6 +29,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$HERE/../../scripts/lib/common.sh"
 # shellcheck source=scripts/lib/local.sh
 source "$REPO_ROOT/scripts/lib/local.sh"
+# shellcheck source=scripts/lib/finops.sh
+source "$REPO_ROOT/scripts/lib/finops.sh"
 export PATH="$REPO_ROOT/.tools/bin:$PATH"
 
 WORK_DIR=""
@@ -387,6 +389,10 @@ main() {
     install_trivy_operator
     install_backup
     install_chaos
+  fi
+  if [[ "${LOCAL_FINOPS:-0}" == 1 ]]; then
+    [[ "$LOCAL_PROFILE" == full ]] || die 'LOCAL_FINOPS requires profile full'
+    install_finops_stack local "$LOCAL_CLUSTER" docker dx01v2
   fi
   log "local platform ready (profile $LOCAL_PROFILE, size $LOCAL_SIZE): $(helm list --all-namespaces --short | sort | tr '\n' ' ')"
 }

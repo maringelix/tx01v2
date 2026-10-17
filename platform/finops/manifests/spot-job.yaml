@@ -1,0 +1,26 @@
+# Opt-in finite, disposable work only. No database/platform Deployment uses Spot.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: spot-lesson
+  namespace: finops
+  labels: {cost.lab/owner: learner, cost.lab/environment: lab}
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: 180
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: spot-lesson, cost.lab/owner: learner, cost.lab/environment: lab}
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      nodeSelector: {lab.capacity/pool: spot}
+      tolerations: [{key: lab.capacity/pool, operator: Equal, value: spot, effect: NoSchedule}]
+      securityContext: {runAsNonRoot: true, runAsUser: 1000, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: task
+          image: node:24-alpine3.24@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+          command: [node, -e, "setTimeout(()=>console.log('finite Spot lesson complete'),30000)"]
+          resources: {requests: {cpu: 250m, memory: 512Mi}, limits: {cpu: 500m, memory: 512Mi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}

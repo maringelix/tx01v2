@@ -1,0 +1,28 @@
+# Recommendation only: no updater, admission webhook or automatic request changes.
+fullnameOverride: lab-vpa
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65534
+  seccompProfile:
+    type: RuntimeDefault
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+admissionController:
+  enabled: false
+  certGen:
+    enabled: false
+updater:
+  enabled: false
+recommender:
+  enabled: true
+  replicas: 1
+  image:
+    tag: "1.8.0@sha256:e743e3a7e58a614f850063dba5df88eec5a19cf4cc43edb2050248df2d7dd8d3"
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+  extraArgs:
+    - --recommender-interval=15s

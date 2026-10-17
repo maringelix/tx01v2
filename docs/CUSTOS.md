@@ -137,3 +137,7 @@ da região, data e descontos da conta. Não multiplique o total core por um fato
 e trate como cotação. O budget é alerta e não interrompe cobrança. Estabeleça
 duração, responsable e teardown; buckets recovery retidos continuam armazenando
 objetos/versões até a limpeza deliberada, mesmo após remover os clusters.
+
+## R10: capacidade e FinOps
+
+Veja [FinOps e escala](FINOPS.md) para kind HA, carga/HPA/PDB, Cluster Autoscaler, OpenCost, VPA Off, Spot opt-in, pre?os regionais, or?amento/expira??o e limpeza. O perfil com pool Spot dedicado preserva on-demand e altera custo; defaults baratos permanecem. Nada executado na nuvem (v2).

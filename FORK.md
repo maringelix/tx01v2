@@ -214,3 +214,7 @@ request. Run `scripts/repo-guardrails.sh` again when `.github/rulesets/main.json
 
 Pull requests to the original repository are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md). Their
 workflow runs wait for the maintainer's approval, and the same harness decides.
+
+## R10: capacidade e FinOps
+
+Veja [FinOps e escala](docs/FINOPS.md) para kind HA, carga/HPA/PDB, Cluster Autoscaler, OpenCost, VPA Off, Spot opt-in, pre?os regionais, or?amento/expira??o e limpeza. O perfil com pool Spot dedicado preserva on-demand e altera custo; defaults baratos permanecem. Nada executado na nuvem (v2).

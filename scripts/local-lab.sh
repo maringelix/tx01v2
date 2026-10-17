@@ -34,6 +34,10 @@ export TF_DATA_DIR="$LOCAL_STATE_DIR/tfdata" TF_IN_AUTOMATION=1 TF_INPUT=0 CHECK
 export TF_PLUGIN_CACHE_DIR="${TF_PLUGIN_CACHE_DIR:-$HOME/.terraform.d/plugin-cache}"
 export KUBECONFIG="$LOCAL_STATE_DIR/kubeconfig"
 export LOCAL_STATE_DIR
+LOCAL_TOPOLOGY="${LOCAL_TOPOLOGY:-single}"
+[[ "$LOCAL_TOPOLOGY" == single || "$LOCAL_TOPOLOGY" == ha ]] || die 'LOCAL_TOPOLOGY must be single or ha'
+[[ "$LOCAL_TOPOLOGY" != ha || "${LOCAL_SIZE:-default}" != small ]] || die 'HA topology requires the default size (12 GiB Docker recommended)'
+export TF_VAR_local_topology="$LOCAL_TOPOLOGY"
 
 tf_init() {
   mkdir -p "$LOCAL_STATE_DIR" "$TF_PLUGIN_CACHE_DIR"

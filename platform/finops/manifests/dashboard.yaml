@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: lab-finops-dashboard
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "1"
+data:
+  lab-finops.json: |
+    {
+      "title": "Lab FinOps estimates",
+      "uid": "lab-finops",
+      "schemaVersion": 39,
+      "version": 1,
+      "refresh": "30s",
+      "time": {"from": "now-1h", "to": "now"},
+      "panels": [
+        {"id":1,"type":"timeseries","title":"Allocated CPU cost by namespace (USD/h)","datasource":{"type":"prometheus","uid":"prometheus"},"targets":[{"expr":"sum by (namespace) (container_cpu_allocation * on(node) group_left node_cpu_hourly_cost)","legendFormat":"{{namespace}}"}],"gridPos":{"h":8,"w":12,"x":0,"y":0}},
+        {"id":2,"type":"timeseries","title":"Allocated memory cost by namespace (USD/h)","datasource":{"type":"prometheus","uid":"prometheus"},"targets":[{"expr":"sum by (namespace) (container_memory_allocation_bytes / 1073741824 * on(node) group_left node_ram_hourly_cost)","legendFormat":"{{namespace}}"}],"gridPos":{"h":8,"w":12,"x":12,"y":0}},
+        {"id":3,"type":"text","title":"Scope","options":{"mode":"markdown","content":"Configured regional rates estimate allocation. Include idle/shared capacity and external database, network, backup and control-plane costs. Reconcile provider invoices separately; credits and discounts are not assumed."},"gridPos":{"h":4,"w":24,"x":0,"y":8}}
+      ]
+    }
