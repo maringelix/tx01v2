@@ -184,6 +184,9 @@ spec:
             - name: dns
               containerPort: 8053
               protocol: UDP
+            - name: dns-tcp
+              containerPort: 8053
+              protocol: TCP
           readinessProbe:
             tcpSocket:
               port: management
@@ -223,3 +226,7 @@ spec:
       port: 8053
       targetPort: dns
       protocol: UDP
+    - name: dns-tcp
+      port: 8053
+      targetPort: dns-tcp
+      protocol: TCP
