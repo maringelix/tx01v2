@@ -10,11 +10,12 @@ require_lab_context
 NODE="$LOCAL_CLUSTER-control-plane"
 NS=lab-probe-pvc
 PV=lab-probe-pvc
+RECOVERY_PV=lab-probe-pvc-recovery
 NODE_PATH=/var/local/tx01v2-velero-probe
 CREATED=0
 [[ "$(docker inspect "$NODE" --format '{{index .Config.Labels "io.x-k8s.kind.cluster"}}')" == "$LOCAL_CLUSTER" ]] ||
   die 'PVC drill: node container does not belong to the local lab'
-if kubectl get namespace "$NS" >/dev/null 2>&1 || kubectl get pv "$PV" >/dev/null 2>&1; then
+if kubectl get namespace "$NS" >/dev/null 2>&1 || kubectl get pv "$PV" "$RECOVERY_PV" --ignore-not-found -o name | grep -q .; then
   die 'PVC drill: probe namespace or PV already exists; refusing to adopt it'
 fi
 docker exec "$NODE" test ! -e "$NODE_PATH" || die 'PVC drill: backing path already exists'
@@ -25,6 +26,8 @@ cleanup() {
     if ((rc)); then
       # CR status contains repository/volume errors, not the Secrets or backed-up object contents.
       kubectl -n velero get backups,restores,backuprepositories,podvolumebackups,podvolumerestores -o yaml >&2 || rc=1
+      kubectl -n "$NS" get pods,pvc -o wide >&2 || rc=1
+      kubectl -n "$NS" get events --sort-by=.lastTimestamp >&2 || rc=1
       kubectl -n velero logs -l velero.io/component=server -c velero --tail=150 --prefix=true >&2 || rc=1
       server_pod="$(kubectl -n velero get pods -l velero.io/component=server -o jsonpath='{.items[0].metadata.name}')" || rc=1
       if [[ -n "$server_pod" ]]; then
@@ -32,7 +35,7 @@ cleanup() {
       fi
     fi
     kubectl delete namespace "$NS" --ignore-not-found --wait=true --timeout=120s >/dev/null || rc=1
-    kubectl delete pv "$PV" --ignore-not-found --wait=true --timeout=60s >/dev/null || rc=1
+    kubectl delete pv "$PV" "$RECOVERY_PV" --ignore-not-found --wait=true --timeout=60s >/dev/null || rc=1
     kubectl -n velero delete backup,restore "$NS" --ignore-not-found >/dev/null || rc=1
     docker exec "$NODE" sh -ec '
       case "$1" in /var/local/tx01v2-velero-probe) ;; *) exit 1 ;; esac
@@ -49,18 +52,12 @@ docker exec "$NODE" sh -ec '
   chown -R 65532:65532 "$1"
 ' sh "$NODE_PATH" "$LOCAL_CLUSTER"
 CREATED=1
-kubectl apply -f - >/dev/null <<EOF
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: $NS
-  labels:
-    pod-security.kubernetes.io/enforce: restricted
----
+create_empty_pv() {
+  kubectl apply -f - >/dev/null <<EOF
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: $PV
+  name: $1
   labels:
     lab.continuity/probe: "$NS"
 spec:
@@ -78,6 +75,16 @@ spec:
             - key: kubernetes.io/hostname
               operator: In
               values: ["$NODE"]
+EOF
+}
+create_empty_pv "$PV"
+kubectl apply -f - >/dev/null <<EOF
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: $NS
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -173,6 +180,9 @@ docker exec "$NODE" sh -ec '
   rm -- "$1/precious.bin"
   test ! -e "$1/precious.bin"
 ' sh "$NODE_PATH" "$LOCAL_CLUSTER"
+# FSB restores bytes into a provisioned volume; a local PV has no dynamic provisioner.
+# Simulate a replacement disk explicitly, with a different PV name and no original bytes.
+create_empty_pv "$RECOVERY_PV"
 kubectl apply -f - >/dev/null <<EOF
 apiVersion: velero.io/v1
 kind: Restore
@@ -181,11 +191,15 @@ metadata:
   namespace: velero
 spec:
   backupName: $NS
+  restorePVs: false
+  excludedResources: [persistentvolumes]
 EOF
 wait_phase restore
 kubectl -n "$NS" wait pod/holder --for=condition=Ready --timeout=180s >/dev/null
 [[ "$(kubectl -n "$NS" get pvc data -o jsonpath='{.metadata.uid}')" != "$PVC_UID" ]] ||
   die 'PVC drill: the original PVC survived'
+[[ "$(kubectl -n "$NS" get pvc data -o jsonpath='{.spec.volumeName}')" == "$RECOVERY_PV" ]] ||
+  die 'PVC drill: restored claim did not bind the empty replacement volume'
 GOT="$(kubectl -n "$NS" exec holder -- sha256sum /data/precious.bin | awk '{print $1}')"
 [[ "$GOT" == "$EXPECTED" ]] || die 'PVC drill: restored file checksum does not match'
 PVR="$(kubectl -n velero get podvolumerestores -l "velero.io/restore-name=$NS" -o jsonpath='{.items[*].status.phase}')"
