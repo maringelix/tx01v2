@@ -1,5 +1,10 @@
 # Lições aprendidas do lab AWS v1 (nov/2025 – mar/2026)
 
+> A tabela de decisões e as lições preservam o estado inicial de cada rodada. O escopo
+> atual de HA/backup/PITR/DR está em [CONTINUIDADE.md](CONTINUIDADE.md), e capacidade,
+> OpenCost/VPA/Spot e estimativa em [FINOPS.md](FINOPS.md). Decisões antigas marcadas
+> como fora de escopo não revogam as construções posteriores R7–R10.
+
 Este documento destila as anotações de campo do lab v1 (`maringelix/tx01`: Terraform com VPC, EKS, RDS, EC2, ALB, WAF e ECR; GitHub Actions; Prometheus/Grafana; OPA Gatekeeper; AWS Backup), executado com créditos do AWS Free Tier entre novembro/2025 e março/2026.
 O objetivo é que quem for reproduzir o lab gaste menos crédito, não repita os mesmos erros e saiba o que conferir antes de copiar um comando.
 

@@ -33,22 +33,25 @@ originais. OpenCost precisa retornar custo positivo medido para o namespace da
 fixture pela API /allocation. As tarifas locais são uma simulação determinística,
 explicitamente identificada em platform/finops/pricing/local.json.
 
-## GKE Autopilot e Spot
+## EKS Cluster Autoscaler e Spot
 
-Autopilot provisiona capacidade a partir dos requests dos pods e já oferece VPA.
-Não instalamos outro controlador VPA na nuvem: somente o objeto Off. HPA escala
-réplicas; VPA recomenda requests; a capacidade gerenciada permanece uma prova
-separada. Sem homologação cloud não afirmamos tempo de escala nem economia.
+O instalador instala Cluster Autoscaler oficial 9.59.0 com imagem 1.36.1, da mesma
+minor do EKS, KSA kube-system/cluster-autoscaler e Pod Identity do cluster. Writes
+SetDesiredCapacity/TerminateInstanceInAutoScalingGroup exigem ambas as tags de
+descoberta do cluster; a role mantém a permissions boundary. Tags node-template
+do pool Spot permitem descoberta a partir de zero. O controlador adiciona requests
+de 50m CPU / 128Mi RAM à base, além da tabela dos charts full.
 
-O Job platform/finops/manifests/spot-job.yaml é uma aula finita, com requests,
-limites, deadline e TTL. Exige Spot; disponibilidade não é garantida. Nunca migre
-PostgreSQL, Argo CD, monitoramento ou o mínimo de réplicas críticas para esse Job.
-Na rodada autorizada, aplique o Job e observe eventos, nó escolhido e conclusão.
-Se ficar Pending por falta de Spot, cancele-o e execute a mesma tarefa num Job
-com outro nome, removendo nodeSelector/tolerations de Spot. Para exigir on-demand,
-adicione nodeAffinity required com a chave cloud.google.com/gke-spot e operador
-DoesNotExist. Registre a decisão, deadline e custo; não deixe a tentativa pendente.
-A interrupção real de Spot e o aumento/redução de nós GKE não são inferidos do kind.
+O caminho barato core mantém a opção de pool único SPOT, interrompível. Para a aula
+com capacidade crítica preservada, enable_spot_pool=true (LAB_ENABLE_SPOT_POOL)
+muda o pool default para ON_DEMAND e cria pool Spot tainted de 0-2 nós. A alteração
+pode substituir o pool default e aumenta custo: revise o plano antes de aplicar.
+Os workloads críticos não toleram a taint; o mesmo módulo governa o cluster DR.
+
+Na rodada autorizada, aplique platform/finops/manifests/spot-job.yaml e observe
+eventos/escala/nó. Sem Spot, cancele o Job e rode cópia com outro nome, removendo
+a toleration e usando nodeSelector eks.amazonaws.com/capacityType=ON_DEMAND.
+Preserve deadline/orçamento. O kind não comprova escala de ASGs nem economia AWS.
 
 ## Tarifas e instalação
 
@@ -120,12 +123,18 @@ e [Spot no EKS](https://docs.aws.amazon.com/eks/latest/userguide/managed-node-gr
 
 ### Custo externo, idle e owner no dashboard
 
-O arquivo de tarifas tamb?m exige externalHourly com backup, controlPlane, database,
+O arquivo de tarifas também exige externalHourly com backup, controlPlane, database,
 dr, egress, loadBalancer, nat, storage e waf (USD/h). Zero exige justificativa de
-inclus?o/aus?ncia; evite contar o mesmo custo no recurso Terraform e na categoria
+inclusão/ausência; evite contar o mesmo custo no recurso Terraform e na categoria
 externa. O instalador cria a recording rule lab_external_hourly_estimate; o dashboard
 mostra as categorias, owner/ambiente, infraestrutura compartilhada e idle estimado.
-Kube-state-metrics exp?e somente as duas labels de showback adicionais. A simula??o
-local tem externos zero; tarifas cloud s?o preenchidas pelo dono do fork.
+Kube-state-metrics expõe somente as duas labels de showback adicionais. A simulação
+local tem externos zero; tarifas cloud são preenchidas pelo dono do fork.
 
-LimitRange preenche limites ausentes antes da quota (CPU 1, RAM 512Mi por container; requests padr?o 10m/64Mi). Requests/limits expl?citos s?o preservados, incluindo recursos dos proxies. A quota continua bloqueante.
+LimitRange preenche limites ausentes antes da quota (CPU 1, RAM 512Mi por container;
+requests padrão 10m/64Mi). Requests/limits explícitos são preservados, incluindo os
+recursos dos proxies. A quota continua bloqueante.
+
+Para o plano com DR, estime o maior SKU e a maior tarifa entre as regiões abrangidas;
+registre essa escolha na descrição da fonte. No Autopilot, idle de nós é um modelo
+de capacidade e não cobrança de VM ociosa: a alocação usa requests dos pods.
