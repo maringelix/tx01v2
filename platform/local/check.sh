@@ -37,6 +37,12 @@ cleanup() {
     log "diagnostics:"
     kubectl get pods --all-namespaces -o wide 2>&1 | sed 's/^/  /' >&2 || true
     kubectl -n lab-probe get gateway,httproute,certificate,peerauthentication,authorizationpolicy -o wide 2>&1 | sed 's/^/  /' >&2 || true
+    # A CrashLoopBackOff is often the first visible symptom of an invalid WAF config. Preserve both
+    # the last terminated container log and the current log before cleanup deletes the probe pod.
+    kubectl -n lab-probe logs deployment/waf-probe --all-containers=true --previous --tail=100 2>&1 |
+      sed 's/^/  waf-probe previous: /' >&2 || true
+    kubectl -n lab-probe logs deployment/waf-probe --all-containers=true --tail=100 2>&1 |
+      sed 's/^/  waf-probe current: /' >&2 || true
     kubectl get events --all-namespaces --sort-by=.lastTimestamp 2>&1 | tail -n 30 | sed 's/^/  /' >&2 || true
     # CI uploads this directory as an artifact (never Secret values: get/describe only).
     if [[ -n "${LOCAL_DIAGNOSTICS_DIR:-}" ]]; then
@@ -44,6 +50,10 @@ cleanup() {
       kubectl get pods --all-namespaces -o wide >"$LOCAL_DIAGNOSTICS_DIR/pods.txt" 2>&1 || true
       kubectl get events --all-namespaces --sort-by=.lastTimestamp >"$LOCAL_DIAGNOSTICS_DIR/events.txt" 2>&1 || true
       kubectl describe pods --all-namespaces >"$LOCAL_DIAGNOSTICS_DIR/describe-pods.txt" 2>&1 || true
+      kubectl -n lab-probe logs deployment/waf-probe --all-containers=true --previous --tail=100 \
+        >"$LOCAL_DIAGNOSTICS_DIR/waf-probe-previous.log" 2>&1 || true
+      kubectl -n lab-probe logs deployment/waf-probe --all-containers=true --tail=100 \
+        >"$LOCAL_DIAGNOSTICS_DIR/waf-probe-current.log" 2>&1 || true
       helm list --all-namespaces >"$LOCAL_DIAGNOSTICS_DIR/helm.txt" 2>&1 || true
       kubectl top pods --all-namespaces >"$LOCAL_DIAGNOSTICS_DIR/top.txt" 2>&1 || true
     fi
