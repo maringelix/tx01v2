@@ -11,8 +11,9 @@ locals {
   }
 
   addons_after_compute = {
-    "coredns"        = null
-    "metrics-server" = null
+    "aws-ebs-csi-driver" = null
+    "coredns"            = null
+    "metrics-server"     = null
   }
 }
 
@@ -45,5 +46,6 @@ resource "aws_eks_addon" "after_compute" {
   resolve_conflicts_on_create = "OVERWRITE"
   resolve_conflicts_on_update = "OVERWRITE"
 
-  depends_on = [aws_eks_node_group.default]
+  # The EBS add-on must not start before its least-privilege Pod Identity association exists.
+  depends_on = [aws_eks_node_group.default, aws_eks_pod_identity_association.ebs_csi]
 }

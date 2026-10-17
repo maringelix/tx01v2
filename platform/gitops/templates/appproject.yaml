@@ -31,6 +31,12 @@ spec:
       kind: NetworkPolicy
     - group: networking.k8s.io
       kind: Ingress
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+    - group: networking.istio.io
+      kind: DestinationRule
+    - group: security.istio.io
+      kind: AuthorizationPolicy
     - group: external-secrets.io
       kind: ExternalSecret
     - group: monitoring.coreos.com

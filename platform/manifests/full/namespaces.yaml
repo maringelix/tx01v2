@@ -1,6 +1,6 @@
 # Namespaces of the profile full (platform/install.sh --profile full), the cloud twin of
 # platform/local/manifests/namespaces.yaml. Pod Security:
-#   restricted  - cert-manager, argocd, gatekeeper-system, monitoring, velero
+#   restricted  - cert-manager, argocd, gatekeeper-system, kyverno, monitoring, velero
 #   baseline    - trivy-system (its scan Jobs do not set every "restricted" field; restricted is warned)
 #   privileged  - istio-system (istio-cni and ztunnel change the network of the node and of the pods),
 #                 monitoring-agents (node-exporter: hostNetwork, hostPID, hostPath) and chaos-mesh
@@ -53,6 +53,14 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: gatekeeper-system
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kyverno
   labels:
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/enforce-version: latest

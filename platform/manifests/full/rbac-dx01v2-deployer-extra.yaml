@@ -1,0 +1,31 @@
+# R8.2 mesh resources are writable only when tx01v2's full profile is installed. Core keeps its
+# smaller dx01v2-deployer Role; this additive Role is removed by platform/uninstall.sh.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: dx01v2-deployer-full
+  namespace: dx01v2
+rules:
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["httproutes"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["networking.istio.io"]
+    resources: ["destinationrules"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["security.istio.io"]
+    resources: ["authorizationpolicies"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: dx01v2-deployers-full
+  namespace: dx01v2
+subjects:
+  - kind: Group
+    name: dx01v2-deployers
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: dx01v2-deployer-full
+  apiGroup: rbac.authorization.k8s.io

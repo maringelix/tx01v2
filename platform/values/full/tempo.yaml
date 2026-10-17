@@ -1,0 +1,20 @@
+# EBS-backed trace retention for the cloud profile. The local base uses emptyDir; the cloud PVC is
+# deleted by uninstall so the block volume does not keep billing after the exercise.
+tempo:
+  retention: 72h
+
+persistence:
+  enabled: true
+  enableStatefulSetAutoDeletePVC: false
+  storageClassName: tx01v2-gp3
+  accessModes:
+    - ReadWriteOnce
+  size: 10Gi
+
+# The cloud chart's PVC supplies /var/tempo; retain only the writable temporary mount from the base.
+extraVolumes:
+  - name: tmp
+    emptyDir: {}
+extraVolumeMounts:
+  - name: tmp
+    mountPath: /tmp

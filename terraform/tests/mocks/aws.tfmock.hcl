@@ -34,6 +34,14 @@ mock_data "aws_availability_zones" {
   }
 }
 
+mock_data "aws_route53_zone" {
+  defaults = {
+    name         = "example.org."
+    zone_id      = "Z1234567890ABC"
+    private_zone = false
+  }
+}
+
 mock_data "aws_eks_addon_version" {
   defaults = {
     version = "v0.0.0-eksbuild.1"
@@ -108,6 +116,32 @@ mock_resource "aws_eks_node_group" {
 mock_resource "aws_wafv2_web_acl" {
   defaults = {
     arn = "arn:aws:wafv2:us-east-1:123456789012:regional/webacl/tx01v2-lab/1234abcd-12ab-34cd-56ef-1234567890ab"
+  }
+}
+
+mock_resource "aws_acm_certificate" {
+  defaults = {
+    arn = "arn:aws:acm:us-east-1:123456789012:certificate/1234abcd-12ab-34cd-56ef-1234567890ab"
+    domain_validation_options = [
+      {
+        domain_name           = "app.example.org"
+        resource_record_name  = "_1234abcd.app.example.org."
+        resource_record_type  = "CNAME"
+        resource_record_value = "_validation.acm-validations.aws."
+      }
+    ]
+  }
+}
+
+mock_resource "aws_acm_certificate_validation" {
+  defaults = {
+    certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/1234abcd-12ab-34cd-56ef-1234567890ab"
+  }
+}
+
+mock_resource "aws_route53_record" {
+  defaults = {
+    fqdn = "_1234abcd.app.example.org."
   }
 }
 

@@ -8,6 +8,22 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- Complete the AWS `full` platform profile for R8.2–R8.4: install an ambient waypoint with STRICT
+  mTLS and workload-identity authorization, application SLO alerts and persistent telemetry, and
+  fail-closed Kyverno verification of signed GHCR-to-ECR digest promotions. The tx/dx contract is
+  version 6; the app deploy workflow selects `core|full` and the EKS deploy role remains scoped to
+  the app. The cloud profile remains `not run in the cloud (v2)`.
+
+- Add the R8.1 local proof with Pebble/challtestsrv: HTTP-01 issuance and automatic rotation of a
+  short-lived certificate; add an ephemeral ModSecurity/OWASP CRS proxy for SQLi and rate-limit probes.
+- Configure the Trivy Operator with read-only EKS Pod Identity for private ECR images; keep Kubernetes
+  API token automount disabled on scan jobs.
+- Add an offline fork rehearsal that renders `core` and `full`, substitutes the fork owner, and
+  rejects missing prerequisites and invalid profile inputs before any cloud call.
+- Optional Route53/ACM HTTPS for the AWS app edge: Terraform validates the certificate through the
+  fork owner's existing public zone; ExternalDNS runs only when enabled and can manage only the app A
+  record plus its TXT ownership record. The tx/dx SSM contract is v5; the HTTP-only core path remains
+  available with no DNS secrets. No AWS execution has been performed for v2.
 - Optional cloud platform profile `full` with the pinned Istio ambient, cert-manager, monitoring,
   Argo CD GitOps, Gatekeeper, Trivy Operator, Velero and Chaos Mesh charts. The profile is render- and
   policy-validated as code and remains `not run in the cloud (v2)`.

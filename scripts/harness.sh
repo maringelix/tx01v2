@@ -46,7 +46,8 @@ REQUIRED_FILES=(
   docs/ARQUITETURA.md docs/PUBLICACAO.md docs/CUSTOS.md
   tools/versions.env tools/checksums.txt
   scripts/install-tools.sh scripts/update-tool-checksums.sh scripts/harness.sh scripts/repo-guardrails.sh scripts/leftovers.sh
-  scripts/destroy.sh scripts/tests/destroy-flow.sh scripts/tests/local-preflight.sh
+  scripts/destroy.sh scripts/tests/destroy-flow.sh scripts/tests/local-preflight.sh scripts/tests/fork-profiles.sh
+  scripts/tests/observability-cleanup.sh
   scripts/lib/platform.sh scripts/platform-sizing.sh scripts/platform-sizing.awk
   platform/install.sh platform/uninstall.sh platform/versions.env
   platform/full/charts.txt platform/full/policies/constraints/allowed-repos.yaml
@@ -55,10 +56,16 @@ REQUIRED_FILES=(
   platform/gitops/Chart.yaml platform/gitops/values.yaml
   platform/gitops/templates/appproject.yaml platform/gitops/templates/application.yaml
   platform/manifests/full/argocd-platform.yaml platform/manifests/full/namespaces.yaml
+  platform/manifests/full/storageclass.yaml
   platform/manifests/full/rbac-argocd-deployer.yaml platform/manifests/full/tracing.yaml
+  platform/manifests/full/rbac-dx01v2-deployer-extra.yaml platform/manifests/full/waypoint.yaml
+  platform/manifests/full/app-security.yaml platform/manifests/full/app-monitoring.yaml
+  platform/manifests/full/image-verification.yaml
   platform/values/full/gatekeeper.yaml platform/values/full/istiod.yaml
   platform/values/full/kube-prometheus-stack.yaml platform/values/full/kube-prometheus-stack-slack.yaml
   platform/values/full/otel-collector.yaml platform/values/full/trivy-operator.yaml platform/values/full/velero.yaml
+  platform/values/full/loki.yaml platform/values/full/tempo.yaml platform/values/full/kyverno.yaml
+  platform/values/full/kube-prometheus-stack-storage.yaml
   terraform/modules/velero/main.tf terraform/modules/velero/outputs.tf
   terraform/modules/velero/variables.tf terraform/modules/velero/versions.tf
   terraform/envs/lab/tests/velero.tftest.hcl
@@ -417,6 +424,7 @@ check_policy_identifiers() {
 # scripts/destroy.sh with simulated aws, terraform, kubectl and helm: an uninstall that fails still
 # ends in the API cleanup, terraform destroy and the leftover check (docs/GUARDRAILS.md, CUSTO-03).
 check_destroy_flow() {
+  need jq
   bash scripts/tests/destroy-flow.sh
 }
 
@@ -425,6 +433,17 @@ check_destroy_flow() {
 # is refused, and a lab of another state directory is never touched (docs/GUARDRAILS.md, LOC-06).
 check_local_preflight() {
   bash scripts/tests/local-preflight.sh
+}
+
+# A clean fork can render core/full offline; missing owner, invalid profile and invalid region are
+# rejected before a cloud API or cluster can be contacted (R8.1).
+check_fork_profiles() {
+  bash scripts/tests/fork-profiles.sh
+}
+
+check_observability_cleanup() {
+  need jq
+  bash scripts/tests/observability-cleanup.sh
 }
 
 # Scripts act only on what the lab created (docs/GUARDRAILS.md, SEC-10): no variable of the caller's
@@ -653,6 +672,10 @@ check_contract_platform() {
     echo "platform/manifests: missing the namespace observability of the OpenTelemetry Collector (docs/CONTRATO.md)"
     rc=1
   }
+  grep -qE '^    istio\.io/dataplane-mode: ambient$' platform/manifests/namespace-observability.yaml || {
+    echo "the namespace observability must carry istio.io/dataplane-mode: ambient: the AuthorizationPolicy api trusts the Collector by mesh identity, and STRICT mTLS refuses its plaintext probes"
+    rc=1
+  }
   grep -qE '^  name: opentelemetry-collector$' platform/values/otel-collector.yaml || {
     echo "the OpenTelemetry Collector service account must be opentelemetry-collector (Pod Identity association)"
     rc=1
@@ -660,7 +683,7 @@ check_contract_platform() {
   full="$(bash platform/render-manifests.sh us-east-1 --full example-owner)"
   local -a expect_full=(
     "name: istio-system" "name: cert-manager" "name: monitoring" "name: monitoring-agents"
-    "name: argocd" "name: gatekeeper-system" "name: trivy-system" "name: velero" "name: chaos-mesh"
+    "name: argocd" "name: gatekeeper-system" "name: trivy-system" "name: velero" "name: chaos-mesh" "name: kyverno"
     "kind: AppProject" "name: platform" "kind: Application" "name: platform"
     "kind: Role" "name: dx01v2-gitops-sync" "name: dx01v2-deployers"
     "kind: Telemetry" "name: mesh-default"
@@ -668,6 +691,11 @@ check_contract_platform() {
     "https://github.com/example-owner/tx01v2.git" "https://github.com/example-owner/dx01v2.git"
     "dxRevision: gitops/aws" 'RespectIgnoreDifferences=true'
     '/spec/source/path' '/spec/source/kustomize/images' '/spec/source/kustomize/patches'
+    'kind: ImageValidatingPolicy' 'failurePolicy: Fail' 'required: true' 'verifyDigest: true'
+    'kind: AuthorizationPolicy' 'name: api-require-waypoint'
+    'https://token.actions.githubusercontent.com'
+    'https://github.com/example-owner/dx01v2/.github/workflows/deploy-aws.yml@refs/heads/main'
+    'https://github.com/maringelix/tx00v2/attestations/promoted-image/v1'
   )
   for e in "${expect_full[@]}"; do
     grep -qF -- "$e" <<<"$full" || {
@@ -723,7 +751,7 @@ check_contract_platform() {
 # values are consumed as intended: images by digest, Pod Identity service accounts, feature gates,
 # default tags, no service mutator webhook.
 check_helm_template() {
-  local rc=0 lbc eso otel key value want e charts tgz
+  local rc=0 lbc eso otel external_dns key value want e charts tgz
   declare -A pv=()
   need helm
   while IFS='=' read -r key value; do
@@ -756,6 +784,22 @@ check_helm_template() {
   otel="$(helm template opentelemetry-collector "$tgz" \
     --namespace observability --values platform/values/otel-collector.yaml \
     --set-string config.exporters.awsxray.region=us-east-1)"
+  [[ "${pv[EXTERNAL_DNS_CHART_SHA256]:-}" =~ ^[0-9a-f]{64}$ ]] || {
+    echo "platform/versions.env: EXTERNAL_DNS_CHART_SHA256 must be a SHA256 (64 hex characters)"
+    return 1
+  }
+  helm pull external-dns --repo "${pv[EXTERNAL_DNS_REPO]}" \
+    --version "${pv[EXTERNAL_DNS_CHART_VERSION]}" --destination "$charts"
+  tgz="$charts/external-dns-${pv[EXTERNAL_DNS_CHART_VERSION]}.tgz"
+  [[ -f "$tgz" && "$(sha256_of "$tgz")" == "${pv[EXTERNAL_DNS_CHART_SHA256]}" ]] || {
+    echo "the ExternalDNS chart ${pv[EXTERNAL_DNS_CHART_VERSION]} is missing or its SHA256 differs from platform/versions.env"
+    return 1
+  }
+  external_dns="$(helm template external-dns "$tgz" --namespace kube-system \
+    --values platform/values/external-dns.yaml \
+    --set-string domainFilters[0]=app.example.org \
+    --set-string extraArgs.aws-zone-id-filter=Z1234567890ABC \
+    --set-string "image.tag=${pv[EXTERNAL_DNS_IMAGE_TAG]}@${pv[EXTERNAL_DNS_IMAGE_DIGEST]}")"
   want="$(sed -n 's/^  digest: //p' platform/values/otel-collector.yaml)"
   local -a expect_otel=(
     "image: \"otel/opentelemetry-collector-contrib@$want\""
@@ -802,7 +846,23 @@ check_helm_template() {
     echo "external-secrets chart: the controller must run as the service account external-secrets"
     rc=1
   }
-  echo "rendered aws-load-balancer-controller ${pv[LBC_CHART_VERSION]} ($(wc -l <<<"$lbc") lines), external-secrets ${pv[ESO_CHART_VERSION]} ($(wc -l <<<"$eso") lines) and opentelemetry-collector ${pv[OTEL_COLLECTOR_CHART_VERSION]} ($(wc -l <<<"$otel") lines)"
+  local -a expect_external_dns=(
+    'image: registry.k8s.io/external-dns/external-dns:v0.23.0@sha256:1854499e2b08cee47c40a08e356bff20dcb192dbcfde8378fc3f900f12cad5a3'
+    'serviceAccountName: external-dns'
+    '--domain-filter=app.example.org'
+    '--aws-zone-id-filter=Z1234567890ABC'
+    '--policy=sync'
+    '--txt-prefix=%{record_type}-_external-dns-'
+    '--aws-zone-type=public'
+    '--ingress-class=alb'
+  )
+  for e in "${expect_external_dns[@]}"; do
+    grep -qF -- "$e" <<<"$external_dns" || {
+      echo "ExternalDNS chart: missing '$e'"
+      rc=1
+    }
+  done
+  echo "rendered aws-load-balancer-controller ${pv[LBC_CHART_VERSION]} ($(wc -l <<<"$lbc") lines), external-secrets ${pv[ESO_CHART_VERSION]} ($(wc -l <<<"$eso") lines), ExternalDNS ${pv[EXTERNAL_DNS_CHART_VERSION]} ($(wc -l <<<"$external_dns") lines) and opentelemetry-collector ${pv[OTEL_COLLECTOR_CHART_VERSION]} ($(wc -l <<<"$otel") lines)"
   return "$rc"
 }
 
@@ -964,7 +1024,7 @@ check_helm_template_local() {
   return "$rc"
 }
 
-# Render the fifteen pinned charts of profile full. Runtime placeholders are replaced by reserved
+# Render the pinned charts of profile full. Runtime placeholders are replaced by reserved
 # example values and the verified chart archives are cached between checks in HARNESS_WORK_DIR.
 full_chart_values() {
   local list=$1 v out="$HARNESS_WORK_DIR/full-values" f
@@ -1048,6 +1108,36 @@ check_helm_template_full() {
     assert_chart_render "$chart ${LV[$version_key]}" "$rendered" || rc=1
   done < <(chart_table)
 
+  # R8.3: the cloud profile must keep telemetry across pod restarts; do not silently fall back to
+  # the emptyDir mounts used by the lightweight local profile.
+  rendered="$out/kube-prometheus-stack.yaml"
+  [[ "$(grep -cF 'storageClassName: tx01v2-gp3' "$rendered")" == 3 ]] || {
+    echo "Prometheus, Alertmanager and Grafana must each render a gp3 claim"
+    rc=1
+  }
+  for entry in 'retention: "7d"' 'retentionSize: "8GB"' 'retention: "72h"' 'storage: 12Gi' 'storage: 2Gi'; do
+    grep -qF -- "$entry" "$rendered" || {
+      echo "kube-prometheus-stack cloud storage render: missing '$entry'"
+      rc=1
+    }
+  done
+  rendered="$out/loki.yaml"
+  if ! grep -qF 'storageClassName: tx01v2-gp3' "$rendered" || ! grep -qF 'retention_period: 168h' "$rendered"; then
+    echo "Loki cloud render must retain seven days on its gp3 claim"
+    rc=1
+  fi
+  rendered="$out/tempo.yaml"
+  if ! grep -qF 'storageClassName: tx01v2-gp3' "$rendered" || ! grep -qF 'block_retention: 72h' "$rendered"; then
+    echo "Tempo cloud render must retain 72 hours on its gp3 claim"
+    rc=1
+  fi
+  for entry in 'provisioner: ebs.csi.aws.com' 'volumeBindingMode: WaitForFirstConsumer' 'reclaimPolicy: Delete' 'encrypted: "true"'; do
+    grep -qF -- "$entry" platform/manifests/full/storageclass.yaml || {
+      echo "AWS cloud StorageClass must include '$entry'"
+      rc=1
+    }
+  done
+
   rendered="$out/opentelemetry-collector.yaml"
   for entry in 'awsxray:' 'otlp_grpc/tempo:' 'spanmetrics:' '- awsxray' '- otlp_grpc/tempo' '- spanmetrics'; do
     grep -qF -- "$entry" "$rendered" || {
@@ -1072,6 +1162,31 @@ check_helm_template_full() {
   }
   if grep -qE 'registry\.tx01v2\.local|10\.250\.0\.10:5000|labRegistry' "$out/trivy-operator.yaml"; then
     echo "Trivy Operator full render must not keep the local HTTP registry mirror"
+    rc=1
+  fi
+  for entry in 'OPERATOR_ACCESS_GLOBAL_SECRETS_SERVICE_ACCOUNTS: "true"' \
+    'serviceAccountName: trivy-operator' 'automountServiceAccountToken: false'; do
+    grep -qF -- "$entry" "$out/trivy-operator.yaml" || {
+      echo "Trivy Operator full render: missing '$entry' (private ECR scans need the associated Pod Identity without the Kubernetes API token)"
+      rc=1
+    }
+  done
+
+  rendered="$out/kyverno.yaml"
+  for entry in 'ghcr.io/kyverno/kyverno:v1.18.2@sha256:' \
+    'ghcr.io/kyverno/kyvernopre:v1.18.2@sha256:' \
+    'ghcr.io/kyverno/background-controller:v1.18.2@sha256:' \
+    'ghcr.io/kyverno/cleanup-controller:v1.18.2@sha256:' \
+    'ghcr.io/kyverno/reports-controller:v1.18.2@sha256:' \
+    'ghcr.io/kyverno/readiness-checker:v1.18.2@sha256:' \
+    'ghcr.io/kyverno/kyverno-cli:v1.18.2@sha256:'; do
+    grep -qF -- "$entry" "$rendered" || {
+      echo "Kyverno full render: missing pinned image '$entry'"
+      rc=1
+    }
+  done
+  if grep -qE '^[[:space:]]*image:[[:space:]]*"?ghcr.io/kyverno/[^[:space:]"]+:(latest|v1\.18\.2)"?$' "$rendered"; then
+    echo "Kyverno full render must use the release digest for every image"
     rc=1
   fi
 
@@ -1131,6 +1246,43 @@ check_platform_sizing() {
   echo "full profile, ${nodes} nodes: ${cpu}m CPU / ${memory}MiB RAM"
 }
 
+check_image_admission_policy() {
+  local policy=platform/manifests/full/image-verification.yaml
+  grep -qF 'failurePolicy: Fail' "$policy" || {
+    echo "Kyverno image verification must fail closed when the verifier is unavailable"
+    return 1
+  }
+  if ! grep -qF 'required: true' "$policy" || ! grep -qF 'verifyDigest: true' "$policy"; then
+    echo "Kyverno must require image validation and a digest"
+    return 1
+  fi
+  if ! grep -qF 'glob: "*.dkr.ecr.*.amazonaws.com/dx01v2/api@sha256:*"' "$policy" ||
+    ! grep -qF 'glob: "*.dkr.ecr.*.amazonaws.com/dx01v2/web@sha256:*"' "$policy"; then
+    echo "Kyverno must match only the app API and web repositories by digest"
+    return 1
+  fi
+  grep -qF '      - amazon' "$policy" || {
+    echo "Kyverno must use the AWS credential provider for private ECR"
+    return 1
+  }
+  grep -A1 '^  validationActions:$' "$policy" | grep -q '^    - Deny$' || {
+    echo "Kyverno image verification must deny an invalid promotion attestation"
+    return 1
+  }
+}
+
+check_full_install_order() {
+  local order
+  order="$(sed -n '/^install_full() {/,/^}/p' platform/install.sh |
+    grep -E '^[[:space:]]*install_(policies|image_admission|gitops)([[:space:]]|$)' |
+    sed -E 's/^[[:space:]]+//; s/[[:space:]].*$//')"
+  [[ "$order" == $'install_policies\ninstall_image_admission\ninstall_gitops' ]] || {
+    echo "profile full must install Gatekeeper and Kyverno admission before Argo CD can sync app Pods; got:"
+    printf '%s\n' "$order"
+    return 1
+  }
+}
+
 # R4.8: catch stale paths, Make targets, workflow names and GitHub/Terraform variables in the
 # fork-to-cloud instructions before they are published.
 check_fork_references() {
@@ -1178,6 +1330,15 @@ check_kubeconform_local() {
     platform/local/manifests platform/local/policies/templates platform/local/policies/tests/namespace-dx01v2.yaml
 }
 
+check_acme_renewal_fixture() {
+  if ! grep -qF '"validityPeriod": 1200' platform/local/manifests/pebble.yaml ||
+    ! grep -qF '  duration: 1h' platform/local/check.sh ||
+    ! grep -qF '  renewBefore: 15m' platform/local/check.sh; then
+      echo "ACME renewal fixture must use cert-manager's valid minimum duration and a 20-minute Pebble profile"
+      return 1
+  fi
+}
+
 check_policy_gator() {
   need gator
   gator verify -v platform/local/policies/tests/
@@ -1185,7 +1346,7 @@ check_policy_gator() {
 }
 
 check_local_lab_e2e() {
-  need terraform kind kubectl helm docker curl git ssh
+  need terraform kind kubectl helm docker curl git ssh openssl
   docker info >/dev/null 2>&1 || skip "docker is installed but the daemon is not reachable"
   bash scripts/local-lab.sh e2e
 }
@@ -1201,6 +1362,8 @@ register_checks() {
   register static policy-scripts check_policy_scripts
   register static destroy-flow check_destroy_flow
   register static local-preflight check_local_preflight
+  register static fork-profiles check_fork_profiles
+  register static observability-cleanup check_observability_cleanup
   register static trivyignore-policy check_trivyignore_policy
   register static contract-platform check_contract_platform
   register static fork-references check_fork_references
@@ -1222,7 +1385,10 @@ register_checks() {
   register static helm-template-local check_helm_template_local
   register static helm-template-full check_helm_template_full
   register static platform-sizing check_platform_sizing
+  register static image-admission-policy check_image_admission_policy
+  register static full-install-order check_full_install_order
   register static kubeconform-local check_kubeconform_local
+  register static acme-renewal-fixture check_acme_renewal_fixture
   register static policy-gator check_policy_gator
   register static gitleaks check_gitleaks
   register test tool-versions check_tool_versions

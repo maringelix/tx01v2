@@ -2,7 +2,7 @@
 # Installs the platform of the local lab on the kind cluster of terraform/envs/local (called by
 # scripts/local-lab.sh up; re-running it upgrades in place). Components, in order:
 #   1. cluster preparation: namespaces, registry hosting ConfigMap, load balancer label of the node
-#   2. Gateway API CRDs (standard channel, pinned asset)
+#   2. Gateway API CRDs (experimental channel for the bounded HTTPRoute retry exercise, pinned asset)
 #   3. Istio ambient (base, istiod, istio-cni, ztunnel; GatewayClass istio)
 #   4. cert-manager + ClusterIssuer lab-ca (lab CA of terraform/envs/local)
 #   5. External Secrets Operator + ClusterSecretStore local-secrets (Secrets of lab-secrets)
@@ -65,11 +65,11 @@ EOF
 }
 
 install_gateway_api() {
-  local asset="$WORK_DIR/gateway-api-$GATEWAY_CRDS_VERSION.yaml" got
-  download "https://github.com/kubernetes-sigs/gateway-api/releases/download/$GATEWAY_CRDS_VERSION/standard-install.yaml" "$asset"
+  local asset="$WORK_DIR/gateway-api-$GATEWAY_CRDS_VERSION-experimental.yaml" got
+  download "https://github.com/kubernetes-sigs/gateway-api/releases/download/$GATEWAY_CRDS_VERSION/experimental-install.yaml" "$asset"
   got="$(sha256_of "$asset")"
-  [[ "$got" == "$GATEWAY_CRDS_SHA256" ]] || die "refusing Gateway API $GATEWAY_CRDS_VERSION: SHA256 $got differs from platform/local/versions.env"
-  log "Gateway API CRDs $GATEWAY_CRDS_VERSION (standard channel)"
+  [[ "$got" == "$GATEWAY_CRDS_EXPERIMENTAL_SHA256" ]] || die "refusing Gateway API $GATEWAY_CRDS_VERSION experimental channel: SHA256 $got differs from platform/local/versions.env"
+  log "Gateway API CRDs $GATEWAY_CRDS_VERSION (experimental channel; HTTPRoute retries are an experimental API)"
   kubectl apply --server-side --force-conflicts -f "$asset" >/dev/null
   kubectl wait --for=condition=Established --timeout=120s \
     crd/gatewayclasses.gateway.networking.k8s.io crd/gateways.gateway.networking.k8s.io crd/httproutes.gateway.networking.k8s.io >/dev/null
@@ -87,7 +87,14 @@ install_istio() {
     --values "$HERE/values/ztunnel.yaml"
   # istiod creates the GatewayClass once it runs.
   retry 60 2 kubectl get gatewayclass istio >/dev/null 2>&1 || die "istiod did not create the GatewayClass istio"
+  retry 60 2 kubectl get gatewayclass istio-waypoint >/dev/null 2>&1 || die "istiod did not create the GatewayClass istio-waypoint"
   kubectl wait --for=condition=Accepted gatewayclass/istio --timeout=120s >/dev/null
+  retry 10 6 kubectl apply -f "$REPO_ROOT/platform/manifests/full/waypoint.yaml" >/dev/null ||
+    die "could not apply the dx01v2 ambient waypoint (istiod webhook not ready?)"
+  kubectl wait --namespace dx01v2 --for=condition=Programmed gateway/dx01v2-waypoint --timeout=300s >/dev/null ||
+    die "Istio did not program the dx01v2 ambient waypoint"
+  kubectl label namespace dx01v2 istio.io/use-waypoint=dx01v2-waypoint --overwrite >/dev/null
+  kubectl label namespace dx01v2 istio.io/ingress-use-waypoint=true --overwrite >/dev/null
   retry 10 6 kubectl apply -f "$HERE/manifests/gateway-request-id.yaml" >/dev/null ||
     die "could not apply the EnvoyFilter gateway-preserve-request-id (istiod webhook not ready?)"
 }

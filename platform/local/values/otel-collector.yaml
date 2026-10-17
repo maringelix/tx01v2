@@ -64,6 +64,25 @@ config:
     jaeger: null
     zipkin: null
     prometheus: null
+    httpcheck:
+      collection_interval: 30s
+      initial_delay: 5s
+      targets:
+        - endpoint: http://web.dx01v2.svc:8080/healthz
+          validations:
+            - json_path: $.status
+              equals: ok
+        - endpoint: http://api.dx01v2.svc:3000/readyz
+          validations:
+            - json_path: $.status
+              equals: ready
+      metrics:
+        httpcheck.duration:
+          enabled: true
+        httpcheck.validation.failed:
+          enabled: true
+        httpcheck.validation.passed:
+          enabled: true
   connectors:
     spanmetrics:
       namespace: traces.span.metrics
@@ -98,4 +117,8 @@ config:
       metrics/spanmetrics:
         receivers: [spanmetrics]
         processors: [batch]
+        exporters: [prometheus]
+      metrics/httpcheck:
+        receivers: [httpcheck]
+        processors: [memory_limiter, batch]
         exporters: [prometheus]

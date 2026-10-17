@@ -1,0 +1,15 @@
+# EBS-backed durability for the cloud profile. Seven-day retention is sized for the lab, and PVCs
+# are deleted by uninstall so the block volumes do not keep billing after the exercise.
+loki:
+  limits_config:
+    retention_period: 168h
+
+singleBinary:
+  persistence:
+    enabled: true
+    enableStatefulSetAutoDeletePVC: false
+    size: 10Gi
+    storageClass: tx01v2-gp3
+  # The base local values mount an emptyDir at /var/loki. The cloud chart's PVC owns that path.
+  extraVolumes: []
+  extraVolumeMounts: []

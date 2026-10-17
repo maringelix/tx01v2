@@ -19,6 +19,10 @@ dx01v2_repository_id = "3000000"
 budget_alert_emails = ["you@example.com"]
 monthly_budget_usd  = 25
 
+# Optional: set the existing public Route53 zone ID here only when enabling DNS/HTTPS in
+# terraform/envs/lab. This scopes the bootstrap plan/apply role's DNS permissions to that zone.
+# lab_route53_zone_id = "Z0123456789ABC"
+
 # One GitHub OIDC provider per account: when the account already has it, read it instead of creating it.
 # create_github_oidc_provider = false
 

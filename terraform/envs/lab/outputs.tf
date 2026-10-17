@@ -20,6 +20,11 @@ output "vpc_id" {
   value       = module.network.vpc_id
 }
 
+output "alb_source_cidr" {
+  description = "Public subnet CIDR range used to restrict ALB-to-web traffic."
+  value       = module.network.alb_source_cidr
+}
+
 output "ecr_repository_urls" {
   description = "ECR repository URLs by name."
   value       = module.ecr.repository_urls
@@ -63,4 +68,24 @@ output "load_balancer_controller_role_arn" {
 output "external_secrets_role_arn" {
   description = "Pod Identity role of External Secrets Operator."
   value       = module.eks.external_secrets_role_arn
+}
+
+output "kyverno_image_verifier_role_arn" {
+  description = "Pod Identity role of Kyverno, read-only on the dx01v2 ECR images used by admission verification."
+  value       = module.eks.kyverno_image_verifier_role_arn
+}
+
+output "app_domain_name" {
+  description = "Public app DNS name, or disabled when the optional Route53 integration is not configured."
+  value       = local.dns_enabled ? var.app_domain_name : "disabled"
+}
+
+output "app_certificate_arn" {
+  description = "DNS-validated ACM certificate for the app ALB, or disabled when no domain is configured."
+  value       = local.dns_enabled ? aws_acm_certificate_validation.app[0].certificate_arn : "disabled"
+}
+
+output "external_dns_role_arn" {
+  description = "EKS Pod Identity role limited to the app record in the configured public Route53 zone, or disabled."
+  value       = local.dns_enabled ? aws_iam_role.external_dns[0].arn : "disabled"
 }

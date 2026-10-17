@@ -44,6 +44,9 @@ terraform output -raw backend_hcl > ../envs/lab/backend.hcl
 - Já existe um provider OIDC do GitHub na conta? Use `create_github_oidc_provider = false`: o
   bootstrap o lê pela URL e nunca o altera.
 - Confirme o e-mail de inscrição que o AWS Budgets envia.
+- Se DNS/HTTPS for habilitado, defina `lab_route53_zone_id` no bootstrap com o mesmo ID de
+  `route53_public_zone_id` do lab. O papel plan/apply só recebe acesso Route53 a essa zona; atualize
+  o bootstrap antes do primeiro plan/apply da infraestrutura quando ligar ou trocar a zona.
 - Opcional, migrar o state para o bucket: crie `backend_override.tf` (ignorado pelo git) com
   `terraform { backend "s3" {} }` e rode
   `terraform init -migrate-state -backend-config=../envs/lab/backend.hcl -backend-config="key=bootstrap/terraform.tfstate"`.
@@ -72,6 +75,8 @@ de `main`); ele falha, em vez de pular, se o repositório não puder protegê-lo
 | `LAB_APP_DEPLOYER_PRINCIPAL_ARNS` | `["arn:aws:iam::<ACCOUNT_ID>:role/dx01v2-gha-deploy"]` | `TF_VAR_app_deployer_principal_arns` (lista JSON) | output `deploy_role_arn`; padrão `[]` |
 | `LAB_NODE_INSTANCE_TYPES` (só `full`) | `["t3.large","t3a.large"]` | `TF_VAR_node_instance_types` (lista JSON) | dimensionamento do R4.7 |
 | `LAB_NODE_DESIRED_SIZE` (só `full`) | `2` | `TF_VAR_node_desired_size` | dimensionamento do R4.7 |
+| `LAB_APP_DOMAIN_NAME` (**secret opcional**) | `app.example.org` | `TF_VAR_app_domain_name` | hostname do app; configure junto com a hosted zone existente |
+| `LAB_ROUTE53_PUBLIC_ZONE_ID` (**secret opcional**) | `Z0123456789ABC` | `TF_VAR_route53_public_zone_id` | ID da hosted zone pública Route53 que contém o hostname |
 
 `TF_VAR_github_owner` vem de `github.repository_owner` e `TF_VAR_aws_region` de `AWS_REGION`. Os
 demais inputs usam os padrões do `variables.tf`; para mudar um (por exemplo `node_capacity_type`),
@@ -80,8 +85,12 @@ IAM (`arn:aws:iam::<ACCOUNT_ID>:role/<nome>`), não o ARN `sts::...:assumed-role
 `aws sts get-caller-identity` mostra. No dx01v2, configure o ARN do `dx01v2-gha-deploy` conforme a
 documentação daquele repositório.
 
-O perfil `core` usa os defaults e não precisa das duas variáveis `LAB_NODE_*`. Para `full`, grave os
-valores da tabela antes do plan e mantenha-os nos workflows de plan, apply e destroy. No GitHub, o
+O perfil `core` usa os defaults e não precisa das duas variáveis `LAB_NODE_*`. DNS/HTTPS são opcionais:
+defina os dois secrets juntos antes do plan para criar o registro de validação ACM, o certificado com
+renovação gerenciada pela AWS e o papel do ExternalDNS. O domínio e a hosted zone precisam ser seus e
+já existir; o lab não registra domínios nem cria zonas. Mantenha os mesmos secrets nos workflows de
+plan, apply e destroy. Sem eles, o contrato usa `disabled`, não instala ExternalDNS e o caminho HTTP
+continua disponível. Para `full`, grave os valores de dimensionamento antes do plan. No GitHub, o
 webhook opcional do Slack deve ser um **secret** `SLACK_WEBHOOK_URL`, nunca uma variável. O instalador
 manda o valor ao Secret do Alertmanager por stdin; sem ele, os alertas usam o receiver `null`.
 
@@ -113,8 +122,8 @@ export KUBECONFIG=~/.kube/tx01v2-lab.kubeconfig   # só neste terminal
 ## 5. Plataforma
 
 Dispare `platform` com `action=install` e escolha `profile=core` (padrão) ou `profile=full`, com a
-aprovação do environment `lab`. Use `full` apenas depois que os PRs de tx01v2 e dx01v2 do R4 estiverem
-mesclados. Localmente (o script usa kubeconfig e cache Helm temporários e só instala no cluster
+aprovação do environment `lab`. Use `full` depois que os PRs coordenados do R4 e R8 de tx01v2 e
+dx01v2 estiverem mesclados. Localmente (o script usa kubeconfig e cache Helm temporários e só instala no cluster
 `tx01v2-lab` com a tag `Project=tx01v2`):
 
 ```bash
@@ -127,7 +136,9 @@ kubectl -n observability rollout status deployment/opentelemetry-collector
 
 Para instalar `full` localmente, exporte `GITHUB_OWNER=<seu-usuario-ou-org>` e rode
 `platform/install.sh --profile full --github-owner "$GITHUB_OWNER"`. O modo `full` cria o AppProject e
-a Application `platform` no Argo CD; a Application do app segue a branch `gitops/aws` do dx. Se o fork
+a Application `platform` no Argo CD; a Application do app segue a branch `gitops/aws` do dx. O perfil
+`full` também instala o waypoint, as regras de tráfego e a validação Kyverno da declaração assinada
+no ECR. Se o fork
 do app for privado, configure a credencial do repositório no Argo CD antes de instalar. Para enviar
 alertas ao Slack, configure o secret `SLACK_WEBHOOK_URL` no GitHub (ou exporte-o apenas no terminal
 local da rodada).
@@ -137,6 +148,27 @@ deploy do app e de algumas requisições, confira no console do CloudWatch (X-Ra
 `aws xray get-trace-summaries --start-time <INÍCIO> --end-time <FIM>`; nenhum trace em alguns minutos:
 `kubectl -n observability logs deployment/opentelemetry-collector` (erros do exporter `awsxray` ou do
 Pod Identity).
+
+No perfil `full`, Prometheus, Alertmanager, Grafana, Loki e Tempo mantêm os dados em PVCs gp3. Confira
+os pedidos e o StorageClass:
+
+```bash
+kubectl -n monitoring get pvc
+kubectl get storageclass tx01v2-gp3
+```
+
+`platform/uninstall.sh` captura os PVCs dos StatefulSets dos releases do lab, remove apenas esses
+claims após desinstalar os charts e espera o EBS CSI apagar os volumes. O `terraform-destroy` roda o
+uninstall antes de remover o cluster e o add-on EBS CSI.
+
+O `dx01v2` usa o mesmo waypoint para o exercício de canary 80/20, retries limitados e circuit
+breaking. O job `e2e-platform` do CI de dx01v2 verifica também a identidade SPIFFE autorizada, a
+negação do intruso e as métricas/SLO do app. No cluster AWS, confira as regras com
+`kubectl -n monitoring get servicemonitor,prometheusrule` e a policy de assinatura com
+`kubectl get imagevalidatingpolicy dx01v2-release-signatures`. Se um Pod falhar na admissão, veja
+`kubectl -n kyverno logs deployment/kyverno-admission-controller` e os eventos do namespace `dx01v2`;
+o ECR precisa conter a attestation produzida pelo workflow exato do fork antes do deploy. Render e
+contrato são validados no CI; esse runtime AWS ainda está `não executado em nuvem (v2)`.
 
 ## 6. Deploy do app (dx01v2)
 
@@ -162,8 +194,7 @@ kubectl -n velero get backupstoragelocation default  # só no perfil full: Avail
 
 No perfil `full`, o Grafana é ClusterIP; acesse-o com `kubectl -n monitoring port-forward svc/kube-prometheus-stack-grafana 3000:80`
 e a UI do Argo CD com `kubectl -n argocd port-forward svc/argocd-server 8080:443`. A senha do Grafana
-é gerada durante a instalação; não a registre no Git. Sem autenticação do ECR para o Trivy Operator,
-os relatórios de imagens privadas podem faltar.
+é gerada durante a instalação; não a registre no Git. O scan job do Trivy recebe credenciais de curta duração via EKS Pod Identity, com leitura somente dos repositórios ECR `dx01v2/api` e `dx01v2/web`; confira os relatórios em `trivy-system` depois de instalar o perfil `full`.
 
 ### Drill de restore do Velero (perfil `full`)
 

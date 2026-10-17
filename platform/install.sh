@@ -5,15 +5,15 @@
 #     2. External Secrets Operator (external-secrets)
 #     3. platform/manifests (namespaces dx01v2 and observability, deployer RBAC, ClusterSecretStore)
 #     4. OpenTelemetry Collector (observability): OTLP from the app, traces to AWS X-Ray
-#   full = core + what the local lab proves, with the same chart versions, archive SHA256 and image
-#     digests (platform/full/charts.txt, platform/local/versions.env), the values of the lab on top of
-#     the local ones (platform/values/full) and the manifests of platform/manifests/full:
+#   full = core + the local lab's shared charts plus cloud-only integrations, all pinned by chart
+#     archive SHA256 and image digests (platform/full/charts.txt, platform/local/versions.env), with
+#     the cloud values (platform/values/full) and manifests in platform/manifests/full:
 #     5. Istio ambient (istio-system), the Gateway API CRDs and cert-manager
 #     6. kube-prometheus-stack, Loki, Alloy and Tempo (monitoring); the Collector sends traces to Tempo too
 #     7. Argo CD (argocd): the Application platform syncs platform/gitops of your tx01v2 fork, which
 #        registers the app dx01v2 from your dx01v2 fork
-#     8. Gatekeeper with the policies of the lab, Trivy Operator, Velero (S3 bucket of the lab, Pod
-#        Identity) and Chaos Mesh
+#     8. Gatekeeper policies, Kyverno promotion-attestation admission, Trivy Operator, Velero (S3
+#        bucket of the lab, Pod Identity) and Chaos Mesh
 # usage: platform/install.sh [--profile core|full] [--github-owner OWNER]
 #   --github-owner  the GitHub user or organization that owns your forks (required by the profile full)
 # Environment: AWS_REGION and the credentials of a principal listed in cluster_admin_principal_arns;
@@ -36,7 +36,7 @@ source "$REPO_ROOT/scripts/lib/aws.sh"
 source "$REPO_ROOT/scripts/lib/platform.sh"
 export PATH="$REPO_ROOT/.tools/bin:$PATH"
 
-# The Gateway API CRDs (standard channel) that Istio uses for gateways and waypoints; EKS has none.
+# The Gateway API CRDs that Istio uses for waypoints and the mesh lab's HTTPRoute retries; EKS has none.
 GATEWAY_API_RELEASES=https://github.com/kubernetes-sigs/gateway-api/releases/download
 OWNER_RE='^[A-Za-z0-9]([A-Za-z0-9-]{0,38})$'
 WORK_DIR=""
@@ -44,6 +44,11 @@ PROFILE=core
 OWNER=""
 REGION=""
 VELERO_BUCKET=""
+DNS_ENABLED=false
+DNS_DOMAIN_NAME=""
+DNS_ZONE_ID=""
+DNS_CERTIFICATE_ARN=""
+ALB_SOURCE_CIDR=""
 
 usage() {
   echo "usage: $0 [--profile core|full] [--github-owner OWNER]" >&2
@@ -72,7 +77,7 @@ apply_manifests() {
 apply_full() {
   local attempt
   for attempt in 1 2 3 4 5; do
-    if "$HERE/render-manifests.sh" "$REGION" --full "$OWNER" --only "$1" | kubectl apply -f - >/dev/null; then
+    if "$HERE/render-manifests.sh" "$REGION" --full "$OWNER" --alb-source-cidr "$ALB_SOURCE_CIDR" --only "$1" | kubectl apply -f - >/dev/null; then
       return 0
     fi
     log "kubectl apply of platform/manifests/$1 failed (attempt $attempt/5); retrying in 15 s"
@@ -108,10 +113,10 @@ install_chart() {
 }
 
 install_istio() {
-  local asset="$WORK_DIR/gateway-api-$GATEWAY_CRDS_VERSION.yaml" got
-  download "$GATEWAY_API_RELEASES/$GATEWAY_CRDS_VERSION/standard-install.yaml" "$asset"
+  local asset="$WORK_DIR/gateway-api-$GATEWAY_CRDS_VERSION-experimental.yaml" got
+  download "$GATEWAY_API_RELEASES/$GATEWAY_CRDS_VERSION/experimental-install.yaml" "$asset"
   got="$(sha256_of "$asset")"
-  [[ "$got" == "$GATEWAY_CRDS_SHA256" ]] || die "refusing Gateway API $GATEWAY_CRDS_VERSION: SHA256 $got differs from platform/local/versions.env"
+  [[ "$got" == "$GATEWAY_CRDS_EXPERIMENTAL_SHA256" ]] || die "refusing Gateway API $GATEWAY_CRDS_VERSION experimental channel: SHA256 $got differs from platform/local/versions.env"
   kubectl apply --server-side --force-conflicts -f "$asset" >/dev/null
   kubectl wait --for=condition=Established --timeout=120s \
     crd/gatewayclasses.gateway.networking.k8s.io crd/gateways.gateway.networking.k8s.io crd/httproutes.gateway.networking.k8s.io >/dev/null
@@ -121,6 +126,32 @@ install_istio() {
   install_chart ztunnel
   # istiod creates the GatewayClass once it runs.
   retry 60 2 kubectl get gatewayclass istio >/dev/null 2>&1 || die "istiod did not create the GatewayClass istio"
+  retry 60 2 kubectl get gatewayclass istio-waypoint >/dev/null 2>&1 || die "istiod did not create the GatewayClass istio-waypoint"
+}
+
+install_waypoint() {
+  apply_full full/waypoint.yaml
+  kubectl wait --namespace dx01v2 --for=condition=Programmed gateway/dx01v2-waypoint --timeout=300s >/dev/null ||
+    die "Istio did not program the dx01v2 ambient waypoint"
+  kubectl label namespace dx01v2 istio.io/use-waypoint=dx01v2-waypoint --overwrite >/dev/null
+}
+
+install_external_dns() {
+  local tgz
+  [[ "$DNS_ENABLED" == true ]] || {
+    log "public DNS is disabled; ExternalDNS is not installed"
+    return 0
+  }
+  tgz="$(pull_chart "$WORK_DIR/charts" "$EXTERNAL_DNS_REPO" external-dns \
+    "$EXTERNAL_DNS_CHART_VERSION" "$EXTERNAL_DNS_CHART_SHA256")"
+  log "installing ExternalDNS $EXTERNAL_DNS_CHART_VERSION (SHA256 verified) for the app record in its one public zone"
+  helm upgrade --install external-dns "$tgz" \
+    --namespace kube-system \
+    --values "$HERE/values/external-dns.yaml" \
+    --set-string "domainFilters[0]=$DNS_DOMAIN_NAME" \
+    --set-string "extraArgs.aws-zone-id-filter=$DNS_ZONE_ID" \
+    --set-string "image.tag=${EXTERNAL_DNS_IMAGE_TAG}@${EXTERNAL_DNS_IMAGE_DIGEST}" \
+    --wait=watcher --rollback-on-failure --timeout 10m >/dev/null
 }
 
 # Prometheus, Alertmanager, Grafana (admin password generated here, kept in the Secret grafana-admin:
@@ -202,6 +233,15 @@ install_backup() {
     die "Velero: the backup storage location (S3 bucket of the lab) is not Available (is the Pod Identity association of terraform/modules/velero applied?)"
 }
 
+install_image_admission() {
+  install_chart kyverno
+  kubectl wait --for=condition=Established --timeout=180s \
+    crd/imagevalidatingpolicies.policies.kyverno.io >/dev/null
+  kubectl -n kyverno rollout status deployment/kyverno-admission-controller --timeout=300s >/dev/null ||
+    die "Kyverno's admission controller is not ready; image verification stays fail-closed"
+  apply_full full/image-verification.yaml
+}
+
 install_full() {
   local account
   require_cmd openssl curl
@@ -211,11 +251,20 @@ install_full() {
   VELERO_BUCKET="$LAB_CLUSTER-velero-$account-$REGION"
 
   apply_full full/namespaces.yaml
+  apply_full full/storageclass.yaml
+  apply_full full/rbac-dx01v2-deployer-extra.yaml
   install_istio
+  install_waypoint
+  apply_full full/app-security.yaml
   install_chart cert-manager
+  kubectl label namespace observability istio.io/dataplane-mode=ambient --overwrite >/dev/null
   install_observability
-  install_gitops
+  apply_full full/app-monitoring.yaml
   install_policies "$account.dkr.ecr.$REGION.amazonaws.com/dx01v2/"
+  install_image_admission
+  # Argo CD may create application Pods as soon as its root Application is applied. Install both
+  # admission layers first so no app workload can start before the policies are enforced.
+  install_gitops
   install_chart trivy-operator
   install_backup
   install_chart chaos-mesh
@@ -248,8 +297,27 @@ main() {
   REGION="$(lab_param region)"
   vpc_id="$(lab_param vpc-id)"
   store="$(lab_param eso/cluster-secret-store)"
+  DNS_ENABLED="$(lab_param dns/enabled)"
+  DNS_DOMAIN_NAME="$(lab_param dns/domain-name)"
+  DNS_ZONE_ID="$(lab_param dns/zone-id)"
+  DNS_CERTIFICATE_ARN="$(lab_param dns/acm-certificate-arn)"
+  ALB_SOURCE_CIDR="$(lab_param alb/source-cidr)"
   [[ "$REGION" == "$AWS_REGION" ]] || die "AWS_REGION=$AWS_REGION but the lab runs in $REGION"
   [[ "$cluster" == "$LAB_CLUSTER" ]] || die "contract key cluster-name is '$cluster', not $LAB_CLUSTER"
+  case "$DNS_ENABLED" in
+    false)
+      [[ "$DNS_DOMAIN_NAME" == disabled && "$DNS_ZONE_ID" == disabled && "$DNS_CERTIFICATE_ARN" == disabled ]] ||
+        die "DNS contract is inconsistent: disabled must use the disabled sentinel for domain, zone and ACM certificate"
+      ;;
+    true)
+      [[ "$DNS_DOMAIN_NAME" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$ ]] ||
+        die "DNS contract has an invalid app domain name"
+      [[ "$DNS_ZONE_ID" =~ ^Z[A-Z0-9]+$ ]] || die "DNS contract has an invalid Route53 public hosted zone ID"
+      [[ "$DNS_CERTIFICATE_ARN" =~ ^arn:aws[a-z-]*:acm:${REGION}:[0-9]{12}:certificate/[0-9a-f-]+$ ]] ||
+        die "DNS contract has no DNS-validated ACM certificate in $REGION"
+      ;;
+    *) die "DNS contract dns/enabled must be true or false" ;;
+  esac
   require_lab_cluster "$cluster"
 
   WORK_DIR="$(mktemp -d)"
@@ -275,6 +343,8 @@ main() {
     --set-string region="$REGION" \
     --set-string vpcId="$vpc_id" \
     --wait=watcher --rollback-on-failure --timeout 10m
+
+  install_external_dns
 
   log "installing external-secrets chart $ESO_CHART_VERSION"
   helm upgrade --install external-secrets external-secrets/external-secrets \

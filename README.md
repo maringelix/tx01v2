@@ -37,9 +37,9 @@ The lab family (v2):
 | Secret scan and repository policies (no real identifiers, pinned actions, scripts that act only on the lab, v1 regressions) | `verified in CI` | `make static` (`gitleaks`, `policy-*`, `repo-structure`) |
 | Terraform unit tests with a mocked AWS provider (immutable OIDC subjects, apply permissions boundary, scoped plan reads, bucket, budget, EKS, nodes, RDS, ECR, WAF, KMS, contract SSM parameters, negative validations) | `verified in CI` | `make test`; CI job `test` |
 | Bootstrap (state bucket, GitHub OIDC roles, budget) | `not run in the cloud (v2)` | `terraform/bootstrap`, `docs/RUNBOOK.md` |
-| Lab apply (VPC, EKS 1.36, RDS PostgreSQL 17, ECR, WAF, SSM contract) | `not run in the cloud (v2)` | `.github/workflows/terraform-apply.yml` |
+| Lab apply (VPC, EKS 1.36, RDS PostgreSQL 17, ECR, WAF, optional Route53 + ACM, SSM contract v5) | `not run in the cloud (v2)` | `.github/workflows/terraform-apply.yml` |
 | Plan on pull requests | `not run in the cloud (v2)` | `.github/workflows/terraform-plan.yml` |
-| Platform layer (AWS Load Balancer Controller v3.6.0, External Secrets Operator 2.12.0, OpenTelemetry Collector 0.162.0 sending the traces of the app to AWS X-Ray) | `not run in the cloud (v2)` | `.github/workflows/platform.yml`, `platform/install.sh`; the charts are rendered by `helm-template` |
+| Platform layer (AWS Load Balancer Controller v3.6.0, optional ExternalDNS 1.23.0, External Secrets Operator 2.12.0, OpenTelemetry Collector 0.176.0 sending app traces to AWS X-Ray) | `implemented as code; not run in the cloud (v2)` | `.github/workflows/platform.yml`, `platform/install.sh`; pinned charts rendered by `helm-template` |
 | Destroy + leftover check | `not run in the cloud (v2)` | `.github/workflows/terraform-destroy.yml`, `scripts/leftovers.sh` |
 | Repository settings as code (ruleset, environment `lab`) | `verified locally` | `scripts/repo-guardrails.sh` applied; read back with `gh api` on 2026-10-14 (`docs/PUBLICACAO.md`) |
 | **Local lab** (Terraform on Docker): kind cluster + emulated ECR, RDS (TLS only), S3, load balancer, git server; destroy + leftover check | `verified in CI` | `make e2e` (`terraform/envs/local`, `scripts/local-lab.sh`); `terraform-test:envs/local` |
@@ -53,7 +53,7 @@ The lab family (v2):
 | In-cluster scanning: Trivy Operator (vulnerability and configuration reports) | `verified in CI` | `make e2e` |
 | Backup and restore drill: Velero to the S3 emulator (namespace deleted, restored with its data) | `verified in CI` | `make e2e` |
 | Chaos engineering with hypotheses: Chaos Mesh pod kill, 100 ms network latency, CPU and memory stress; availability, latency and restarts measured | `verified in CI` | `make e2e` |
-| Full platform on EKS (15 pinned charts, GitOps, Velero, Gatekeeper, Trivy Operator, Chaos Mesh) | `implemented as code; not run in the cloud (v2)` | `platform/install.sh --profile full`; `helm-template-full`, `kubeconform`, `contract-platform`; `.github/workflows/platform.yml` |
+| Full platform on EKS (16 pinned charts, waypoint mesh, durable observability, Gatekeeper, Kyverno image admission, Trivy Operator, Velero, Chaos Mesh) | `implemented as code; not run in the cloud (v2)` | `platform/install.sh --profile full`; `helm-template-full`, `platform-sizing`, `kubeconform`, `contract-platform`; `.github/workflows/platform.yml` |
 
 `verified in CI` rows run on every pull request, on every push to `main` and weekly (CI jobs
 `static` and `test`). A cloud row changes only with a `cloud_run_report` issue (date, region,
@@ -157,7 +157,7 @@ All docs are in Brazilian Portuguese.
 |---|---|
 | [FORK.md](FORK.md) | fork the lab: what GitHub does not copy, the local lab, your own cloud account |
 | [docs/ARQUITETURA.md](docs/ARQUITETURA.md) | diagram, ADRs, v1 → v2 |
-| [docs/CONTRATO.md](docs/CONTRATO.md) | tx01v2 ⇄ dx01v2 contract v4 (source of truth) |
+| [docs/CONTRATO.md](docs/CONTRATO.md) | tx01v2 ⇄ dx01v2 contract v5 (source of truth) |
 | [docs/RUNBOOK.md](docs/RUNBOOK.md) | full cloud round |
 | [docs/LAB_LOCAL.md](docs/LAB_LOCAL.md) | the local lab: what is emulated, how to run it, probes, limits |
 | [docs/CUSTOS.md](docs/CUSTOS.md) | cost estimate per component |

@@ -1,4 +1,17 @@
-# Contrato tx01v2 <-> dx01v2 — versão 4 (2026-10-16)
+# Contrato tx01v2 <-> dx01v2 — versão 6 (2026-10-16)
+
+Versão 5 adiciona DNS público e HTTPS opcionais: o tx valida ACM por DNS na hosted zone Route53 já
+existente, publica `dns/*` no SSM e instala ExternalDNS com Pod Identity restrito ao hostname e à zona.
+O dx seleciona o overlay HTTPS e configura o host por esse contrato, sem ARN manual (R8.1).
+
+Versão 6 publica `alb/source-cidr`, o menor CIDR que cobre somente as subnets públicas do ALB. A
+NetworkPolicy do app usa esse intervalo na entrada do web; `vpc-cidr` continua restrito ao egress da
+API para o RDS privado (R8.1).
+
+No perfil `full`, o tx instala o waypoint `dx01v2-waypoint`, políticas mTLS/autorização, métricas e
+alertas do app, além de Kyverno. Antes do deploy, o dx promove somente os digests GHCR aprovados,
+assina a declaração de promoção no ECR e fixa esses digests nos manifests; Kyverno exige a declaração
+keyless do workflow `deploy-aws.yml` do fork (R8.2–R8.4).
 
 Versão 4: a camada `full` integra o app ao Istio ambient e ao Gatekeeper e registra no Argo CD a
 revisão `gitops/aws` do dx; o grupo `dx01v2-deployers` pode pedir refresh da Application `dx01v2`
@@ -16,11 +29,12 @@ mudança exige PRs coordenados nos dois repositórios e incremento da versão.
 |---|---|---|
 | Papéis OIDC, `sub` exatos, permissões do deploy | `terraform/bootstrap/tests/oidc_roles.tftest.hcl` | `verificado localmente` |
 | Parâmetros SSM (nomes, tipo, valores fixos), tags padrão | `terraform/envs/lab/tests/lab.tftest.hcl` | `verificado localmente` |
-| Política do ESO, Pod Identity (LBC, ESO, OpenTelemetry Collector), access entries | `terraform/envs/lab/tests/eks.tftest.hcl` | `verificado localmente` |
+| Política do ESO, Pod Identity (LBC, ESO, OpenTelemetry Collector, Trivy, Kyverno e EBS CSI), access entries | `terraform/envs/lab/tests/eks.tftest.hcl` | `verificado localmente` |
 | Namespace `observability`, Collector com exporter do X-Ray, mesmo digest do lab local | checks `contract-platform` e `helm-template` do harness | `verificado localmente` |
 | ECR imutável, segredos write-only, RDS | `terraform/envs/lab/tests/*.tftest.hcl` | `verificado localmente` |
 | Namespace, Role/RoleBinding, ClusterSecretStore | checks `kubeconform` e `contract-platform` do harness | `verificado localmente` |
-| Perfil `full`, Applications do Argo CD, RBAC de refresh e render de Istio | `helm-template-full`, `kubeconform` e `contract-platform` | `verificado localmente` |
+| Perfil `full`, Applications do Argo CD, waypoint, telemetria do app, RBAC de refresh e policy Kyverno | `helm-template-full`, `kubeconform` e `contract-platform` | `verificado localmente` |
+| DNS/ACM opcionais, IAM ExternalDNS restrito, ALB source CIDR e contrato SSM v6 | `terraform test` (`dns.tftest.hcl`, `network.tftest.hcl`), `helm-template`, `contract-platform` | checks locais passaram; CI obrigatório antes do merge |
 | Comportamento real na AWS | `docs/RUNBOOK.md` | `não executado em nuvem (v2)` |
 
 ## Identificadores
@@ -36,8 +50,9 @@ mudança exige PRs coordenados nos dois repositórios e incremento da versão.
 | Traces (OpenTelemetry) | `http://opentelemetry-collector.observability.svc:4318` (OTLP/HTTP), Collector instalado pela camada de plataforma no namespace `observability` (Pod Identity `tx01v2-lab-otel-collector`, só `AWSXRayDaemonWriteAccess`); os spans vão para o AWS X-Ray da região do lab |
 | Repositórios ECR | `dx01v2/api`, `dx01v2/web` — tags IMMUTABLE, scan on push; imagens com a tag do SHA git completo (40 caracteres) do dx01v2 |
 | Papéis OIDC do GitHub (bootstrap do tx01v2) | `tx01v2-gha-plan`, `tx01v2-gha-apply`, `dx01v2-gha-deploy` |
+| Pod Identity EKS (`full`) | `trivy-system/trivy-operator`, `kyverno/kyverno-admission-controller`, `kube-system/ebs-csi-controller-sa`; Trivy e Kyverno leem somente os dois ECR do app |
 
-Regras da Role `dx01v2-deployer` (namespace `dx01v2`):
+Regras da Role `dx01v2-deployer` (namespace `dx01v2`), presentes nos perfis `core` e `full`:
 
 - `apps`: deployments → get, list, watch, create, update, patch, delete; replicasets → get, list, watch
 - core: services, configmaps, serviceaccounts → get, list, watch, create, update, patch, delete;
@@ -46,6 +61,10 @@ Regras da Role `dx01v2-deployer` (namespace `dx01v2`):
 - `networking.k8s.io`: ingresses, networkpolicies → CRUD completo (mesmos verbos de deployments)
 - `autoscaling`: horizontalpodautoscalers → CRUD completo; `policy`: poddisruptionbudgets → CRUD completo
 - `external-secrets.io`: externalsecrets → CRUD completo
+
+No perfil `full`, uma Role aditiva `dx01v2-deployer-full` permite `HTTPRoute`, `DestinationRule` e
+`AuthorizationPolicy` apenas no namespace `dx01v2`. O AppProject do Argo CD libera os mesmos tipos
+somente nesse perfil; `platform/uninstall.sh` remove a Role aditiva.
 
 ## Confiança OIDC do GitHub
 
@@ -61,10 +80,12 @@ apagado e registrado de novo não herda o lab. O ambiente `lab` só implanta a p
 | `tx01v2-gha-apply` | `repo:<owner>@<owner id>/tx01v2@<repo id>:environment:lab` |
 | `dx01v2-gha-deploy` | `repo:<owner>@<owner id>/dx01v2@<repo id>:environment:lab` |
 
-O papel `tx01v2-gha-plan` lê só os serviços do lab (Describe/Get/List), não a conta inteira. Todo
-papel IAM que o apply cria (`tx01v2-*`) leva o *permissions boundary* `tx01v2-lab-boundary`, criado
-pelo bootstrap: o apply só cria um papel com ele e não pode editá-lo nem tirá-lo, e o boundary corta
-qualquer alteração de IAM, da organização e da conta, seja qual for a política anexada ao papel.
+O papel `tx01v2-gha-plan` lê só os serviços do lab (Describe/Get/List), não a conta inteira. O apply
+não usa `PowerUserAccess`: sua política permite as famílias AWS necessárias ao lab; IAM fica restrito
+a nomes `tx01v2-*` e exige o boundary. S3 só cobre o state e o bucket Velero. Route53, quando ativado,
+é limitado à hosted zone configurada também no bootstrap. O boundary dos papéis do lab limita as
+mesmas famílias de serviço, restringe S3 ao bucket Velero e Route53 à zona configurada, e corta IAM,
+organização e APIs da conta.
 
 Permissões de `dx01v2-gha-deploy`: `ecr:GetAuthorizationToken` em `*`; ações de push/pull apenas nos
 ARNs dos dois repositórios ECR; `eks:DescribeCluster` no ARN do cluster; `ssm:GetParameter`,
@@ -82,13 +103,18 @@ final), que casa com o recurso `parameter/tx01v2/lab/*`; ou leia os nomes com `G
 | `region` | região AWS |
 | `cluster-name` | `tx01v2-lab` |
 | `vpc-id` | ID da VPC |
-| `vpc-cidr` | CIDR da VPC (as NetworkPolicies do app o usam para o tráfego ALB -> pod e pod -> RDS) |
+| `vpc-cidr` | CIDR da VPC (NetworkPolicy API -> RDS) |
+| `alb/source-cidr` | CIDR que cobre somente as subnets públicas nas quais os nós do ALB são criados (web -> pods) |
 | `ecr/api-url` | URL do repositório `dx01v2/api` |
 | `ecr/web-url` | URL do repositório `dx01v2/web` |
 | `waf/acl-arn` | ARN do web ACL WAFv2 REGIONAL para o ALB do app |
 | `db/secret-name` | `tx01v2-lab/db/app` |
 | `app/admin-token-secret-name` | `tx01v2-lab/app/admin-token` |
 | `eso/cluster-secret-store` | `aws-secrets-manager` |
+| `dns/enabled` | `true` quando domínio e zona forem configurados; caso contrário `false` |
+| `dns/domain-name` | hostname público do app ou `disabled` |
+| `dns/zone-id` | ID da hosted zone pública existente ou `disabled` |
+| `dns/acm-certificate-arn` | certificado ACM com DNS validation concluída ou `disabled` |
 
 ## Secrets Manager (criados pelo tx01v2; valores via argumentos write-only, nunca em state/plan)
 
@@ -102,14 +128,18 @@ final), que casa com o recurso `parameter/tx01v2/lab/*`; ou leia os nomes com `G
 
 - AWS Load Balancer Controller em `kube-system`, ServiceAccount `aws-load-balancer-controller`
   (EKS Pod Identity), IngressClass `alb`.
+- Com `dns/enabled=true`, ExternalDNS roda em `kube-system` como `external-dns` via Pod Identity. O
+  papel pode ler a zona selecionada e alterar só o A do app e o TXT `a-_external-dns-<hostname>` nessa
+  mesma zona. Sem domínio, ExternalDNS não é instalado.
 - External Secrets Operator no namespace `external-secrets`, ServiceAccount `external-secrets`
   (EKS Pod Identity); ClusterSecretStore `aws-secrets-manager` (provider aws, service SecretsManager,
   região vinda do SSM, sem auth explícita → credenciais do controller). Detalhe do tx01v2: o store só
   aceita ExternalSecrets do namespace `dx01v2` (`spec.conditions`).
 - Add-ons do EKS gerenciados pelo Terraform: vpc-cni (com enforcement de network policy), kube-proxy,
-  coredns, eks-pod-identity-agent, metrics-server.
-- `platform/install.sh --profile full` instala Istio ambient, Gatekeeper, Argo CD e o restante dos
-  charts fixados pelo lab local; `core` continua sendo o padrão.
+  coredns, eks-pod-identity-agent, metrics-server e EBS CSI.
+- `platform/install.sh --profile full` instala Istio ambient, o waypoint L7, Gatekeeper, Kyverno,
+  Trivy Operator, Argo CD, observabilidade persistente, Velero e Chaos Mesh; `core` continua sendo o
+  padrão.
 - No `full`, a Application `platform` lê `platform/gitops` do tx e passa por `valuesObject` a URL
   pública do dx e a revisão `gitops/aws`. O chart registra a Application `dx01v2`, que observa
   `deploy/k8s/overlays/aws` com sync automático, prune e self-heal. Repositórios privados precisam
@@ -124,10 +154,13 @@ final), que casa com o recurso `parameter/tx01v2/lab/*`; ou leia os nomes com `G
   Kubernetes; `get/watch/patch` ficam restritos a `resourceNames: [dx01v2]`). Essa permissão permite
   ao deploy pedir refresh; não pode criar ou modificar outras Applications. A Role `dx01v2-deployer`
   no namespace `dx01v2` continua limitada aos recursos do app.
-- No `full`, a malha ambient e a constraint `allowed-repos` abrangem o namespace `dx01v2`; o
-  namespace de app continua sujeito às policies de rede do contrato. Os endpoints externos do ALB
-  chegam em HTTP, por isso o peer authentication ambient permanece `PERMISSIVE` para permitir a
-  entrada fora da malha.
+- No `full`, a malha ambient usa mTLS `STRICT` entre workloads, autorização por identidade e waypoint
+  para rotas L7. A exceção HTTP do ALB limita-se ao web e ao CIDR das subnets públicas. A constraint
+  `allowed-repos` e a policy Kyverno protegem os Pods do namespace `dx01v2`.
+- Trivy Operator e Kyverno recebem credenciais ECR temporárias por Pod Identity e podem ler apenas
+  `dx01v2/api` e `dx01v2/web`. Kyverno falha fechado quando o digest não tem attestation de promoção
+  assinada pelo workflow exato do fork; a política é validada offline, enquanto o runtime AWS segue
+  `não executado em nuvem (v2)`.
 
 ## Runtime do app (dx01v2)
 
@@ -138,9 +171,10 @@ final), que casa com o recurso `parameter/tx01v2/lab/*`; ou leia os nomes com `G
   ConfigMap `rds-ca` (criado no deploy a partir de
   `https://truststore.pki.rds.amazonaws.com/<region>/<region>-bundle.pem`); local `DB_SSL_MODE=disable`.
 - Services: `api` (porta 3000 http, 9464 métricas), `web` (porta 8080).
-- Ingress (só AWS): classe `alb`, `internet-facing`, `target-type: ip`, HTTP 80 (HTTPS só se um ARN de
-  certificado ACM for informado), anotação `alb.ingress.kubernetes.io/wafv2-acl-arn` vinda do SSM;
-  `/api` → `api:3000`, `/` → `web:8080`; health checks web `/healthz`, api `/readyz`.
+- Ingress AWS: classe `alb`, `internet-facing`, `target-type: ip`, WAF do SSM e rotas `/api` →
+  `api:3000`, `/` → `web:8080`. Sem DNS configurado, o caminho permanece HTTP-only. Com DNS, o dx
+  usa `aws-https`, hostname e certificado ACM do contrato; HTTP redireciona para HTTPS e ExternalDNS
+  mantém o A record. Health checks: web `/healthz`, API `/readyz`.
 - RDS PostgreSQL 17, porta 5432, acessível só a partir do security group do cluster EKS,
   `rds.force_ssl = 1`.
 

@@ -1,0 +1,61 @@
+# Keyless Sigstore admission gate for the only two runtime image repositories in dx01v2. The source
+# release attestation is verified before promotion; deploy-aws.yml signs a promotion statement for
+# the immutable ECR digest. Kyverno fails closed if the statement or the exact workflow identity is
+# absent. The fork owner is inserted by render-manifests.sh.
+apiVersion: policies.kyverno.io/v1
+kind: ImageValidatingPolicy
+metadata:
+  name: dx01v2-release-signatures
+spec:
+  evaluation:
+    mode: JSON
+    background:
+      enabled: false
+  webhookConfiguration:
+    timeoutSeconds: 20
+  failurePolicy: Fail
+  validationActions:
+    - Deny
+  matchConstraints:
+    resourceRules:
+      - apiGroups:
+          - ""
+        apiVersions:
+          - v1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - pods
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: dx01v2
+  matchImageReferences:
+    - glob: "*.dkr.ecr.*.amazonaws.com/dx01v2/api@sha256:*"
+    - glob: "*.dkr.ecr.*.amazonaws.com/dx01v2/web@sha256:*"
+  validationConfigurations:
+    required: true
+    verifyDigest: true
+  credentials:
+    allowInsecureRegistry: false
+    providers:
+      - amazon
+  attestors:
+    - name: github
+      cosign:
+        keyless:
+          identities:
+            - subject: "https://github.com/__GITHUB_OWNER__/dx01v2/.github/workflows/deploy-aws.yml@refs/heads/main"
+              issuer: "https://token.actions.githubusercontent.com"
+        ctlog:
+          url: https://rekor.sigstore.dev
+  attestations:
+    - name: promotion
+      intoto:
+        type: https://github.com/maringelix/tx00v2/attestations/promoted-image/v1
+  validations:
+    - message: "the ECR image must have a promotion attestation from this fork's deploy-aws workflow"
+      expression: >-
+        images.containers.map(image,
+          verifyAttestationSignatures(image, attestations.promotion, [attestors.github]) > 0
+        ).all(verified, verified)

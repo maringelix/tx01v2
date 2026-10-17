@@ -5,8 +5,9 @@ Gatekeeper, Trivy Operator, backup, Chaos Mesh — mas só existia na nuvem, e b
 de verdade (`docs/LICOES_APRENDIDAS.md`). O lab local constrói essa plataforma inteira no Docker da sua
 máquina, com Terraform, e prova cada peça com tráfego ou chamadas reais. Nada aqui fala com a AWS.
 
-Status: `verificado no CI` (job `e2e`, 34 sondas) e `verificado localmente` (2026-10-14: os perfis
-`observability`, 22 sondas, e `operations`, 24 sondas, cada um do zero até o destroy). O tamanho
+Status: `implementado; CI pendente` (job `e2e`, 39 sondas esperadas) e `verificado localmente`
+(2026-10-14: os perfis `observability`, 22 sondas, e `operations`, 24 sondas, cada um do zero até o
+destroy). O tamanho
 `small` (abaixo) é `verificado no CI` pelo job `e2e-platform-small` do dx01v2: a plataforma `full` com
 o app, com o Docker limitado a 7 GB.
 
@@ -41,9 +42,13 @@ imagens por digest em `platform/local/values/`):
 
 | Camada | Componentes | Perfil |
 |---|---|---|
-| core | Gateway API 1.6.3 (standard), Istio 1.31.1 ambient (istiod, istio-cni, ztunnel, GatewayClass `istio`), cert-manager 1.21.2 + ClusterIssuer `lab-ca`, External Secrets 2.12.0 + ClusterSecretStore `local-secrets`, metrics-server 0.9.0, contrato `lab-system/lab-contract` | todos |
+| core | Gateway API 1.6.3 (experimental retries), Istio 1.31.1 ambient (istiod, istio-cni, ztunnel, GatewayClass `istio` and the dx01v2 waypoint), cert-manager 1.21.2 + ClusterIssuer `lab-ca`, External Secrets 2.12.0 + ClusterSecretStore `local-secrets`, metrics-server 0.9.0, contrato `lab-system/lab-contract` | todos |
 | observability | kube-prometheus-stack 92.3.0 (Prometheus 3.15 com exemplars, Alertmanager 0.34 → `alert-sink` e Slack, Grafana 13.2 só ClusterIP, kube-state-metrics, node-exporter), Loki 3.6 (single binary), Alloy 1.20, Tempo 3.1 (single binary), OpenTelemetry Collector 0.162 (OTLP → Tempo + spanmetrics), `Telemetry` do Istio (spans dos Gateways) | `observability`, `full` |
 | operations | Argo CD 3.5.5, Gatekeeper 3.23.1 + políticas, Trivy Operator 0.35, Velero 1.18 (plugin AWS → S3 emulado), Chaos Mesh 2.8.4 | `operations`, `full` |
+
+O `full` do EKS acrescenta o chart Kyverno para verificar a attestation de promoção no ECR e usa
+PVCs gp3 criptografados para os sinais. O perfil local não simula as credenciais AWS nem o runtime
+de admissão do ECR; esses manifests e identidades passam por render, schema e testes Terraform no CI.
 
 Pod Security: `restricted` em todos os namespaces, menos `istio-system`, `monitoring-agents` e
 `chaos-mesh` (`privileged`: mexem na rede ou nos processos do nó) e `trivy-system` (`baseline`, com
@@ -141,6 +146,8 @@ Docker Desktop de desenvolvimento (2026-10-14).
 | Banco | conexão `verify-full` com a CA do lab funciona; texto puro é recusado |
 | Mesh | cliente com identidade permitida chega ao serviço (mTLS pelo ztunnel); outra identidade é recusada pela `AuthorizationPolicy`; cliente fora do mesh é recusado pelo `STRICT` |
 | Borda | Gateway `Programmed` com endereço do load balancer emulado; HTTPS verificado contra a CA do lab; um `X-Request-Id` externo (texto livre ou UUID) chega intacto ao backend (como no ALB; `EnvoyFilter` `gateway-preserve-request-id`); HTTP → 301 |
+| ACME | Pebble/challtestsrv executam HTTP-01 no Gateway local; cert-manager emite certificado de teste de 20 minutos e o renova automaticamente, com revisão e serial novos |
+| WAF | ModSecurity com OWASP CRS 4.30.0 encaminha requisição benigna e bloqueia SQLi; o limite local do NGINX devolve HTTP 429 numa rajada |
 | Segredos | ExternalSecret no namespace `dx01v2` vira Secret com as cinco chaves do contrato |
 | Métricas | `kubectl top nodes` (metrics-server) |
 | Observabilidade | alvos de kube-state-metrics, node-exporter, apiserver e kubelet coletados; `PrometheusRule` sintética chega ao `alert-sink` pelo Alertmanager e ao receptor Slack no formato de mensagem do Slack (com `LOCAL_SLACK_WEBHOOK_URL`: notificações entregues, nenhuma com falha); logs do namespace da sonda aparecem no Loki; Grafana saudável e só ClusterIP |
@@ -161,7 +168,7 @@ Docker Desktop de desenvolvimento (2026-10-14).
   máquina descartável ou no CI.
 - O mirror do Trivy Operator e o mapeamento `registry.tx01v2.local` existem só no lab local.
 - Logs, métricas, traces e backups vivem dentro do lab (retenções de horas) e somem no destroy.
-- O tamanho `small` foi provado com as 18 sondas do dx01v2. As 34 sondas daqui rodam no CI só no tamanho
-  padrão: `LOCAL_SIZE=small make e2e` não é verificado.
+- O tamanho `small` foi provado com as 18 sondas do dx01v2. As 39 sondas daqui rodam no CI só no
+  tamanho padrão: `LOCAL_SIZE=small make e2e` não é verificado.
 - Sem `LOCAL_SLACK_WEBHOOK_URL` o CI prova o receptor Slack e o formato da mensagem, não a entrega a um
   workspace de verdade.

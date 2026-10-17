@@ -8,8 +8,9 @@
 #      elbv2.k8s.aws/cluster=<cluster> exists (the controller deletes them)
 #   4. uninstall the OpenTelemetry Collector, the External Secrets Operator and the AWS Load
 #      Balancer Controller releases
-# The add-ons of the profile full create nothing outside the cluster (emptyDir storage, ClusterIP
-# Services, a bucket that Terraform owns): terraform destroy removes them with the cluster.
+# The add-ons of the profile full create EBS-backed observability PVCs and an S3 bucket that Terraform
+# owns. Remove the PVCs and wait for the EBS CSI controller to delete their volumes before destroying
+# the cluster; otherwise the AWS volumes can outlive the lab.
 # CLOUD-MUTATING. Fails loudly on any error or timeout. Needs the same tools as platform/install.sh.
 # It acts only on the cluster of the contract (tx01v2-lab) and only when that cluster carries the tag
 # Project=tx01v2; no environment variable changes the target. The kubeconfig is temporary: the
@@ -37,6 +38,19 @@ stop_gitops() {
   log "deleting the Argo CD Applications (self-heal would create the Ingress again)"
   kubectl --namespace argocd delete applications.argoproj.io platform --ignore-not-found --wait=true --timeout=5m
   kubectl delete applications.argoproj.io --all --all-namespaces --wait=true --timeout=5m
+}
+
+remove_waypoint() {
+  local waypoint
+  if kubectl get crd gateways.gateway.networking.k8s.io >/dev/null 2>&1; then
+    kubectl delete gateway --namespace dx01v2 dx01v2-waypoint --ignore-not-found --wait=true --timeout=5m
+  fi
+  if kubectl get namespace dx01v2 >/dev/null 2>&1; then
+    waypoint="$(kubectl get namespace dx01v2 -o jsonpath='{.metadata.labels.istio\.io/use-waypoint}')"
+    if [[ "$waypoint" == dx01v2-waypoint ]]; then
+      kubectl label namespace dx01v2 istio.io/use-waypoint- >/dev/null
+    fi
+  fi
 }
 
 delete_load_balancer_services() {
@@ -68,8 +82,102 @@ wait_for_controller_resources() {
   done
 }
 
+# Keep ExternalDNS running until it has removed only its app alias and TXT ownership record. With the
+# chart's sync policy and the ingress deleted above, these Route53 records are no longer desired.
+wait_for_dns_records() {
+  local enabled domain zone records remaining deadline=$((SECONDS + 360))
+  enabled="$(lab_param dns/enabled)"
+  [[ "$enabled" == false ]] && return 0
+  [[ "$enabled" == true ]] || die "DNS contract dns/enabled must be true or false"
+  domain="$(lab_param dns/domain-name)"
+  zone="$(lab_param dns/zone-id)"
+  [[ "$domain" =~ ^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$ ]] ||
+    die "DNS contract has an invalid app domain name; refusing to query Route53"
+  [[ "$zone" =~ ^Z[A-Z0-9]+$ ]] || die "DNS contract has an invalid Route53 public hosted zone ID"
+  while :; do
+    records="$(aws route53 list-resource-record-sets --hosted-zone-id "$zone" --output json)" ||
+      die "could not inspect the app DNS records in the configured Route53 zone"
+    remaining="$(jq -r --arg app "${domain}." --arg ownership "a-_external-dns-${domain}." \
+      '[.ResourceRecordSets[]? | select((.Name == $app and .Type == "A") or (.Name == $ownership and .Type == "TXT"))] | length' <<<"$records")"
+    [[ "$remaining" == 0 ]] && {
+      log "ExternalDNS removed the app alias and TXT ownership record"
+      return 0
+    }
+    ((SECONDS < deadline)) || die "ExternalDNS did not remove the app records within 360s; inspect the ExternalDNS events and Route53 records before destroying the lab"
+    log "waiting for ExternalDNS to remove the app alias and TXT ownership record"
+    sleep 10
+  done
+}
+
+capture_observability_pvcs() {
+  local entry namespace release statefulsets
+  : >"$WORK_DIR/observability-pvcs.tsv"
+  for entry in \
+    'monitoring kube-prometheus-stack' \
+    'monitoring loki' \
+    'monitoring tempo'; do
+    read -r namespace release <<<"$entry"
+    kubectl get namespace "$namespace" --ignore-not-found --output name >"$WORK_DIR/observability-namespace"
+    [[ -s "$WORK_DIR/observability-namespace" ]] || continue
+    statefulsets="$(kubectl get statefulsets --namespace "$namespace" \
+      --selector "app.kubernetes.io/instance=$release" --output json)"
+    jq -r --arg namespace "$namespace" '
+      .items[] as $sts |
+      ($sts.spec.volumeClaimTemplates // [])[] as $claim |
+      range(0; ($sts.spec.replicas // 1)) |
+      [$namespace, ($claim.metadata.name + "-" + $sts.metadata.name + "-" + tostring)] | @tsv
+    ' <<<"$statefulsets" >>"$WORK_DIR/observability-pvcs.tsv"
+  done
+}
+
+uninstall_full_releases() {
+  local entry release namespace
+  for entry in \
+    'chaos-mesh chaos-mesh' \
+    'velero velero' \
+    'trivy-operator trivy-system' \
+    'kyverno kyverno' \
+    'gatekeeper gatekeeper-system' \
+    'argo-cd argocd' \
+    'tempo monitoring' \
+    'alloy monitoring' \
+    'loki monitoring' \
+    'kube-prometheus-stack monitoring' \
+    'cert-manager cert-manager' \
+    'ztunnel istio-system' \
+    'istio-cni istio-system' \
+    'istiod istio-system' \
+    'istio-base istio-system'; do
+    read -r release namespace <<<"$entry"
+    helm uninstall "$release" --namespace "$namespace" --ignore-not-found --wait=watcher --timeout 10m
+  done
+}
+
+delete_observability_volumes() {
+  local ns pvc remaining claim_refs deadline=$((SECONDS + 600))
+  while IFS=$'\t' read -r ns pvc; do
+    [[ -n "$ns" && -n "$pvc" ]] || continue
+    kubectl delete pvc "$pvc" --namespace "$ns" --ignore-not-found --wait=true --timeout=10m
+  done <"$WORK_DIR/observability-pvcs.tsv"
+  claim_refs="$(jq -Rn '[inputs | split("\t") | {namespace: .[0], name: .[1]}]' \
+    <"$WORK_DIR/observability-pvcs.tsv")"
+  while :; do
+    remaining="$(kubectl get pv -o json | jq -r --argjson claims "$claim_refs" '[
+      .items[] as $pv |
+      select($pv.spec.csi.driver == "ebs.csi.aws.com" and
+        any($claims[]; .namespace == $pv.spec.claimRef.namespace and .name == $pv.spec.claimRef.name)) |
+      $pv.metadata.name
+    ] | join(" ")')"
+    [[ -z "$remaining" ]] && break
+    ((SECONDS < deadline)) || die "EBS observability volume(s) were not deleted before timeout: $remaining"
+    log "waiting for EBS CSI to delete observability volume(s): $remaining"
+    sleep 10
+  done
+  kubectl delete storageclass tx01v2-gp3 --ignore-not-found
+}
+
 main() {
-  require_cmd aws kubectl helm
+  require_cmd aws kubectl helm jq
   require_aws_region
 
   local cluster=$LAB_CLUSTER
@@ -81,13 +189,23 @@ main() {
   kubectl get --raw /readyz >/dev/null || die "the Kubernetes API of $cluster is not reachable"
 
   stop_gitops
+  remove_waypoint
+  if kubectl get crd imagevalidatingpolicies.policies.kyverno.io >/dev/null 2>&1; then
+    kubectl delete imagevalidatingpolicy dx01v2-release-signatures --ignore-not-found --wait=true
+  fi
+  kubectl delete -f "$HERE/manifests/full/rbac-dx01v2-deployer-extra.yaml" --ignore-not-found --wait=true
   log "deleting every Ingress in $cluster"
   kubectl delete ingress --all --all-namespaces --wait=true --timeout=10m
+  wait_for_dns_records
   delete_load_balancer_services
   wait_for_controller_resources "$cluster"
 
   log "uninstalling the platform releases"
+  capture_observability_pvcs
+  uninstall_full_releases
+  delete_observability_volumes
   helm uninstall opentelemetry-collector --namespace observability --ignore-not-found --wait=watcher --timeout 10m
+  helm uninstall external-dns --namespace kube-system --ignore-not-found --wait=watcher --timeout 10m
   helm uninstall external-secrets --namespace external-secrets --ignore-not-found --wait=watcher --timeout 10m
   helm uninstall aws-load-balancer-controller --namespace kube-system --ignore-not-found --wait=watcher --timeout 10m
   log "platform removed from $cluster"

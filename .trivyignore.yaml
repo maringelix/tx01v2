@@ -22,3 +22,8 @@ misconfigurations:
       - platform/manifests/rbac-dx01v2-deployer.yaml
     statement: "The contract (docs/CONTRATO.md): the dx01v2 deployer must create its Services, Ingresses and NetworkPolicies; the Role is namespaced to dx01v2 and bound only to the group dx01v2-deployers."
     expired_at: 2027-04-30
+  - id: KSV-0014
+    paths:
+      - platform/local/manifests/waf-probe.yaml
+    statement: "The disposable local WAF exercise uses the upstream OWASP CRS image, whose maintainers do not publish the read-only filesystem variant. The probe is reachable only through the ephemeral kind Gateway, runs non-root with a read-only ConfigMap, no privilege escalation, dropped capabilities and seccomp RuntimeDefault; production app containers remain read-only. Recheck when the upstream image publishes its read-only build."
+    expired_at: 2027-04-30

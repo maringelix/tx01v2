@@ -128,11 +128,12 @@ aplicado na AWS (`não executado em nuvem (v2)`).
 
 ### R4.2 — observabilidade no cluster ou gerenciada
 
-Decisão: o perfil `full` instala kube-prometheus-stack, Loki e Tempo no EKS, com armazenamento
-`emptyDir`; `core` continua instalando só o Collector e enviando traces do app ao X-Ray. Esta opção
-reaproveita as sondas do lab para métricas, alertas, logs e traces e não exige workspaces ou retenção
-fora do cluster. Os dados do perfil `full` somem quando os pods/nós são destruídos. Ela não prova
-retenção durável nem capacidade em escala.
+Decisão R4.2: o perfil `full` instala kube-prometheus-stack, Loki e Tempo no EKS; `core` continua
+instalando só o Collector e enviando traces do app ao X-Ray. O desenho inicial usava `emptyDir` e
+perdia histórico com a recriação dos pods. R8.3 substitui esse armazenamento por PVCs gp3 cifrados,
+com retenção declarada e teardown dos volumes do lab. Essa durabilidade cobre reinício/recriação do
+pod, não a destruição do cluster ou disaster recovery; backups e recuperação em outra região entram
+em R9.
 
 A alternativa gerenciada é Amazon Managed Service for Prometheus, Amazon Managed Grafana e CloudWatch
 (Logs e traces). A sondagem pode comprovar `remote_write`, consultas PromQL, painéis, alertas, ingestão
@@ -152,7 +153,7 @@ usam as tarifas publicadas e as quantidades acima; o volume real deve ser medido
 
 | Opção (rodada única de 3h) | Estimativa em `us-east-1` | O que as sondas conseguem provar |
 |---|---:|---|
-| `full` no cluster | ~US$0,87 no total do lab com Spot | scrape, alertas, dashboards, logs no Loki e traces no Tempo; valida os componentes in-cluster, sem retenção após destroy |
+| `full` no cluster | ~US$0,88 por rodada de 3h com Spot, incluindo os PVCs gp3 | scrape, alertas, dashboards, logs no Loki e traces no Tempo; dados persistem entre reinícios dos pods, mas não após destroy do cluster |
 | observabilidade gerenciada + cluster `core` | ~US$10,32 na primeira utilização do workspace no mês (`3 × US$0,26 + US$9,54`) | `remote_write`, consultas no AMP, dashboards/alertas gerenciados e ingestão no CloudWatch; exercita IAM e APIs da AWS |
 
 Se o workspace do Managed Grafana já teve um editor ativo no mesmo mês, o componente gerenciado
@@ -160,8 +161,9 @@ estimado para outra rodada cai para cerca de US$0,54, além do cluster `core`. A
 inclui tráfego de saída nem volume de traces; eles devem ser somados com o uso real. O usuário é
 cobrado por mês de calendário, então não divida a licença do Grafana por horas de uma única sessão.
 
-Para comparar apenas o acréscimo de capacidade do EKS, o perfil `full` pede 795m CPU e 3104MiB de
-memória com dois nós, conforme `scripts/platform-sizing.sh`. Use `LAB_NODE_INSTANCE_TYPES='["t3.large","t3a.large"]'`
+Para comparar apenas o acréscimo de capacidade do EKS, o perfil `full` pede 1315m CPU e 3680MiB de
+memória com dois nós, conforme `scripts/platform-sizing.sh`. Kyverno responde por 520m CPU e 576MiB.
+Use `LAB_NODE_INSTANCE_TYPES='["t3.large","t3a.large"]'`
 e `LAB_NODE_DESIRED_SIZE=2`; o default `2 × t3.medium/t3a.medium` não é o perfil documentado para
 `full`. À tabela base do perfil `core` somam-se aproximadamente US$0,03/h com Spot (estimativa de 35%
 do on-demand) ou US$0,0832/h on-demand, usando o preço público de US$0,0832/h do t3.large. Fontes:
@@ -190,9 +192,10 @@ O overlay do Gatekeeper isenta `kube-system`, `kube-public`, `kube-node-lease`, 
 `trivy-system`, `velero` e `chaos-mesh`, identificando-os pelo label imutável
 `kubernetes.io/metadata.name`. O namespace `dx01v2` não é isento e continua com
 `policy.lab/enforce: "true"`. `monitoring-agents` e `chaos-mesh` usam Pod Security `privileged`;
-`trivy-system` usa `baseline` e alerta `restricted`. O Trivy Operator sem credencial do ECR pode não
-gerar relatórios de vulnerabilidade para as imagens privadas do app; o instalador não cria uma
-credencial de registry.
+`trivy-system` usa `baseline` e alerta `restricted`. No EKS, o scan job usa EKS Pod Identity para
+ler apenas os dois repositórios privados do app; nenhum segredo de registry estático é armazenado.
+Essa permissão e a configuração do chart são verificadas no Terraform e no render; a instalação real
+na AWS continua não executada (v2).
 
 ## v1 → v2
 

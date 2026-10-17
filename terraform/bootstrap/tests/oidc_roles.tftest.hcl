@@ -10,6 +10,7 @@ variables {
   tx01v2_repository_id = "2000000"
   dx01v2_repository_id = "3000000"
   budget_alert_emails  = ["lab-alerts@example.org"]
+  lab_route53_zone_id  = "Z1234567890ABC"
 }
 
 run "trust_policies_allow_exactly_the_contract_subjects" {
@@ -176,8 +177,41 @@ run "role_permissions_follow_the_contract" {
   }
 
   assert {
-    condition     = aws_iam_role_policy_attachment.apply_power_user.policy_arn == "arn:aws:iam::aws:policy/PowerUserAccess"
-    error_message = "The apply role must use PowerUserAccess."
+    condition = (
+      [for s in jsondecode(aws_iam_role_policy.apply_services.policy).Statement : s.Action if s.Sid == "ManageLabServiceFamilies"][0] == local.lab_service_actions &&
+      !contains(local.lab_service_actions, "lambda:*") && !contains(local.lab_service_actions, "organizations:*")
+    )
+    error_message = "The apply role must allow only the lab's declared AWS service families, not all AWS services."
+  }
+
+  assert {
+    condition = ([for s in jsondecode(aws_iam_role_policy.apply_services.policy).Statement : s.Resource if s.Sid == "ManageTheVeleroBucket"][0] == "arn:aws:s3:::tx01v2-lab-velero-123456789012-us-east-1" &&
+      [for s in jsondecode(aws_iam_role_policy.apply_services.policy).Statement : s.Resource if s.Sid == "ManageObjectsInTheVeleroBucket"][0] == "arn:aws:s3:::tx01v2-lab-velero-123456789012-us-east-1/*"
+    )
+    error_message = "The apply role may manage S3 only in the lab's Velero bucket and its objects."
+  }
+
+  assert {
+    condition = ([for s in jsondecode(aws_iam_role_policy.apply_services.policy).Statement : s.Resource if s.Sid == "ManageDnsValidationInTheConfiguredZone"][0] == "arn:aws:route53:::hostedzone/Z1234567890ABC" &&
+      [for s in jsondecode(aws_iam_role_policy.apply_services.policy).Statement : s.Action if s.Sid == "ManageDnsValidationInTheConfiguredZone"][0] == ["route53:GetHostedZone", "route53:ListResourceRecordSets", "route53:ChangeResourceRecordSets"]
+    )
+    error_message = "DNS management by the apply role must be limited to the preconfigured hosted zone."
+  }
+
+  assert {
+    condition = (
+      [for s in jsondecode(aws_iam_role_policy.apply_services.policy).Statement : s if s.Sid == "NoAccountAdministration"][0].Effect == "Deny" &&
+      [for s in jsondecode(aws_iam_role_policy.apply_services.policy).Statement : s if s.Sid == "NoAccountAdministration"][0].Action == ["account:*", "organizations:*", "billing:*", "ce:*", "support:*"]
+    )
+    error_message = "The apply role must deny account, organization, billing and support administration."
+  }
+
+  assert {
+    condition = (
+      [for s in jsondecode(aws_iam_role_policy.plan_read_lab.policy).Statement : s.Resource if s.Sid == "ReadTheConfiguredDnsZone"][0] == "arn:aws:route53:::hostedzone/Z1234567890ABC" &&
+      [for s in jsondecode(aws_iam_role_policy.plan_read_lab.policy).Statement : s.Action if s.Sid == "ReadTheConfiguredDnsZone"][0] == ["route53:GetHostedZone", "route53:ListResourceRecordSets"]
+    )
+    error_message = "The plan role may inspect only the hosted zone configured for the lab."
   }
 
   assert {
@@ -192,9 +226,24 @@ run "role_permissions_follow_the_contract" {
   assert {
     condition = alltrue([
       for s in jsondecode(aws_iam_role_policy.apply_lab.policy).Statement :
-      s.Resource != "*" if s.Effect == "Allow" && s.Sid != "ReadIam"
+      s.Resource != "*" if s.Effect == "Allow" && s.Sid != "ReadIam" && s.Sid != "CreateRequiredServiceLinkedRoles"
     ])
-    error_message = "Only the IAM read statement of the apply role may use Resource = *."
+    error_message = "Only IAM reads and the service-linked-role exception may use Resource = * in the IAM policy."
+  }
+
+  assert {
+    condition = [for s in jsondecode(aws_iam_role_policy.apply_lab.policy).Statement : s if s.Sid == "CreateRequiredServiceLinkedRoles"][0].Condition == {
+      StringEquals = {
+        "iam:AWSServiceName" = [
+          "eks.amazonaws.com",
+          "eks-nodegroup.amazonaws.com",
+          "elasticloadbalancing.amazonaws.com",
+          "autoscaling.amazonaws.com",
+          "rds.amazonaws.com",
+        ]
+      }
+    }
+    error_message = "Only the EKS, load balancer, Auto Scaling, and RDS service-linked roles used by the lab may be created."
   }
 
   assert {
@@ -245,6 +294,32 @@ run "role_permissions_follow_the_contract" {
     ]
     error_message = "dx01v2-gha-deploy permissions must match the contract exactly."
   }
+}
+
+run "dns_permissions_are_absent_without_a_configured_zone" {
+  command = apply
+
+  variables {
+    lab_route53_zone_id = ""
+  }
+
+  assert {
+    condition = (
+      length([for s in jsondecode(aws_iam_role_policy.apply_services.policy).Statement : s if startswith(s.Sid, "ManageDns")]) == 0 &&
+      length([for s in jsondecode(aws_iam_role_policy.plan_read_lab.policy).Statement : s if s.Sid == "ReadTheConfiguredDnsZone"]) == 0
+    )
+    error_message = "No GitHub role may inspect or change Route53 when the optional DNS zone is unset."
+  }
+}
+
+run "invalid_dns_zone_id_is_rejected" {
+  command = plan
+
+  variables {
+    lab_route53_zone_id = "not-a-zone"
+  }
+
+  expect_failures = [var.lab_route53_zone_id]
 }
 
 run "placeholder_owner_is_refused" {

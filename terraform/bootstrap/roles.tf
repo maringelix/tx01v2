@@ -8,6 +8,91 @@ locals {
     "${local.state_bucket_arn}/${local.lab_state_key}.tflock",
   ]
 
+  lab_route53_zone_arn    = var.lab_route53_zone_id == "" ? "" : "arn:${local.partition}:route53:::hostedzone/${var.lab_route53_zone_id}"
+  lab_acm_certificate_arn = "arn:${local.partition}:acm:${local.region}:${local.account_id}:certificate/*"
+
+  # The apply identity can manage only service families used by this lab. Most create/delete APIs do
+  # not support useful resource scoping before a resource exists; IAM, S3 and Route53 get narrower
+  # statements below. The permissions boundary applies the same service-family cap to lab roles.
+  lab_service_actions = [
+    "acm:*",
+    "autoscaling:*",
+    "ec2:*",
+    "ecr:*",
+    "eks:*",
+    "elasticloadbalancing:*",
+    "kms:*",
+    "logs:*",
+    "rds:*",
+    "secretsmanager:*",
+    "shield:*",
+    "ssm:*",
+    "wafv2:*",
+    "xray:*",
+  ]
+  # Route53 permissions are limited to the configured zone; Velero S3 is limited to its bucket.
+  lab_velero_bucket_actions = ["s3:ListBucket", "s3:GetBucketLocation"]
+  lab_velero_object_actions = [
+    "s3:GetObject",
+    "s3:PutObject",
+    "s3:PutObjectTagging",
+    "s3:DeleteObject",
+    "s3:AbortMultipartUpload",
+    "s3:ListMultipartUploadParts",
+  ]
+  lab_role_actions = local.lab_service_actions
+
+  apply_route53_statements = [
+    for statement in [
+      {
+        Sid      = "ManageDnsValidationInTheConfiguredZone"
+        Effect   = "Allow"
+        Action   = ["route53:GetHostedZone", "route53:ListResourceRecordSets", "route53:ChangeResourceRecordSets"]
+        Resource = local.lab_route53_zone_arn
+      },
+      {
+        Sid      = "ReadDnsValidationChangeStatus"
+        Effect   = "Allow"
+        Action   = "route53:GetChange"
+        Resource = "*"
+      },
+    ] : statement if var.lab_route53_zone_id != ""
+  ]
+
+  plan_route53_statements = [
+    for statement in [
+      {
+        Sid      = "ReadTheConfiguredDnsZone"
+        Effect   = "Allow"
+        Action   = ["route53:GetHostedZone", "route53:ListResourceRecordSets"]
+        Resource = local.lab_route53_zone_arn
+      },
+      {
+        Sid      = "ReadDnsValidationChangeStatus"
+        Effect   = "Allow"
+        Action   = "route53:GetChange"
+        Resource = "*"
+      },
+    ] : statement if var.lab_route53_zone_id != ""
+  ]
+
+  lab_route53_boundary_statements = [
+    for statement in [
+      {
+        Sid      = "DiscoverRoute53Zones"
+        Effect   = "Allow"
+        Action   = "route53:ListHostedZones"
+        Resource = "*"
+      },
+      {
+        Sid      = "ConfiguredRoute53ZoneOnly"
+        Effect   = "Allow"
+        Action   = ["route53:ListResourceRecordSets", "route53:ChangeResourceRecordSets"]
+        Resource = local.lab_route53_zone_arn
+      },
+    ] : statement if var.lab_route53_zone_id != ""
+  ]
+
   # IAM write actions the apply role may use on tx01v2-* roles, policies and instance profiles.
   # iam:CreateRole is not here: it is allowed only with the permissions boundary (boundary.tf).
   lab_iam_write_actions = [
@@ -102,7 +187,7 @@ resource "aws_iam_role_policy" "plan_read_lab" {
 
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [
+    Statement = concat([
       {
         Sid      = "DescribeTheServicesOfTheLab"
         Effect   = "Allow"
@@ -115,7 +200,13 @@ resource "aws_iam_role_policy" "plan_read_lab" {
         Action   = local.plan_read_velero_bucket_actions
         Resource = local.velero_bucket_arn
       },
-    ]
+      {
+        Sid      = "DescribeLabAcmCertificates"
+        Effect   = "Allow"
+        Action   = ["acm:DescribeCertificate", "acm:ListTagsForCertificate"]
+        Resource = local.lab_acm_certificate_arn
+      },
+    ], local.plan_route53_statements)
   })
 }
 
@@ -149,11 +240,6 @@ resource "aws_iam_role" "apply" {
   description          = "GitHub Actions (tx01v2, environment lab): apply/platform/destroy of the lab."
   assume_role_policy   = local.github_trust_policies["apply"]
   max_session_duration = 7200
-}
-
-resource "aws_iam_role_policy_attachment" "apply_power_user" {
-  role       = aws_iam_role.apply.name
-  policy_arn = "arn:${local.partition}:iam::aws:policy/PowerUserAccess"
 }
 
 resource "aws_iam_role_policy" "apply_lab" {
@@ -190,6 +276,23 @@ resource "aws_iam_role_policy" "apply_lab" {
         Effect   = "Allow"
         Action   = "iam:PassRole"
         Resource = "${local.iam_arn_prefix}:role/tx01v2-*"
+      },
+      {
+        Sid      = "CreateRequiredServiceLinkedRoles"
+        Effect   = "Allow"
+        Action   = "iam:CreateServiceLinkedRole"
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "iam:AWSServiceName" = [
+              "eks.amazonaws.com",
+              "eks-nodegroup.amazonaws.com",
+              "elasticloadbalancing.amazonaws.com",
+              "autoscaling.amazonaws.com",
+              "rds.amazonaws.com",
+            ]
+          }
+        }
       },
       {
         Sid      = "ReadIam"
@@ -229,6 +332,50 @@ resource "aws_iam_role_policy" "apply_lab" {
         Resource = local.lab_state_object_arns
       },
     ]
+  })
+}
+
+resource "aws_iam_role_policy" "apply_services" {
+  name = "lab-service-families-and-storage"
+  role = aws_iam_role.apply.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = concat([
+      {
+        Sid      = "ManageLabServiceFamilies"
+        Effect   = "Allow"
+        Action   = local.lab_service_actions
+        Resource = "*"
+      },
+      {
+        Sid    = "ManageTheVeleroBucket"
+        Effect = "Allow"
+        Action = [
+          "s3:CreateBucket", "s3:DeleteBucket",
+          "s3:PutBucketOwnershipControls", "s3:GetBucketOwnershipControls",
+          "s3:PutBucketPublicAccessBlock", "s3:GetBucketPublicAccessBlock",
+          "s3:PutBucketPolicy", "s3:GetBucketPolicy", "s3:DeleteBucketPolicy",
+          "s3:PutBucketTagging", "s3:GetBucketTagging",
+          "s3:ListBucket", "s3:GetBucketLocation",
+          "s3:PutEncryptionConfiguration", "s3:GetEncryptionConfiguration",
+          "s3:PutLifecycleConfiguration", "s3:GetLifecycleConfiguration",
+        ]
+        Resource = local.velero_bucket_arn
+      },
+      {
+        Sid      = "ManageObjectsInTheVeleroBucket"
+        Effect   = "Allow"
+        Action   = ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:DeleteObjectVersion"]
+        Resource = "${local.velero_bucket_arn}/*"
+      },
+      {
+        Sid      = "NoAccountAdministration"
+        Effect   = "Deny"
+        Action   = ["account:*", "organizations:*", "billing:*", "ce:*", "support:*"]
+        Resource = "*"
+      },
+    ], local.apply_route53_statements)
   })
 }
 

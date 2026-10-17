@@ -195,6 +195,34 @@ variable "nat_gateway_per_az" {
   default     = false
 }
 
+variable "app_domain_name" {
+  description = "Optional public DNS name for the app (for example app.example.org). Leave empty to keep the low-cost HTTP-only edge."
+  type        = string
+  default     = ""
+
+  validation {
+    condition = var.app_domain_name == "" || (
+      length(var.app_domain_name) <= 253 &&
+      can(regex("^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$", var.app_domain_name))
+    )
+    error_message = "app_domain_name must be empty or a lowercase public DNS name without a trailing dot or wildcard, such as app.example.org."
+  }
+}
+
+variable "route53_public_zone_id" {
+  description = "Optional existing public Route53 hosted zone that contains app_domain_name. Set it together with app_domain_name; the lab does not register domains or create hosted zones."
+  type        = string
+  default     = ""
+
+  validation {
+    condition = (
+      (var.app_domain_name == "" && var.route53_public_zone_id == "") ||
+      (var.app_domain_name != "" && can(regex("^Z[A-Z0-9]+$", var.route53_public_zone_id)))
+    )
+    error_message = "Set app_domain_name and route53_public_zone_id together; the hosted zone ID must look like Z0123456789ABC."
+  }
+}
+
 # --- Logs, keys, secrets ---
 
 variable "log_retention_days" {

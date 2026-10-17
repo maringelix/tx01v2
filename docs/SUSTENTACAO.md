@@ -11,7 +11,7 @@ Cobre o código (Terraform, scripts, workflows), as ferramentas do harness, as v
 ## 2. Estado atual
 
 - Harness completo (`make verify`) `verificado no CI` (jobs `static` e `test`).
-- Lab local (`docs/LAB_LOCAL.md`): `make e2e` com o perfil `full` (34 sondas) `verificado no CI`
+- Lab local (`docs/LAB_LOCAL.md`): `make e2e` com o perfil `full` (39 sondas esperadas; CI pendente)
   (job `e2e`); `verificado localmente` em 2026-10-13 (`full`) e 2026-10-14 (`observability` e
   `operations`, com traces, Slack e os novos experimentos de chaos).
 - Bootstrap, apply, plataforma e destroy: `não executado em nuvem (v2)`.
@@ -130,13 +130,14 @@ rode `make verify` e `make e2e` (o lab local prova o pipeline; o exporter do X-R
 ### 5.6.2 Charts do perfil cloud `full`
 
 `platform/full/charts.txt` é a tabela do perfil `full`: repo, chave de versão, chave SHA256, chart,
-release, namespace e lista de arquivos de values. As versões, os SHA256 dos archives e os digests das
-imagens devem continuar iguais aos de `platform/local/versions.env`; os arquivos em
-`platform/values/full/` só acrescentam ou substituem configurações específicas da AWS. Para atualizar
+release, namespace e lista de arquivos de values. Os charts compartilhados devem manter os mesmos
+pins de versão, SHA256 e digests de imagem de `platform/local/versions.env`; integrações cloud-only
+como Kyverno têm pins próprios em `platform/versions.env` e `platform/values/full/`. Os arquivos em
+`platform/values/full/` acrescentam ou substituem configurações específicas da AWS. Para atualizar
 um chart, leia as notas upstream, atualize o pin e os values locais primeiro, compare os overlays e
-re-renderize os 15 charts com `helm-template-local` e `helm-template-full`. O check compara o arquivo
+re-renderize os charts com `helm-template-local` e `helm-template-full`. O check compara o arquivo
 baixado com o SHA256, rejeita imagens sem digest, Services `LoadBalancer`/`NodePort` e placeholders,
-e confere as saídas específicas do Collector, Velero, Gatekeeper e Trivy. Não declare instalação AWS:
+e confere as saídas específicas do Collector, Velero, Gatekeeper, Kyverno e Trivy. Não declare instalação AWS:
 ela segue `não executado em nuvem (v2)` até um relatório de execução.
 
 O tamanho documentado vem de `scripts/platform-sizing.sh`: recebe a quantidade de nós e os renders
