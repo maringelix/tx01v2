@@ -235,6 +235,7 @@ spec:
             principals:
               - cluster.local/ns/lab-probe/sa/client
               - cluster.local/ns/lab-probe/sa/probe-istio
+              - cluster.local/ns/lab-probe/sa/waf-probe
       to:
         - operation:
             ports: ["8080"]

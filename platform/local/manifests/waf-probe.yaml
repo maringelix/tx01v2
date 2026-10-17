@@ -82,6 +82,13 @@ data:
         include includes/location_common.conf;
     }
 ---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: waf-probe
+  namespace: lab-probe
+automountServiceAccountToken: false
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -99,6 +106,7 @@ spec:
       labels:
         app.kubernetes.io/name: waf-probe
     spec:
+      serviceAccountName: waf-probe
       automountServiceAccountToken: false
       enableServiceLinks: false
       securityContext:
