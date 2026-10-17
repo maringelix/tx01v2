@@ -28,10 +28,13 @@ kubectl:
     repository: registry.k8s.io/kubectl
     tag: v1.36.4@sha256:b8d523e7b8cdc5e3caa0f8891ee9f504abf137dec786e6e0ddd33e4f272c2f13
 upgradeCRDs: true
+podLabels:
+  velero.io/component: server
 podSecurityContext:
   runAsNonRoot: true
   runAsUser: 65532
   runAsGroup: 65532
+  fsGroup: 65532
   seccompProfile:
     type: RuntimeDefault
 containerSecurityContext:
@@ -46,17 +49,69 @@ resources:
   limits:
     memory: 512Mi
 snapshotsEnabled: false
-deployNodeAgent: false
+metrics:
+  serviceMonitor:
+    enabled: true
+# FSB reads the mounted local PV through kubelet host paths. This root agent is confined to
+# the local Velero namespace; the server above remains non-root. Cloud uses its CSI driver.
+deployNodeAgent: true
+nodeAgent:
+  podSecurityContext:
+    runAsUser: 0
+    runAsGroup: 0
+    seccompProfile:
+      type: RuntimeDefault
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: [NET_RAW]
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+configMaps:
+  fs-restore-action-config:
+    labels:
+      velero.io/plugin-config: ""
+      velero.io/pod-volume-restore: RestoreItemAction
+    data:
+      image: docker.io/velero/velero:v1.18.4@sha256:c89fb5b6d1fd6afd368e0f483e6f5555fd62851a1eada8ac5c72482e674ca17b
+      cpuRequest: "10m"
+      memRequest: "32Mi"
+      memLimit: "128Mi"
+      secCtx: |
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: [ALL]
+        seccompProfile:
+          type: RuntimeDefault
 credentials:
   useSecret: true
   existingSecret: velero-s3
 configuration:
+  # Kopia writes HOME/udmrepo and HOME/.cache. /scratch is already an emptyDir; the root stays RO.
+  extraEnvVars:
+    - name: HOME
+      value: /scratch
+  fsBackupTimeout: 5m
   backupStorageLocation:
     - name: default
       provider: aws
       bucket: __S3_BUCKET__
       default: true
       config:
+        # S3 clients sign with a region name; the emulator accepts any (no AWS region is involved).
         region: us-east-1
         s3ForcePathStyle: "true"
         s3Url: __S3_ENDPOINT__

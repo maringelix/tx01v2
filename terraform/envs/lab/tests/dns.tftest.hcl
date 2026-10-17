@@ -5,6 +5,11 @@ mock_provider "aws" {
   source = "../../tests/mocks"
 }
 
+mock_provider "aws" {
+  alias  = "dr"
+  source = "../../tests/mocks"
+}
+
 variables {
   github_owner                 = "maringelix"
   endpoint_public_access_cidrs = ["203.0.113.10/32"]

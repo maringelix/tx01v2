@@ -143,7 +143,7 @@ Docker Desktop de desenvolvimento (2026-10-14).
 
 | Área | Sonda |
 |---|---|
-| Banco | conexão `verify-full` com a CA do lab funciona; texto puro é recusado |
+| Banco | conexão `verify-full` com a CA do lab funciona; texto puro é recusado; backup físico + WAL restauram um ponto conhecido após uma exclusão, e um backup corrompido é recusado |
 | Mesh | cliente com identidade permitida chega ao serviço (mTLS pelo ztunnel); outra identidade é recusada pela `AuthorizationPolicy`; cliente fora do mesh é recusado pelo `STRICT` |
 | Borda | Gateway `Programmed` com endereço do load balancer emulado; HTTPS verificado contra a CA do lab; um `X-Request-Id` externo (texto livre ou UUID) chega intacto ao backend (como no ALB; `EnvoyFilter` `gateway-preserve-request-id`); HTTP → 301 |
 | ACME | Pebble/challtestsrv executam HTTP-01 no Gateway local; cert-manager emite certificado de teste de 20 minutos e o renova automaticamente, com revisão e serial novos |
@@ -155,7 +155,7 @@ Docker Desktop de desenvolvimento (2026-10-14).
 | GitOps | commit no servidor git sincronizado pelo Argo CD; segundo commit reconciliado; objeto apagado recriado (self-heal) |
 | Políticas | pod fora das regras recusado pelas cinco constraints de pod; pod conforme aceito; Service NodePort recusado |
 | Registry e scan | imagem enviada ao registry é baixada pelo nó; o Trivy Operator (modo ClientServer, com o Trivy server embutido) gera ConfigAuditReport e VulnerabilityReport |
-| Backup | backup Velero de um namespace, namespace apagado, restore com os dados |
+| Backup | Velero restaura objetos de um namespace; o ensaio separado do PostgreSQL valida dados reais com `pg_basebackup`, WAL/PITR e `pg_verifybackup` |
 | Chaos | hipóteses: com 2 réplicas, matar um pod não derruba o serviço (pelo menos 38 de 40 requisições); com 100 ms a mais de latência de rede em todos os pods (`NetworkChaos`), pelo menos 19 de 20 requisições passam e a mediana sobe pelo menos 80 ms (a falha é real); com stress de CPU e memória dentro de cada contêiner (`StressChaos`), pelo menos 38 de 40 requisições passam, nenhum contêiner reinicia e o pico de CPU aparece no metrics-server |
 
 ## Limites (o que o lab local não prova)

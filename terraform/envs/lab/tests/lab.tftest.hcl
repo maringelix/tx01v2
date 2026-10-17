@@ -5,6 +5,11 @@ mock_provider "aws" {
   source = "../../tests/mocks"
 }
 
+mock_provider "aws" {
+  alias  = "dr"
+  source = "../../tests/mocks"
+}
+
 variables {
   github_owner                 = "maringelix"
   endpoint_public_access_cidrs = ["203.0.113.10/32", "198.51.100.0/24"]
@@ -60,6 +65,7 @@ run "contract_ssm_parameters_and_wiring" {
       "/tx01v2/lab/ecr/web-url",
       "/tx01v2/lab/waf/acl-arn",
       "/tx01v2/lab/db/secret-name",
+      "/tx01v2/lab/db/endpoint",
       "/tx01v2/lab/app/admin-token-secret-name",
       "/tx01v2/lab/eso/cluster-secret-store",
       "/tx01v2/lab/dns/enabled",
@@ -67,7 +73,7 @@ run "contract_ssm_parameters_and_wiring" {
       "/tx01v2/lab/dns/zone-id",
       "/tx01v2/lab/dns/acm-certificate-arn",
     ])
-    error_message = "The lab must publish exactly the fifteen contract SSM parameters."
+    error_message = "The lab must publish exactly the sixteen contract v7 SSM parameters."
   }
 
   assert {
@@ -122,8 +128,8 @@ run "contract_ssm_parameters_and_wiring" {
   }
 
   assert {
-    condition     = length(output.ssm_parameter_names) == 15
-    error_message = "ssm_parameter_names must list the fifteen parameters."
+    condition     = length(output.ssm_parameter_names) == 16
+    error_message = "ssm_parameter_names must list the sixteen v7 parameters."
   }
 }
 

@@ -79,7 +79,8 @@ run "rds_engine_storage_and_network" {
       aws_db_instance.this.backup_retention_period == 1 &&
       aws_db_instance.this.deletion_protection == false &&
       aws_db_instance.this.skip_final_snapshot &&
-      aws_db_instance.this.final_snapshot_identifier == null
+      aws_db_instance.this.final_snapshot_identifier == null &&
+      aws_db_instance.this.delete_automated_backups
     )
     error_message = "Lab defaults: single-AZ, 1-day backups, destroyable without a final snapshot."
   }
@@ -87,6 +88,33 @@ run "rds_engine_storage_and_network" {
   assert {
     condition     = alltrue([for g in aws_cloudwatch_log_group.this : g.kms_key_id == var.kms_key_arn && startswith(g.name, "/aws/rds/instance/tx01v2-lab-postgres/")])
     error_message = "RDS log groups must be pre-created with KMS encryption."
+  }
+}
+
+run "rds_ha_keeps_recoverable_backups" {
+  command = plan
+
+  module {
+    source = "../../modules/rds"
+  }
+
+  variables {
+    multi_az                 = true
+    backup_retention_days    = 7
+    deletion_protection      = true
+    skip_final_snapshot      = false
+    delete_automated_backups = false
+  }
+
+  assert {
+    condition = (
+      aws_db_instance.this.multi_az &&
+      aws_db_instance.this.backup_retention_period == 7 &&
+      aws_db_instance.this.deletion_protection &&
+      aws_db_instance.this.skip_final_snapshot == false &&
+      aws_db_instance.this.delete_automated_backups == false
+    )
+    error_message = "HA inputs must protect RDS and preserve its backups after teardown."
   }
 }
 

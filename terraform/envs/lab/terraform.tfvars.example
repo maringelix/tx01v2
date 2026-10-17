@@ -34,4 +34,9 @@ app_deployer_principal_arns = ["arn:aws:iam::123456789012:role/dx01v2-gha-deploy
 # nat_gateway_per_az       = false
 # db_multi_az              = false
 # db_backup_retention_days = 1
+# db_profile             = "core"      # core | ha | dr; ha adds Multi-AZ + >=7 days PITR
+# dr_region              = "us-west-2" # required to differ from aws_region for dr
+# db_deletion_protection = false       # true blocks the normal lab destroy until explicitly disabled
+# db_skip_final_snapshot = true        # false leaves a billable snapshot after destroy
+# db_delete_automated_backups = true   # false retains billable backups after instance deletion
 # log_retention_days       = 7

@@ -43,6 +43,7 @@ The lab family (v2):
 | Destroy + leftover check | `not run in the cloud (v2)` | `.github/workflows/terraform-destroy.yml`, `scripts/leftovers.sh` |
 | Repository settings as code (ruleset, environment `lab`) | `verified locally` | `scripts/repo-guardrails.sh` applied; read back with `gh api` on 2026-10-14 (`docs/PUBLICACAO.md`) |
 | **Local lab** (Terraform on Docker): kind cluster + emulated ECR, RDS (TLS only), S3, load balancer, git server; destroy + leftover check | `verified in CI` | `make e2e` (`terraform/envs/local`, `scripts/local-lab.sh`); `terraform-test:envs/local` |
+| PostgreSQL continuity: optional Multi-AZ/PITR/cross-Region backup replication, physical local PITR with corruption rejection | `implemented as code; cloud not run (v2)` | `terraform/envs/lab/continuity.tf`, `scripts/local/pitr-drill.sh`, [runbook](docs/CONTINUIDADE.md) |
 | Service mesh: Istio 1.31 ambient, mTLS `STRICT`, identity-based `AuthorizationPolicy` | `verified in CI` | `make e2e` (`platform/local/check.sh`: allowed, other identity and plaintext probes) |
 | Gateway API on Istio behind the emulated load balancer, HTTPS with cert-manager (lab CA), HTTP → HTTPS | `verified in CI` | `make e2e` |
 | External Secrets (ClusterSecretStore `local-secrets`), metrics-server | `verified in CI` | `make e2e` |

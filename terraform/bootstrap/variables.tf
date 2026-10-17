@@ -1,3 +1,13 @@
+variable "dr_region" {
+  description = "Second permitted lab Region, matching the opt-in DR root. Grants stay on the named regional app resources."
+  type        = string
+  default     = "us-west-2"
+  validation {
+    condition     = can(regex("^[a-z]{2}(-[a-z]+)+-[0-9]$", var.dr_region))
+    error_message = "dr_region must be an AWS Region such as us-west-2."
+  }
+}
+
 variable "aws_region" {
   description = "Region of the state bucket and of the lab (must match the lab aws_region)."
   type        = string
@@ -106,4 +116,9 @@ variable "budget_alert_emails" {
     condition     = !contains([for e in var.budget_alert_emails : lower(e)], "you@example.com")
     error_message = "Replace the placeholder you@example.com of terraform.tfvars.example with an address you read: the budget alerts are the only warning of a forgotten lab."
   }
+}
+variable "enable_state_dr" {
+  description = "Opt-in cross-region versioned S3 state recovery copy. Bootstrap only; no automatic backend failover."
+  type        = bool
+  default     = false
 }

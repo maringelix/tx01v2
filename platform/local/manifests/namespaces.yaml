@@ -97,7 +97,9 @@ kind: Namespace
 metadata:
   name: velero
   labels:
-    pod-security.kubernetes.io/enforce: restricted
+    # FSB node agent/uploader needs root and kubelet hostPath for actual PVC data.
+    # The Velero server and application retain their restricted security contexts.
+    pod-security.kubernetes.io/enforce: privileged
     pod-security.kubernetes.io/enforce-version: latest
 ---
 # chaos-daemon joins the namespaces of other pods through the containerd socket of the node.

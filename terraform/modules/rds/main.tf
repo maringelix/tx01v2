@@ -107,7 +107,7 @@ resource "aws_db_instance" "this" {
   skip_final_snapshot         = var.skip_final_snapshot
   final_snapshot_identifier   = var.skip_final_snapshot ? null : "${local.identifier}-final"
   copy_tags_to_snapshot       = true
-  delete_automated_backups    = true
+  delete_automated_backups    = var.delete_automated_backups
   auto_minor_version_upgrade  = true
   allow_major_version_upgrade = false
   apply_immediately           = true
@@ -120,6 +120,13 @@ resource "aws_secretsmanager_secret" "db" {
   description             = "PostgreSQL credentials of dx01v2 (JSON: username, password, host, port, dbname)."
   kms_key_id              = var.kms_key_arn
   recovery_window_in_days = var.secret_recovery_window_days
+  dynamic "replica" {
+    for_each = var.secret_replica_keys
+    content {
+      region     = replica.key
+      kms_key_id = replica.value
+    }
+  }
 }
 
 resource "aws_secretsmanager_secret_version" "db" {

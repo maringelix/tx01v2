@@ -310,6 +310,49 @@ variable "db_multi_az" {
   default     = false
 }
 
+variable "db_profile" {
+  description = "Database continuity profile: core keeps the cheap lab defaults; ha enables Multi-AZ and at least seven days of PITR; dr also replicates backups to a second Region."
+  type        = string
+  default     = "core"
+
+  validation {
+    condition     = contains(["core", "ha", "dr"], var.db_profile)
+    error_message = "The db_profile must be core, ha or dr."
+  }
+}
+
+variable "dr_vpc_cidr" {
+  description = "Independent secondary VPC, canonical RFC1918 /16 to /19 and disjoint from the primary."
+  type        = string
+  default     = "10.10.0.0/16"
+  validation {
+    condition = var.db_profile != "dr" || try(
+      can(regex("^(10\\.|172\\.(1[6-9]|2[0-9]|3[01])\\.|192\\.168\\.)", var.dr_vpc_cidr)) &&
+      contains([16, 17, 18, 19], tonumber(split("/", var.dr_vpc_cidr)[1])) &&
+      cidrsubnet(var.dr_vpc_cidr, 0, 0) == var.dr_vpc_cidr &&
+      cidrhost("${split("/", var.dr_vpc_cidr)[0]}/${min(tonumber(split("/", var.dr_vpc_cidr)[1]), tonumber(split("/", var.vpc_cidr)[1]))}", 0) !=
+      cidrhost("${split("/", var.vpc_cidr)[0]}/${min(tonumber(split("/", var.dr_vpc_cidr)[1]), tonumber(split("/", var.vpc_cidr)[1]))}", 0),
+    false)
+    error_message = "dr_vpc_cidr must be a private canonical /16 to /19 that does not overlap vpc_cidr."
+  }
+}
+
+variable "dr_region" {
+  description = "Destination AWS Region for the opt-in dr profile; it must differ from aws_region."
+  type        = string
+  default     = "us-west-2"
+
+  validation {
+    condition     = can(regex("^[a-z]{2}(-[a-z]+)+-[0-9]$", var.dr_region))
+    error_message = "The dr_region must look like us-west-2."
+  }
+
+  validation {
+    condition     = var.db_profile != "dr" || var.dr_region != var.aws_region
+    error_message = "The dr_region must differ from aws_region when db_profile is dr."
+  }
+}
+
 variable "db_backup_retention_days" {
   description = "Automated backup retention (lab default: 1 day)."
   type        = number
@@ -329,6 +372,12 @@ variable "db_deletion_protection" {
 
 variable "db_skip_final_snapshot" {
   description = "Skip the final snapshot on destroy (lab default: true, no leftover snapshot)."
+  type        = bool
+  default     = true
+}
+
+variable "db_delete_automated_backups" {
+  description = "Delete automated backups on teardown (default true, so the lab can be cleaned up); set false only when intentionally retaining and paying for them."
   type        = bool
   default     = true
 }

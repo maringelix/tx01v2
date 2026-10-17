@@ -1,0 +1,24 @@
+# Backup freshness and failed recovery are independent signals. A completed backup is not a restore test.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: lab-continuity
+  namespace: monitoring
+spec:
+  groups:
+    - name: lab.continuity
+      rules:
+        - alert: LabBackupTooOldOrMissing
+          expr: (time() - velero_backup_last_successful_timestamp{schedule=~"lab-daily(-dr)?"} > 108000) or absent(velero_backup_last_successful_timestamp{schedule=~"lab-daily(-dr)?"})
+          for: 10m
+          labels:
+            severity: critical
+          annotations:
+            summary: No successful daily backup within 30 hours
+            description: Check the backup location and perform an isolated restore before accepting recovery readiness.
+        - alert: LabRestoreFailed
+          expr: increase(velero_restore_failed_total[1h]) > 0 or increase(velero_restore_partial_failure_total[1h]) > 0
+          labels:
+            severity: critical
+          annotations:
+            summary: Velero recovery did not complete successfully

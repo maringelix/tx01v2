@@ -1,6 +1,8 @@
 # Size small (LOCAL_SIZE=small, docs/LAB_LOCAL.md): less memory for Velero.
 configuration:
   extraEnvVars:
+    - name: HOME
+      value: /scratch
     - name: GOMEMLIMIT
       value: 160MiB
 resources:

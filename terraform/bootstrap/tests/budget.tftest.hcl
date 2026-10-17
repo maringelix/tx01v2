@@ -1,3 +1,8 @@
+mock_provider "aws" {
+  alias  = "dr"
+  source = "../tests/mocks"
+}
+
 # AWS Budgets cost guardrail and its input validation.
 
 mock_provider "aws" {

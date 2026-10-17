@@ -8,6 +8,15 @@ name: platform
 on:
   workflow_dispatch:
     inputs:
+      target:
+        description: Lab runtime
+        type: choice
+        options: [primary, secondary]
+        default: primary
+      activate_dns:
+        description: Activate secondary DNS only after fencing the primary and accepting recovery
+        type: boolean
+        default: false
       action:
         description: install or uninstall
         type: choice
@@ -39,7 +48,9 @@ jobs:
       contents: read
       id-token: write
     env:
-      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_REGION: ${{ inputs.target == 'secondary' && (vars.LAB_DR_REGION || 'us-west-2') || vars.AWS_REGION }}
+      TARGET: ${{ inputs.target }}
+      ACTIVATE_DNS: ${{ inputs.activate_dns }}
     steps:
       - name: Check repository variables
         env:
@@ -62,7 +73,7 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_APPLY_ROLE_ARN }}
           role-session-name: tx01v2-platform-${{ github.run_id }}
-          aws-region: ${{ vars.AWS_REGION }}
+          aws-region: ${{ env.AWS_REGION }}
           mask-aws-account-id: true
 
       - name: Install kubectl and helm (pinned, SHA256-verified)
@@ -72,10 +83,15 @@ jobs:
         env:
           ACTION: ${{ inputs.action }}
           PROFILE: ${{ inputs.profile }}
+          VELERO_REPOSITORY_PASSWORD: ${{ secrets.LAB_VELERO_REPOSITORY_PASSWORD }}
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: |
           case "$ACTION" in
-            install) bash platform/install.sh --profile "$PROFILE" --github-owner "$GITHUB_REPOSITORY_OWNER" ;;
-            uninstall) bash platform/uninstall.sh ;;
+            install)
+              args=(--target "$TARGET")
+              [[ "$ACTIVATE_DNS" != true ]] || args+=(--activate-dns)
+              bash platform/install.sh --profile "$PROFILE" --github-owner "$GITHUB_REPOSITORY_OWNER" "${args[@]}"
+              ;;
+            uninstall) bash platform/uninstall.sh --target "$TARGET" ;;
             *) echo "::error::unknown action: $ACTION"; exit 1 ;;
           esac

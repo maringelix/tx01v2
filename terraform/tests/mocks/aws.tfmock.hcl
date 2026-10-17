@@ -160,6 +160,7 @@ mock_resource "aws_secretsmanager_secret" {
 
 mock_resource "aws_db_instance" {
   defaults = {
+    arn         = "arn:aws:rds:us-east-1:123456789012:db:tx01v2-lab-postgres"
     address     = "tx01v2-lab-postgres.abcdefghijkl.us-east-1.rds.amazonaws.com"
     resource_id = "db-ABCDEFGHIJKLMNOPQRSTUVWXYZ"
   }

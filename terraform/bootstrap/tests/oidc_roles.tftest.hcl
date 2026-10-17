@@ -1,3 +1,8 @@
+mock_provider "aws" {
+  alias  = "dr"
+  source = "../tests/mocks"
+}
+
 # GitHub OIDC trust and the three contract roles (docs/CONTRATO.md).
 
 mock_provider "aws" {
@@ -160,10 +165,14 @@ run "role_permissions_follow_the_contract" {
 
   assert {
     condition = jsondecode(aws_iam_role_policy.plan_read_lab.policy).Statement[1] == {
-      Sid      = "DescribeTheVeleroBucket"
-      Effect   = "Allow"
-      Action   = ["s3:ListBucket", "s3:GetBucket*", "s3:GetAccelerateConfiguration", "s3:GetEncryptionConfiguration", "s3:GetLifecycleConfiguration", "s3:GetReplicationConfiguration"]
-      Resource = "arn:aws:s3:::tx01v2-lab-velero-123456789012-us-east-1"
+      Sid    = "DescribeTheVeleroBucket"
+      Effect = "Allow"
+      Action = ["s3:ListBucket", "s3:GetBucket*", "s3:GetAccelerateConfiguration", "s3:GetEncryptionConfiguration", "s3:GetLifecycleConfiguration", "s3:GetReplicationConfiguration"]
+      Resource = [
+        "arn:aws:s3:::tx01v2-lab-velero-123456789012-us-east-1",
+        "arn:aws:s3:::tx01v2-lab-dr-velero-123456789012-us-west-2",
+        "arn:aws:s3:::tx01v2-lab-recovery-123456789012-us-west-2",
+      ]
     }
     error_message = "The plan role reads the settings of the Velero bucket and no object of it or of any other bucket."
   }
@@ -185,8 +194,16 @@ run "role_permissions_follow_the_contract" {
   }
 
   assert {
-    condition = ([for s in jsondecode(aws_iam_role_policy.apply_services.policy).Statement : s.Resource if s.Sid == "ManageTheVeleroBucket"][0] == "arn:aws:s3:::tx01v2-lab-velero-123456789012-us-east-1" &&
-      [for s in jsondecode(aws_iam_role_policy.apply_services.policy).Statement : s.Resource if s.Sid == "ManageObjectsInTheVeleroBucket"][0] == "arn:aws:s3:::tx01v2-lab-velero-123456789012-us-east-1/*"
+    condition = ([for s in jsondecode(aws_iam_role_policy.apply_services.policy).Statement : s.Resource if s.Sid == "ManageTheVeleroBucket"][0] == [
+      "arn:aws:s3:::tx01v2-lab-velero-123456789012-us-east-1",
+      "arn:aws:s3:::tx01v2-lab-dr-velero-123456789012-us-west-2",
+      "arn:aws:s3:::tx01v2-lab-recovery-123456789012-us-west-2",
+      ] &&
+      [for s in jsondecode(aws_iam_role_policy.apply_services.policy).Statement : s.Resource if s.Sid == "ManageObjectsInTheVeleroBucket"][0] == [
+        "arn:aws:s3:::tx01v2-lab-velero-123456789012-us-east-1/*",
+        "arn:aws:s3:::tx01v2-lab-dr-velero-123456789012-us-west-2/*",
+        "arn:aws:s3:::tx01v2-lab-recovery-123456789012-us-west-2/*",
+      ]
     )
     error_message = "The apply role may manage S3 only in the lab's Velero bucket and its objects."
   }
@@ -282,14 +299,22 @@ run "role_permissions_follow_the_contract" {
         Resource = [
           "arn:aws:ecr:us-east-1:123456789012:repository/dx01v2/api",
           "arn:aws:ecr:us-east-1:123456789012:repository/dx01v2/web",
+          "arn:aws:ecr:us-west-2:123456789012:repository/dx01v2/api",
+          "arn:aws:ecr:us-west-2:123456789012:repository/dx01v2/web",
         ]
       },
-      { Sid = "DescribeLabCluster", Effect = "Allow", Action = "eks:DescribeCluster", Resource = "arn:aws:eks:us-east-1:123456789012:cluster/tx01v2-lab" },
+      { Sid = "DescribeLabCluster", Effect = "Allow", Action = "eks:DescribeCluster", Resource = [
+        "arn:aws:eks:us-east-1:123456789012:cluster/tx01v2-lab",
+        "arn:aws:eks:us-west-2:123456789012:cluster/tx01v2-lab-dr",
+      ] },
       {
-        Sid      = "ReadContractParameters"
-        Effect   = "Allow"
-        Action   = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
-        Resource = "arn:aws:ssm:us-east-1:123456789012:parameter/tx01v2/lab/*"
+        Sid    = "ReadContractParameters"
+        Effect = "Allow"
+        Action = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
+        Resource = [
+          "arn:aws:ssm:us-east-1:123456789012:parameter/tx01v2/lab/*",
+          "arn:aws:ssm:us-west-2:123456789012:parameter/tx01v2/lab-dr/*",
+        ]
       },
     ]
     error_message = "dx01v2-gha-deploy permissions must match the contract exactly."

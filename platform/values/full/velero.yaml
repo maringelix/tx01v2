@@ -7,10 +7,13 @@
 credentials:
   useSecret: false
   existingSecret: null
+# Kopia moves filesystem bytes to the regional S3 backup; only Velero may read kubelet mounts.
+deployNodeAgent: true
 serviceAccount:
   server:
     name: velero
 configuration:
+  defaultVolumesToFsBackup: true
   backupStorageLocation:
     - name: default
       provider: aws

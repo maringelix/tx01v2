@@ -75,6 +75,12 @@ de `main`); ele falha, em vez de pular, se o repositório não puder protegê-lo
 | `LAB_APP_DEPLOYER_PRINCIPAL_ARNS` | `["arn:aws:iam::<ACCOUNT_ID>:role/dx01v2-gha-deploy"]` | `TF_VAR_app_deployer_principal_arns` (lista JSON) | output `deploy_role_arn`; padrão `[]` |
 | `LAB_NODE_INSTANCE_TYPES` (só `full`) | `["t3.large","t3a.large"]` | `TF_VAR_node_instance_types` (lista JSON) | dimensionamento do R4.7 |
 | `LAB_NODE_DESIRED_SIZE` (só `full`) | `2` | `TF_VAR_node_desired_size` | dimensionamento do R4.7 |
+| `LAB_DB_PROFILE` (opcional) | `core`, `ha` ou `dr` | `TF_VAR_db_profile` | R9: HA Multi-AZ e PITR; `dr` replica backups |
+| `LAB_DR_REGION` (só `dr`) | `us-west-2` | `TF_VAR_dr_region` | destino diferente de `AWS_REGION` |
+| `LAB_DB_BACKUP_RETENTION_DAYS` (opcional) | `7` | `TF_VAR_db_backup_retention_days` | `ha`/`dr` usam no mínimo 7 dias |
+| `LAB_DB_DELETION_PROTECTION` (opcional) | `false` | `TF_VAR_db_deletion_protection` | `true` exige desativação por apply antes do destroy |
+| `LAB_DB_SKIP_FINAL_SNAPSHOT` (opcional) | `true` | `TF_VAR_db_skip_final_snapshot` | `false` deixa snapshot faturável |
+| `LAB_DB_DELETE_AUTOMATED_BACKUPS` (opcional) | `true` | `TF_VAR_db_delete_automated_backups` | `false` preserva backups faturáveis após destruir a instância |
 | `LAB_APP_DOMAIN_NAME` (**secret opcional**) | `app.example.org` | `TF_VAR_app_domain_name` | hostname do app; configure junto com a hosted zone existente |
 | `LAB_ROUTE53_PUBLIC_ZONE_ID` (**secret opcional**) | `Z0123456789ABC` | `TF_VAR_route53_public_zone_id` | ID da hosted zone pública Route53 que contém o hostname |
 
@@ -259,6 +265,12 @@ No `full`, o uninstall apaga primeiro as Applications do Argo CD para impedir qu
 o Ingress enquanto o controlador do ALB é removido. O Terraform destrói o bucket do Velero junto com
 o lab, inclusive os objetos de backup restantes (o módulo usa `force_destroy`). Guarde fora do lab
 qualquer dado que precise preservar.
+
+Para `LAB_DB_DELETION_PROTECTION=true`, planeje e aplique sua mudança para `false` antes do destroy.
+Snapshots finais e backups automatizados mantidos após a exclusão exigem inventário e limpeza
+explícitos. O perfil `dr` também cria uma chave KMS e backups replicados na segunda região; confira
+o estado desses recursos no teardown. O exercício e os limites estão em
+[docs/CONTINUIDADE.md](CONTINUIDADE.md).
 
 Não há transição suportada de `full` para `core`: destrua o lab e aplique-o de novo com as variáveis
 `LAB_NODE_*` removidas ou nos valores de `core`; instale então `profile=core`. Não desinstale apenas

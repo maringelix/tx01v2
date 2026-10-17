@@ -1358,6 +1358,10 @@ register_checks() {
   register static version-consistency check_version_consistency
   register static policy-terraform check_policy_terraform
   register static policy-identifiers check_policy_identifiers
+  register static volume-restore-wiring 'bash scripts/tests/volume-restore-wiring.sh'
+  register static backup-credentials 'bash scripts/tests/backup-credentials.sh'
+  register static regional-dns 'bash scripts/tests/regional-dns.sh'
+  register static region-target 'bash scripts/tests/region-target.sh'
   register static policy-workflows check_policy_workflows
   register static policy-scripts check_policy_scripts
   register static destroy-flow check_destroy_flow

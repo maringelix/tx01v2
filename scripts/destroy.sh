@@ -31,7 +31,7 @@ usage() {
 }
 
 main() {
-  local force_unlock="" exists rc=0 uninstalled=1
+  local force_unlock="" exists rc=0 uninstalled=1 primary_region dr_region target
   while (($# > 0)); do
     case "$1" in
       --force-unlock)
@@ -45,17 +45,31 @@ main() {
   require_cmd aws terraform
   require_aws_region
   [[ -n "${TF_STATE_BUCKET:-}" ]] || die "set TF_STATE_BUCKET to the state bucket of the bootstrap"
+  primary_region=$AWS_REGION
+  dr_region="${TF_VAR_dr_region:-us-west-2}"
+  [[ "$dr_region" =~ ^[a-z]{2}(-[a-z]+)+-[0-9]$ ]] || die 'invalid recovery region'
 
-  exists="$(aws eks list-clusters --query "contains(clusters, '$LAB_CLUSTER')" --output text)" || exists=unknown
-  if [[ "$exists" == False ]]; then
-    log "cluster $LAB_CLUSTER not found: nothing to uninstall"
-  else
-    bash "$REPO_ROOT/platform/uninstall.sh" || uninstalled=0
-  fi
-  if ((uninstalled == 0)) || [[ -n "$(controller_leftovers "$LAB_CLUSTER" 2>/dev/null)" ]]; then
-    log "warning: platform/uninstall.sh did not finish; deleting what the controller created through the AWS API"
-    delete_controller_resources "$LAB_CLUSTER" || rc=1
-  fi
+  for target in primary secondary; do
+    AWS_REGION=$primary_region
+    [[ "$target" != secondary ]] || AWS_REGION=$dr_region
+    export AWS_REGION
+    require_aws_region
+    select_lab_target "$target"
+    uninstalled=1
+    exists="$(aws eks list-clusters --query "contains(clusters, '$LAB_CLUSTER')" --output text)" || exists=unknown
+    if [[ "$exists" == False ]]; then
+      log "cluster $LAB_CLUSTER not found: nothing to uninstall"
+    else
+      bash "$REPO_ROOT/platform/uninstall.sh" --target "$target" || uninstalled=0
+    fi
+    if ((uninstalled == 0)) || [[ -n "$(controller_leftovers "$LAB_CLUSTER" 2>/dev/null)" ]]; then
+      log "warning: platform/uninstall.sh did not finish; deleting what the controller created through the AWS API"
+      delete_controller_resources "$LAB_CLUSTER" || rc=1
+    fi
+  done
+  export AWS_REGION=$primary_region
+  require_aws_region
+  select_lab_target primary
 
   terraform -chdir="$TF_DIR" init -input=false -lockfile=readonly \
     -backend-config="bucket=$TF_STATE_BUCKET" -backend-config="region=$AWS_REGION" || rc=1
@@ -66,6 +80,7 @@ main() {
 
   # The leftover check runs after a failed destroy too: it says what still costs money.
   bash "$REPO_ROOT/scripts/leftovers.sh" --retry-for 900 || rc=1
+  AWS_REGION=$dr_region bash "$REPO_ROOT/scripts/leftovers.sh" --target secondary --retry-for 900 || rc=1
   return "$rc"
 }
 

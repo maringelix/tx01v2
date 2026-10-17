@@ -1,5 +1,11 @@
 # Inputs are validated by the calling root (terraform/envs/lab); this module trusts them.
 
+variable "secrets_name_prefix" {
+  description = "Optional credential name prefix, for native Secrets Manager replicas that retain the primary name."
+  type        = string
+  default     = null
+}
+
 variable "name" {
   description = "Cluster name and name prefix (tx01v2-lab)."
   type        = string

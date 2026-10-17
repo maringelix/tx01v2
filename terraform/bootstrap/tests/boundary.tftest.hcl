@@ -1,3 +1,8 @@
+mock_provider "aws" {
+  alias  = "dr"
+  source = "../tests/mocks"
+}
+
 # The permissions boundary of the lab roles and the conditions that make the apply role use it
 # (docs/GUARDRAILS.md, SEC-11).
 
@@ -40,11 +45,19 @@ run "the_boundary_removes_iam_and_account_changes" {
 
   assert {
     condition = ([for s in jsondecode(aws_iam_policy.lab_boundary.policy).Statement : s if s.Sid == "VeleroBucketOnly"][0] == {
-      Sid      = "VeleroBucketOnly"
-      Effect   = "Allow"
-      Action   = ["s3:ListBucket", "s3:GetBucketLocation"]
-      Resource = "arn:aws:s3:::tx01v2-lab-velero-123456789012-us-east-1"
-    } && [for s in jsondecode(aws_iam_policy.lab_boundary.policy).Statement : s if s.Sid == "VeleroObjectsOnly"][0].Resource == "arn:aws:s3:::tx01v2-lab-velero-123456789012-us-east-1/*")
+      Sid    = "VeleroBucketOnly"
+      Effect = "Allow"
+      Action = ["s3:ListBucket", "s3:GetBucketLocation"]
+      Resource = [
+        "arn:aws:s3:::tx01v2-lab-velero-123456789012-us-east-1",
+        "arn:aws:s3:::tx01v2-lab-dr-velero-123456789012-us-west-2",
+        "arn:aws:s3:::tx01v2-lab-recovery-123456789012-us-west-2",
+      ]
+      } && [for s in jsondecode(aws_iam_policy.lab_boundary.policy).Statement : s if s.Sid == "VeleroObjectsOnly"][0].Resource == [
+      "arn:aws:s3:::tx01v2-lab-velero-123456789012-us-east-1/*",
+      "arn:aws:s3:::tx01v2-lab-dr-velero-123456789012-us-west-2/*",
+      "arn:aws:s3:::tx01v2-lab-recovery-123456789012-us-west-2/*",
+    ])
     error_message = "The permissions boundary must restrict Velero S3 access to its bucket and objects."
   }
 
