@@ -15,7 +15,8 @@ NODE_PATH=/var/local/tx01v2-velero-probe
 CREATED=0
 [[ "$(docker inspect "$NODE" --format '{{index .Config.Labels "io.x-k8s.kind.cluster"}}')" == "$LOCAL_CLUSTER" ]] ||
   die 'PVC drill: node container does not belong to the local lab'
-if kubectl get namespace "$NS" >/dev/null 2>&1 || kubectl get pv "$PV" "$RECOVERY_PV" --ignore-not-found -o name | grep -q .; then
+if kubectl get namespace "$NS" >/dev/null 2>&1 || kubectl get pv "$PV" "$RECOVERY_PV" --ignore-not-found -o name | grep -q . ||
+  kubectl -n velero get configmap "$NS-rebind" >/dev/null 2>&1; then
   die 'PVC drill: probe namespace or PV already exists; refusing to adopt it'
 fi
 docker exec "$NODE" test ! -e "$NODE_PATH" || die 'PVC drill: backing path already exists'
@@ -37,6 +38,7 @@ cleanup() {
     kubectl delete namespace "$NS" --ignore-not-found --wait=true --timeout=120s >/dev/null || rc=1
     kubectl delete pv "$PV" "$RECOVERY_PV" --ignore-not-found --wait=true --timeout=60s >/dev/null || rc=1
     kubectl -n velero delete backup,restore "$NS" --ignore-not-found >/dev/null || rc=1
+    kubectl -n velero delete configmap "$NS-rebind" --ignore-not-found >/dev/null || rc=1
     docker exec "$NODE" sh -ec '
       case "$1" in /var/local/tx01v2-velero-probe) ;; *) exit 1 ;; esac
       test "$(cat "$1/.owned-by-lab")" = "$2"
@@ -184,6 +186,24 @@ docker exec "$NODE" sh -ec '
 # Simulate a replacement disk explicitly, with a different PV name and no original bytes.
 create_empty_pv "$RECOVERY_PV"
 kubectl apply -f - >/dev/null <<EOF
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: $NS-rebind
+  namespace: velero
+data:
+  resource-modifier.yaml: |
+    version: v1
+    resourceModifierRules:
+      - conditions:
+          groupResource: persistentvolumeclaims
+          resourceNameRegex: "^data$"
+          namespaces: [$NS]
+        patches:
+          - operation: replace
+            path: /spec/volumeName
+            value: "$RECOVERY_PV"
+---
 apiVersion: velero.io/v1
 kind: Restore
 metadata:
@@ -193,6 +213,9 @@ spec:
   backupName: $NS
   restorePVs: false
   excludedResources: [persistentvolumes]
+  resourceModifier:
+    kind: ConfigMap
+    name: $NS-rebind
 EOF
 wait_phase restore
 kubectl -n "$NS" wait pod/holder --for=condition=Ready --timeout=180s >/dev/null
