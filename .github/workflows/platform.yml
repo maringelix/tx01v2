@@ -88,9 +88,9 @@ jobs:
         run: |
           case "$ACTION" in
             install)
-              args=(--profile "$PROFILE" --github-owner "$GITHUB_REPOSITORY_OWNER" --target "$TARGET")
+              args=(--target "$TARGET")
               [[ "$ACTIVATE_DNS" != true ]] || args+=(--activate-dns)
-              bash platform/install.sh "${args[@]}"
+              bash platform/install.sh --profile "$PROFILE" --github-owner "$GITHUB_REPOSITORY_OWNER" "${args[@]}"
               ;;
             uninstall) bash platform/uninstall.sh --target "$TARGET" ;;
             *) echo "::error::unknown action: $ACTION"; exit 1 ;;

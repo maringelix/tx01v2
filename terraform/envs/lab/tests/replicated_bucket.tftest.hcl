@@ -7,7 +7,6 @@ run "recovery_bucket_and_replication_are_scoped" {
   command = apply
   module { source = "../../modules/replicated-bucket" }
   variables {
-    source_bucket_id         = "tx01v2-lab-velero-123456789012-us-east-1"
     source_bucket_arn        = "arn:aws:s3:::tx01v2-lab-velero-123456789012-us-east-1"
     destination_name         = "tx01v2-lab-recovery-123456789012-us-west-2"
     source_kms_key_arn       = "arn:aws:kms:us-east-1:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab"
@@ -24,7 +23,6 @@ run "recovery_bucket_and_replication_are_scoped" {
       aws_s3_bucket.recovery.force_destroy == false &&
       aws_s3_bucket_public_access_block.recovery.block_public_policy &&
       aws_s3_bucket_versioning.recovery.versioning_configuration[0].status == "Enabled" &&
-      aws_s3_bucket_replication_configuration.this.rule[0].delete_marker_replication[0].status == "Disabled" &&
       aws_iam_role.replication.permissions_boundary == var.permissions_boundary_arn
     )
     error_message = "Recovery must survive deletion, keep versions and not replicate delete markers."

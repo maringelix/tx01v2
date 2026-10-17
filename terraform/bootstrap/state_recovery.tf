@@ -1,8 +1,7 @@
 module "state_recovery" {
   count              = var.enable_state_dr ? 1 : 0
   source             = "../modules/replicated-bucket"
-  providers          = { aws = aws, aws.dr = aws.dr }
-  source_bucket_id   = aws_s3_bucket.state.id
+  providers          = { aws = aws.dr }
   source_bucket_arn  = aws_s3_bucket.state.arn
   destination_name   = "${local.project}-tfstate-dr-${local.account_id}-${var.dr_region}"
   source_region      = var.aws_region

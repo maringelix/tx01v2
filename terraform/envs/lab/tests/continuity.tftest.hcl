@@ -129,6 +129,10 @@ run "dr_has_a_private_independent_runtime_and_current_credentials" {
       aws_ssm_parameter.contract_dr["db/endpoint"].insecure_value == aws_db_instance.dr[0].address &&
       aws_ssm_parameter.contract_dr["db/secret-name"].insecure_value == module.rds.secret_name &&
       module.velero_dr[0].bucket_name == "tx01v2-lab-dr-velero-123456789012-us-west-2" &&
+      output.backup_recovery_bucket == "tx01v2-lab-recovery-123456789012-us-west-2" &&
+      one(aws_s3_bucket_replication_configuration.backup_recovery[0].rule).delete_marker_replication[0].status == "Disabled" &&
+      one(aws_s3_bucket_replication_configuration.backup_recovery[0].rule).destination[0].encryption_configuration[0].replica_kms_key_id == module.kms_dr[0].key_arn &&
+      aws_cloudwatch_metric_alarm.replica_lag[0].metric_name == "ReplicaLag" &&
       output.dr_contract_prefix == "/tx01v2/lab-dr"
     )
     error_message = "DR must have its own network/EKS/registry/KMS/database/contract, private DB access and inherited current credentials."

@@ -99,7 +99,7 @@ run "state_recovery_is_opt_in_versioned_and_remote" {
   command = apply
   variables { enable_state_dr = true }
   assert {
-    condition     = output.state_recovery_bucket == "tx01v2-tfstate-dr-123456789012-us-west-2"
+    condition     = output.state_recovery_bucket == "tx01v2-tfstate-dr-123456789012-us-west-2" && one(aws_s3_bucket_replication_configuration.state_recovery[0].rule).delete_marker_replication[0].status == "Disabled"
     error_message = "The enabled state recovery bucket must be in the selected second region."
   }
 }

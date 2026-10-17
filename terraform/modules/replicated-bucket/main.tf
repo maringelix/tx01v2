@@ -1,12 +1,10 @@
 # Cross-region, versioned recovery copy. The replication service role can read one source and
 # replicate into one destination; deletion markers are not propagated.
 resource "aws_s3_bucket" "recovery" {
-  provider      = aws.dr
   bucket        = var.destination_name
   force_destroy = false
 }
 resource "aws_s3_bucket_public_access_block" "recovery" {
-  provider                = aws.dr
   bucket                  = aws_s3_bucket.recovery.id
   block_public_acls       = true
   block_public_policy     = true
@@ -14,18 +12,15 @@ resource "aws_s3_bucket_public_access_block" "recovery" {
   restrict_public_buckets = true
 }
 resource "aws_s3_bucket_ownership_controls" "recovery" {
-  provider = aws.dr
-  bucket   = aws_s3_bucket.recovery.id
+  bucket = aws_s3_bucket.recovery.id
   rule { object_ownership = "BucketOwnerEnforced" }
 }
 resource "aws_s3_bucket_versioning" "recovery" {
-  provider = aws.dr
-  bucket   = aws_s3_bucket.recovery.id
+  bucket = aws_s3_bucket.recovery.id
   versioning_configuration { status = "Enabled" }
 }
 resource "aws_s3_bucket_server_side_encryption_configuration" "recovery" {
-  provider = aws.dr
-  bucket   = aws_s3_bucket.recovery.id
+  bucket = aws_s3_bucket.recovery.id
   rule {
     bucket_key_enabled = var.destination_kms_key_arn != null
     apply_server_side_encryption_by_default {
@@ -35,7 +30,6 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "recovery" {
   }
 }
 resource "aws_s3_bucket_lifecycle_configuration" "recovery" {
-  provider   = aws.dr
   bucket     = aws_s3_bucket.recovery.id
   depends_on = [aws_s3_bucket_versioning.recovery]
   rule {
@@ -47,8 +41,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "recovery" {
   }
 }
 resource "aws_s3_bucket_policy" "recovery" {
-  provider = aws.dr
-  bucket   = aws_s3_bucket.recovery.id
+  bucket = aws_s3_bucket.recovery.id
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
@@ -107,31 +100,6 @@ resource "aws_iam_role_policy" "replication" {
       }
     ])
   })
-}
-resource "aws_s3_bucket_replication_configuration" "this" {
-  bucket     = var.source_bucket_id
-  role       = aws_iam_role.replication.arn
-  depends_on = [aws_iam_role_policy.replication, aws_s3_bucket_versioning.recovery]
-  rule {
-    id     = "regional-recovery"
-    status = "Enabled"
-    filter {}
-    delete_marker_replication { status = "Disabled" }
-    dynamic "source_selection_criteria" {
-      for_each = var.source_kms_key_arn == null ? [] : [1]
-      content {
-        sse_kms_encrypted_objects { status = "Enabled" }
-      }
-    }
-    destination {
-      bucket        = aws_s3_bucket.recovery.arn
-      storage_class = "STANDARD"
-      dynamic "encryption_configuration" {
-        for_each = var.destination_kms_key_arn == null ? [] : [1]
-        content { replica_kms_key_id = var.destination_kms_key_arn }
-      }
-    }
-  }
 }
 output "bucket_name" { value = aws_s3_bucket.recovery.bucket }
 output "bucket_arn" { value = aws_s3_bucket.recovery.arn }

@@ -1,8 +1,7 @@
 module "backup_recovery" {
   count                    = var.db_profile == "dr" ? 1 : 0
   source                   = "../../modules/replicated-bucket"
-  providers                = { aws = aws, aws.dr = aws.dr }
-  source_bucket_id         = module.velero.bucket_name
+  providers                = { aws = aws.dr }
   source_bucket_arn        = module.velero.bucket_arn
   source_kms_key_arn       = module.kms.key_arn
   destination_name         = "${local.name}-recovery-${data.aws_caller_identity.current.account_id}-${var.dr_region}"
