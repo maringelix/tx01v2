@@ -10,6 +10,8 @@ WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
 finops_load_pins
 finops_pricing_values local docker "$WORK_DIR/values.json"
+finops_external_rules local docker "$WORK_DIR/external.json"
+jq -e '.spec.groups[0].rules | length == 9' "$WORK_DIR/external.json" >/dev/null
 jq -e '.opencost.customPricing.costModel.CPU == "0.01"' "$WORK_DIR/values.json" >/dev/null
 if (FINOPS_PRICING_FILE="$REPO_ROOT/platform/finops/pricing/local.json" finops_pricing_values gcp us-central1 "$WORK_DIR/bad.json") 2>/dev/null; then
   die 'wrong cloud/region rates were accepted'
@@ -20,7 +22,7 @@ jq -e '(.resources | keys | length) == 2 and .resources.fixture_compute == null'
 jq -n --arg date "$(date -u +%F)" \
   '{cloud:"gcp",region:"us-central1",currency:"USD",source:"https://opencost.io/docs/",asOf:$date,mode:"estimate",
     resources:{fixture_compute:0.1,fixture_database:0.2},
-    externalHourly:{backup:0.01,dr:0.02,egress:0.03,loadBalancer:0.04,nat:0.05,storage:0.06,waf:0.07}}' >"$WORK_DIR/pricing.json"
+    externalHourly:{backup:0.01,controlPlane:0,database:0,dr:0.02,egress:0.03,loadBalancer:0.04,nat:0.05,storage:0.06,waf:0.07}}' >"$WORK_DIR/pricing.json"
 args=(--cloud gcp --region us-central1 --plan "$WORK_DIR/plan.json" --pricing "$WORK_DIR/pricing.json"
   --hours 2 --expires "$(date -u -d '+2 hours' +%FT%TZ)" --out "$WORK_DIR/report.json")
 bash "$REPO_ROOT/scripts/cost-plan.sh" "${args[@]}" --budget 2 >/dev/null

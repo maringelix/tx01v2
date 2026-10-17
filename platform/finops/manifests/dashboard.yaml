@@ -13,10 +13,151 @@ data:
       "schemaVersion": 39,
       "version": 1,
       "refresh": "30s",
-      "time": {"from": "now-1h", "to": "now"},
+      "time": {
+        "from": "now-1h",
+        "to": "now"
+      },
       "panels": [
-        {"id":1,"type":"timeseries","title":"Allocated CPU cost by namespace (USD/h)","datasource":{"type":"prometheus","uid":"prometheus"},"targets":[{"expr":"sum by (namespace) (container_cpu_allocation * on(node) group_left node_cpu_hourly_cost)","legendFormat":"{{namespace}}"}],"gridPos":{"h":8,"w":12,"x":0,"y":0}},
-        {"id":2,"type":"timeseries","title":"Allocated memory cost by namespace (USD/h)","datasource":{"type":"prometheus","uid":"prometheus"},"targets":[{"expr":"sum by (namespace) (container_memory_allocation_bytes / 1073741824 * on(node) group_left node_ram_hourly_cost)","legendFormat":"{{namespace}}"}],"gridPos":{"h":8,"w":12,"x":12,"y":0}},
-        {"id":3,"type":"text","title":"Scope","options":{"mode":"markdown","content":"Configured regional rates estimate allocation. Include idle/shared capacity and external database, network, backup and control-plane costs. Reconcile provider invoices separately; credits and discounts are not assumed."},"gridPos":{"h":4,"w":24,"x":0,"y":8}}
+        {
+          "id": 1,
+          "type": "timeseries",
+          "title": "Allocated CPU cost by namespace (USD/h)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "expr": "sum by (namespace) (container_cpu_allocation * on(node) group_left node_cpu_hourly_cost)",
+              "legendFormat": "{{namespace}}"
+            }
+          ],
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "id": 2,
+          "type": "timeseries",
+          "title": "Allocated memory cost by namespace (USD/h)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "expr": "sum by (namespace) (container_memory_allocation_bytes / 1073741824 * on(node) group_left node_ram_hourly_cost)",
+              "legendFormat": "{{namespace}}"
+            }
+          ],
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 0
+          }
+        },
+        {
+          "id": 3,
+          "type": "text",
+          "title": "Scope",
+          "options": {
+            "mode": "markdown",
+            "content": "Configured regional rates estimate allocation. Include idle/shared capacity and external database, network, backup and control-plane costs. Reconcile provider invoices separately; credits and discounts are not assumed."
+          },
+          "gridPos": {
+            "h": 4,
+            "w": 24,
+            "x": 0,
+            "y": 32
+          }
+        },
+        {
+          "id": 4,
+          "type": "timeseries",
+          "title": "Configured external services (USD/h)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "expr": "sum by (category) (lab_external_hourly_estimate)",
+              "legendFormat": "{{category}}{{namespace}}{{label_cost_lab_owner}}{{label_cost_lab_environment}}"
+            }
+          ],
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 8
+          }
+        },
+        {
+          "id": 5,
+          "type": "timeseries",
+          "title": "Estimated idle capacity (USD/h)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "expr": "clamp_min(sum(node_total_hourly_cost) - sum(container_cpu_allocation * on(node) group_left node_cpu_hourly_cost) - sum(container_memory_allocation_bytes / 1073741824 * on(node) group_left node_ram_hourly_cost), 0)",
+              "legendFormat": "{{category}}{{namespace}}{{label_cost_lab_owner}}{{label_cost_lab_environment}}"
+            }
+          ],
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 8
+          }
+        },
+        {
+          "id": 6,
+          "type": "timeseries",
+          "title": "CPU showback by owner / environment (USD/h)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "expr": "sum by (label_cost_lab_owner, label_cost_lab_environment) ((container_cpu_allocation * on(node) group_left node_cpu_hourly_cost) * on(namespace,pod) group_left(label_cost_lab_owner,label_cost_lab_environment) max by(namespace,pod,label_cost_lab_owner,label_cost_lab_environment) (kube_pod_labels{label_cost_lab_owner!=\"\"}))",
+              "legendFormat": "{{category}}{{namespace}}{{label_cost_lab_owner}}{{label_cost_lab_environment}}"
+            }
+          ],
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 16
+          }
+        },
+        {
+          "id": 7,
+          "type": "timeseries",
+          "title": "Shared platform CPU allocation (USD/h)",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "targets": [
+            {
+              "expr": "sum by (namespace) (container_cpu_allocation{namespace=~\"monitoring|finops|kube-system|observability|istio-system|argocd\"} * on(node) group_left node_cpu_hourly_cost)",
+              "legendFormat": "{{category}}{{namespace}}{{label_cost_lab_owner}}{{label_cost_lab_environment}}"
+            }
+          ],
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 16
+          }
+        }
       ]
     }

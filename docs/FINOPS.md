@@ -89,7 +89,7 @@ A planilha é deliberadamente incompleta: preencha todos os tipos com custo por
 recurso/hora na MAIOR configuração prevista (HA/DR, nós máximos, tamanhos de DB).
 Use zero somente para tipos sem cobrança ou já incluídos, registrando a justificativa.
 O gate recusa qualquer tipo sem preço. Também exige as categorias externas backup,
-dr, egress, loadBalancer, nat, storage e waf, inclusive zero justificado para evitar
+controlPlane, database, dr, egress, loadBalancer, nat, storage e waf, inclusive zero justificado para evitar
 dupla contagem. Isso cobre custos dos controladores fora do Terraform.
 As tarifas de CPU/RAM/disco do OpenCost e o inventário do plano são complementares:
 não some os dois relatórios como se fossem faturas independentes.
@@ -117,3 +117,15 @@ Leia [OpenCost Helm](https://opencost.io/docs/installation/helm/),
 [API de alocação](https://opencost.io/docs/integrations/api-examples/),
 [Cluster Autoscaler EKS](https://docs.aws.amazon.com/eks/latest/best-practices/cas.html)
 e [Spot no EKS](https://docs.aws.amazon.com/eks/latest/userguide/managed-node-groups.html).
+
+### Custo externo, idle e owner no dashboard
+
+O arquivo de tarifas tamb?m exige externalHourly com backup, controlPlane, database,
+dr, egress, loadBalancer, nat, storage e waf (USD/h). Zero exige justificativa de
+inclus?o/aus?ncia; evite contar o mesmo custo no recurso Terraform e na categoria
+externa. O instalador cria a recording rule lab_external_hourly_estimate; o dashboard
+mostra as categorias, owner/ambiente, infraestrutura compartilhada e idle estimado.
+Kube-state-metrics exp?e somente as duas labels de showback adicionais. A simula??o
+local tem externos zero; tarifas cloud s?o preenchidas pelo dono do fork.
+
+LimitRange preenche limites ausentes antes da quota (CPU 1, RAM 512Mi por container; requests padr?o 10m/64Mi). Requests/limits expl?citos s?o preservados, incluindo recursos dos proxies. A quota continua bloqueante.

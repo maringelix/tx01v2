@@ -35,11 +35,12 @@ jq -e --arg cloud "$CLOUD" --arg region "$REGION" '
   .cloud == $cloud and .region == $region and .currency == "USD" and
   .mode == "estimate" and (.source | startswith("https://")) and
   (.resources | type == "object") and
-  (.externalHourly | keys | sort) == (["backup","dr","egress","loadBalancer","nat","storage","waf"] | sort) and
+  (.externalHourly | keys | sort) == (["backup","controlPlane","database","dr","egress","loadBalancer","nat","storage","waf"] | sort) and
   (.externalHourly | all(.[]; type == "number" and . >= 0)) and
   (.resources | all(.[]; type == "number" and . >= 0))
 ' "$PRICING" >/dev/null || die 'invalid reviewed regional estimate or missing external cost categories'
 ASOF="$(jq -er '.asOf | select(test("^[0-9]{4}-[0-9]{2}-[0-9]{2}$"))' "$PRICING")"
+[[ "$(date -u -d "$ASOF" +%s)" -le "$NOW" ]] || die 'future pricing review date'
 AGE=$(( (NOW - $(date -u -d "$ASOF" +%s)) / 86400 ))
 ((AGE >= 0 && AGE <= 31)) || die 'cost rates must be reviewed within 31 days'
 jq -e --slurpfile inventory "$WORK_DIR/inventory.json" \

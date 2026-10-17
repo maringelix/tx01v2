@@ -25,10 +25,14 @@ finops_pricing_values() {
     .cloud == $cloud and .region == $region and .currency == "USD" and
     (.source | type == "string" and startswith("https://")) and
     ([.cpuPerCoreHour,.ramPerGiBHour,.storagePerGiBHour] | all(.[]; type == "string" and test("^[0-9]+(\\.[0-9]+)?$") and tonumber > 0)) and
-    (.cpuPerCoreHour | tonumber) <= 1 and (.ramPerGiBHour | tonumber) <= 0.1
+    (.cpuPerCoreHour | tonumber) <= 1 and (.ramPerGiBHour | tonumber) <= 0.1 and
+    (.externalHourly | keys | sort) == (["backup","controlPlane","database","dr","egress","loadBalancer","nat","storage","waf"] | sort) and
+    (.externalHourly | all(.[]; type == "number" and . >= 0))
   ' "$file" >/dev/null || die 'FinOps pricing has invalid units, region, currency, source or bounds'
   if [[ "$cloud" != local ]]; then
+    jq -e '.mode == "estimate"' "$file" >/dev/null || die 'cloud pricing must be a reviewed estimate'
     asof="$(jq -er '.asOf | select(test("^[0-9]{4}-[0-9]{2}-[0-9]{2}$"))' "$file")"
+    [[ "$(date -u -d "$asof" +%s)" -le "$(date -u +%s)" ]] || die 'future pricing review date'
     age=$(( ($(date -u +%s) - $(date -u -d "$asof" +%s)) / 86400 ))
     ((age >= 0 && age <= 31)) || die 'FinOps regional rates must be reviewed within 31 days'
   fi
@@ -37,6 +41,17 @@ finops_pricing_values() {
     spotCPU:.cpuPerCoreHour,spotRAM:.ramPerGiBHour
   }}}}' "$file" >"$out"
   # Conservative Spot accounting: no unmeasured discount is assumed.
+}
+finops_external_rules() {
+  local cloud=$1 region=$2 out=$3 file="${FINOPS_PRICING_FILE:-}"
+  [[ "$cloud" != local ]] || file="$REPO_ROOT/platform/finops/pricing/local.json"
+  jq --arg cloud "$cloud" --arg region "$region" '
+    {apiVersion:"monitoring.coreos.com/v1",kind:"PrometheusRule",
+     metadata:{name:"lab-finops-external",namespace:"monitoring"},
+     spec:{groups:[{name:"lab-finops-estimates",rules:[.externalHourly | to_entries[] |
+       {record:"lab_external_hourly_estimate",expr:("vector(" + (.value|tostring) + ")"),
+        labels:{category:.key,cloud:$cloud,region:$region,currency:"USD",owner:"learner",environment:"lab"}}]}]}}
+  ' "$file" >"$out"
 }
 install_finops_stack() {
   local cloud=$1 cluster=$2 region=$3 app=$4 chart pricing="$WORK_DIR/finops-pricing.json"
@@ -59,5 +74,7 @@ install_finops_stack() {
     --set-string "opencost.exporter.defaultClusterId=$cluster" \
     --wait=watcher --rollback-on-failure --timeout 5m >/dev/null
   sed "s/__APP__/$app/g" "$REPO_ROOT/platform/finops/manifests/app-policy.yaml" | kubectl apply -f - >/dev/null
+  finops_external_rules "$cloud" "$region" "$WORK_DIR/external-costs.json"
+  kubectl apply -f "$WORK_DIR/external-costs.json" >/dev/null
   kubectl apply -f "$REPO_ROOT/platform/finops/manifests/dashboard.yaml" >/dev/null
 }

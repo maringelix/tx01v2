@@ -17,5 +17,5 @@ jq --arg cloud "$1" --arg region "$2" --arg source "$source_url" --arg date "$(d
    description:"Fill current regional rates. Each resource type rate must cover its peak planned size; zero requires an included/non-billed justification.",
    cpuPerCoreHour:null,ramPerGiBHour:null,storagePerGiBHour:null,
    resources:map({key:.,value:null})|from_entries,
-   externalHourly:{backup:null,dr:null,egress:null,loadBalancer:null,nat:null,storage:null,waf:null}}
+   externalHourly:{backup:null,controlPlane:null,database:null,dr:null,egress:null,loadBalancer:null,nat:null,storage:null,waf:null}}
 ' "$3" >"$4"
