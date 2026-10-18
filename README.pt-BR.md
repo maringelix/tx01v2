@@ -1,5 +1,9 @@
 # tx01v2
 
+As [correções de prontidão AWS](docs/RUNBOOK.md#correções-de-prontidão-aws) incluem regressões
+offline de IAM, RBAC do deploy e modo de admission do Kyverno. Elas continuam com status
+`not run in the cloud (v2)`; CI verde não substitui a primeira homologação na conta real.
+
 Metade de infraestrutura AWS de um lab de DevOps: Terraform, EKS, RDS, ALB + WAF e GitHub Actions com OIDC.
 
 [![ci](https://github.com/maringelix/tx01v2/actions/workflows/ci.yml/badge.svg)](https://github.com/maringelix/tx01v2/actions/workflows/ci.yml)

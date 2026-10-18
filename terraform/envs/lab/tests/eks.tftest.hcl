@@ -137,6 +137,15 @@ run "nodes" {
 
   assert {
     condition = (
+      aws_iam_role.node.permissions_boundary == var.permissions_boundary_arn &&
+      aws_iam_role_policy_attachment.node["AmazonEKSWorkerNodePolicy"].role == aws_iam_role.node.name &&
+      aws_iam_role_policy_attachment.node["AmazonEKSWorkerNodePolicy"].policy_arn == "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
+    )
+    error_message = "Pod Identity requires both the node's WorkerNodePolicy grant and the matching EKS Auth boundary allowance tested by bootstrap/cloud_readiness."
+  }
+
+  assert {
+    condition = (
       aws_launch_template.node.metadata_options[0].http_tokens == "required" &&
       aws_launch_template.node.metadata_options[0].http_put_response_hop_limit == 1 &&
       aws_launch_template.node.metadata_options[0].http_endpoint == "enabled"

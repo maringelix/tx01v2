@@ -8,7 +8,7 @@ metadata:
   name: dx01v2-release-signatures
 spec:
   evaluation:
-    mode: JSON
+    mode: Kubernetes
     background:
       enabled: false
   webhookConfiguration:

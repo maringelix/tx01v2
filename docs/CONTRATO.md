@@ -70,8 +70,11 @@ Regras da Role `dx01v2-deployer` (namespace `dx01v2`), presentes nos perfis `cor
 - `external-secrets.io`: externalsecrets → CRUD completo
 
 No perfil `full`, uma Role aditiva `dx01v2-deployer-full` permite `HTTPRoute`, `DestinationRule` e
-`AuthorizationPolicy` apenas no namespace `dx01v2`. O AppProject do Argo CD libera os mesmos tipos
-somente nesse perfil; `platform/uninstall.sh` remove a Role aditiva.
+`AuthorizationPolicy` apenas no namespace `dx01v2`, além de `get` somente do Gateway
+`dx01v2-waypoint` usado pelo preflight. A ClusterRole `dx01v2-deployer-namespace-read` permite
+apenas `get` do Namespace `dx01v2` para ler seus labels ambient; ela não lista nem altera
+namespaces. Os bindings apontam somente para `dx01v2-deployers`. O AppProject do Argo CD libera
+os tipos do app somente nesse perfil; `platform/uninstall.sh` remove todo esse RBAC aditivo.
 
 ## Confiança OIDC do GitHub
 
@@ -94,8 +97,15 @@ a nomes `tx01v2-*` e exige o boundary. S3 só cobre o state e o bucket Velero. R
 mesmas famílias de serviço, restringe S3 ao bucket Velero e Route53 à zona configurada, e corta IAM,
 organização e APIs da conta.
 
+A boundary permite separadamente `eks-auth:AssumeRoleForPodIdentity` somente para os clusters
+primário e DR: a API EKS Auth não faz parte de `eks:*`. A role dos nodes continua com
+`AmazonEKSWorkerNodePolicy`, e as roles dos Pods continuam com as policies específicas de cada
+componente. A única criação IAM permitida a um workload é a service-linked role padrão do ELB,
+no ARN exato da própria conta e com condição do serviço ELB, necessária ao primeiro ALB.
+
 Permissões de `dx01v2-gha-deploy`: `ecr:GetAuthorizationToken` em `*`; ações de push/pull apenas nos
-ARNs dos dois repositórios ECR; `eks:DescribeCluster` no ARN do cluster; `ssm:GetParameter`,
+ARNs dos dois repositórios ECR, incluindo `ecr:DescribeImages` para resolver o digest promovido;
+`eks:DescribeCluster` no ARN do cluster; `ssm:GetParameter`,
 `ssm:GetParameters`, `ssm:GetParametersByPath` em `parameter/tx01v2/lab/*`. Acesso Kubernetes: access
 entry do EKS (tipo `STANDARD`, `kubernetes_groups = ["dx01v2-deployers"]`) criada pelo root do lab
 para cada ARN em `app_deployer_principal_arns`.

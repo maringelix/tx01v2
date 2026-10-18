@@ -1392,6 +1392,7 @@ register_checks() {
   register static helm-template-full check_helm_template_full
   register static platform-sizing check_platform_sizing
   register static image-admission-policy check_image_admission_policy
+  register static cloud-readiness 'bash scripts/tests/cloud-readiness.sh'
   register static full-install-order check_full_install_order
   register static kubeconform-local check_kubeconform_local
   register static acme-renewal-fixture check_acme_renewal_fixture

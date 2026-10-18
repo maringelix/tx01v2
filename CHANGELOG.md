@@ -9,6 +9,21 @@ All notable changes to this project are documented here. The format follows
 - R9: complete the independent AWS recovery region, current-secret replication, contract v7,
   encrypted/versioned backup replication and optional state copy; fence DNS writers and monitor recovery.
 
+### Fixed
+
+- Correct cloud-only AWS authorization gaps found after the 22-PR delivery: let the bounded node
+  identity use `eks-auth:AssumeRoleForPodIdentity` only for the two lab clusters; permit the exact
+  S3 reads of AWS provider 6.68.0 and version enumeration on the same lab backup buckets; allow the
+  deploy role to resolve ECR digests in the existing app repositories. No AWS action was executed.
+- Make the existing ELB service-linked-role exception effective: the boundary now also has an
+  explicit Allow for the exact owned `AWSServiceRoleForElasticLoadBalancing` ARN and ELB service
+  condition. Positive and foreign-service/role cases preserve this narrow bootstrap grant.
+- Grant the `full` deploy preflight only `get` of Namespace `dx01v2` and Gateway
+  `dx01v2-waypoint`; uninstall removes the new binding with the existing full-profile RBAC file.
+- Switch the cloud Kyverno image policy from JSON processing to Kubernetes admission. Add parsed
+  YAML checks and eight negative fixtures for the admission mode, denial and named read-only RBAC.
+  Offline tests do not prove positive signature verification against ECR or a real cloud deploy.
+
 ### Added
 
 - R9 Velero PVC recovery exercise: remove the original claim, PV and bytes, restore through

@@ -7,6 +7,47 @@ foi executado em nuvem na v2 (`não executado em nuvem (v2)`): você será a pri
 > US$0,29–0,40/h em `us-east-1` (estimativas, ver `docs/CUSTOS.md`). Uma rodada de 3 horas fica perto
 > de US$1. Destrua no mesmo dia; o budget avisa, mas não para recursos.
 
+## Correções de prontidão AWS
+
+A auditoria posterior à construção identificou permissões que os providers mockados e o kind
+não exercitavam. O código corrige os caminhos abaixo, ainda `not run in the cloud (v2)`:
+
+- A boundary dos nodes permite `eks-auth:AssumeRoleForPodIdentity` somente nos ARNs dos clusters
+  primário e DR. `eks:*` não inclui a API `eks-auth`; anexar `AmazonEKSWorkerNodePolicy` sozinho
+  não supera uma boundary que omite essa ação.
+- O Load Balancer Controller pode criar somente a service-linked role padrão do ELB da própria
+  conta, condicionada a `iam:AWSServiceName=elasticloadbalancing.amazonaws.com`. A exceção ao
+  `Deny` que já existia não concedia o `Allow` necessário na primeira criação de ALB numa conta
+  nova. Outros serviços, roles e contas não entram nessa permissão.
+- O papel apply lê ACL, CORS, website, aceleração, request payment, logging e Object Lock dos
+  mesmos buckets de backup do lab. O `aws_s3_bucket` do provider AWS 6.68.0 consulta essas
+  configurações mesmo quando ausentes. `s3:ListBucketVersions` permite enumerar versões no
+  esvaziamento do bucket primário; as regras de retenção dos destinos DR continuam explícitas
+  em [CONTINUIDADE.md](CONTINUIDADE.md).
+- A role do app tem `ecr:DescribeImages` nos mesmos repositórios API/web de ambas as regiões,
+  necessário para resolver o digest após a promoção sem rebuild.
+- O preflight `full` pode dar apenas `get` no Namespace `dx01v2` e no Gateway
+  `dx01v2-waypoint`. O primeiro usa ClusterRole com `resourceNames`; o segundo usa Role do app.
+  O Kyverno avalia Pods em modo `Kubernetes`, com `failurePolicy: Fail` e ação `Deny`.
+
+Se já criou o bootstrap com código anterior, revise o plan e aplique essas mudanças de IAM pelo
+fluxo humano da seção 2 antes da rodada do lab. Reinstale o perfil `full` para atualizar RBAC e
+policy. Não dê acesso administrador à role do app para contornar um `Forbidden`.
+
+As regressões de `cloud_readiness.tftest.hcl` conferem documentos IAM e escopo; o check
+`cloud-readiness` faz parse do YAML real e recusa oito configurações negativas. Elas não
+simulam a autorização completa da AWS nem validam uma assinatura real no admission webhook.
+Na homologação registre o caminho positivo com imagens promovidas e a recusa de uma imagem
+sem attestation, usando o mesmo repositório ECR e namespace alvo, antes de aceitar o perfil full.
+
+Referências: [Pod Identity Agent](https://docs.aws.amazon.com/eks/latest/userguide/pod-id-agent-setup.html),
+[boundaries IAM](https://docs.aws.amazon.com/IAM/latest/UserGuide/access_policies_boundaries.html),
+[service-linked role do ELB](https://docs.aws.amazon.com/elasticloadbalancing/latest/userguide/elb-service-linked-roles.html),
+[permissões S3](https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-with-s3-policy-actions.html),
+[provider fixado: leitura de bucket](https://github.com/hashicorp/terraform-provider-aws/blob/v6.68.0/internal/service/s3/bucket.go),
+[provider fixado: exclusão de versões](https://github.com/hashicorp/terraform-provider-aws/blob/v6.68.0/internal/service/s3/delete.go),
+[ImageValidatingPolicy](https://kyverno.io/docs/policy-types/image-validating-policy/).
+
 ## 1. Pré-requisitos
 
 - Conta AWS **dedicada** ao lab (o budget é da conta inteira e o papel apply é praticamente admin).
