@@ -1,4 +1,4 @@
-# Namespaces of the local platform (contrato do lab local, docs/CONTRACT.md). Pod Security:
+# Namespaces of the local platform (local lab contract, docs/CONTRACT.md). Pod Security:
 #   restricted  - lab-system, lab-secrets, cert-manager, external-secrets and the app namespace dx01v2
 #   privileged  - istio-system only (istio-cni and ztunnel change the network of the node and the pods)
 # dx01v2 joins the ambient mesh (istio.io/dataplane-mode=ambient: mTLS between its pods by ztunnel).
