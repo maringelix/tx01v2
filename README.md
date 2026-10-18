@@ -36,6 +36,7 @@ The lab family (v2):
 | Workflows, scripts, Kubernetes manifests and Helm values (actionlint, shellcheck, kubeconform, helm template) | `verified in CI` | `make static` (including `destroy-flow`, `local-preflight`) |
 | Secret scan and repository policies (no real identifiers, pinned actions, scripts that act only on the lab, v1 regressions) | `verified in CI` | `make static` (`gitleaks`, `policy-*`, `repo-structure`) |
 | Terraform unit tests with a mocked AWS provider (immutable OIDC subjects, apply permissions boundary, scoped plan reads, bucket, budget, EKS, nodes, RDS, ECR, WAF, KMS, contract SSM parameters, negative validations) | `verified in CI` | `make test`; CI job `test` |
+| Cloud readiness regressions: scoped EKS Auth/ELB boundary allowances, provider S3 reads/deletion, ECR digest resolution, named deployer reads and Kubernetes image-admission mode | `implemented as code; not run in the cloud (v2)` | `terraform/bootstrap/tests/cloud_readiness.tftest.hcl`; `cloud-readiness` static check and eight negative fixtures; [limits and operator steps](docs/RUNBOOK.md#correções-de-prontidão-aws) |
 | Bootstrap (state bucket, GitHub OIDC roles, budget) | `not run in the cloud (v2)` | `terraform/bootstrap`, `docs/RUNBOOK.md` |
 | Lab apply (VPC, EKS 1.36, RDS PostgreSQL 17, ECR, WAF, optional Route53 + ACM, SSM contract v5) | `not run in the cloud (v2)` | `.github/workflows/terraform-apply.yml` |
 | Plan on pull requests | `not run in the cloud (v2)` | `.github/workflows/terraform-plan.yml` |
