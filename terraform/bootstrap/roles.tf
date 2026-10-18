@@ -368,7 +368,12 @@ resource "aws_iam_role_policy" "apply_services" {
           "s3:PutBucketPublicAccessBlock", "s3:GetBucketPublicAccessBlock",
           "s3:PutBucketPolicy", "s3:GetBucketPolicy", "s3:DeleteBucketPolicy",
           "s3:PutBucketTagging", "s3:GetBucketTagging",
-          "s3:ListBucket", "s3:GetBucketLocation",
+          "s3:ListBucket", "s3:ListBucketVersions", "s3:GetBucketLocation",
+          # aws_s3_bucket Read in provider 6.68.0 refreshes these settings even when
+          # managed by separate resources or unset. Keep reads on the same lab buckets.
+          "s3:GetBucketAcl", "s3:GetBucketCORS", "s3:GetBucketWebsite",
+          "s3:GetAccelerateConfiguration", "s3:GetBucketRequestPayment",
+          "s3:GetBucketLogging", "s3:GetBucketObjectLockConfiguration",
           "s3:PutEncryptionConfiguration", "s3:GetEncryptionConfiguration",
           "s3:PutLifecycleConfiguration", "s3:GetLifecycleConfiguration",
           "s3:PutBucketVersioning", "s3:GetBucketVersioning",
@@ -428,6 +433,7 @@ resource "aws_iam_role_policy" "deploy" {
           "ecr:BatchCheckLayerAvailability",
           "ecr:BatchGetImage",
           "ecr:CompleteLayerUpload",
+          "ecr:DescribeImages",
           "ecr:GetDownloadUrlForLayer",
           "ecr:InitiateLayerUpload",
           "ecr:PutImage",

@@ -51,6 +51,29 @@ resource "aws_iam_policy" "lab_boundary" {
         Resource = "*"
       },
       {
+        # AmazonEKSWorkerNodePolicy allows this on the node role. The boundary must also
+        # allow the EKS Auth API (a separate IAM service prefix from eks), or no Pod
+        # Identity association can deliver credentials to the platform controllers.
+        Sid    = "RetrievePodIdentityForLabClusters"
+        Effect = "Allow"
+        Action = "eks-auth:AssumeRoleForPodIdentity"
+        Resource = [
+          "arn:${local.partition}:eks:${local.region}:${local.account_id}:cluster/${local.lab_name}",
+          "arn:${local.partition}:eks:${var.dr_region}:${local.account_id}:cluster/${local.lab_name}-dr",
+        ]
+      },
+      {
+        # An exception to Deny is not an Allow. In a new account the LBC must create
+        # this one service-linked role before it can provision the first ALB.
+        Sid      = "CreateOnlyTheElbServiceLinkedRole"
+        Effect   = "Allow"
+        Action   = "iam:CreateServiceLinkedRole"
+        Resource = "arn:${local.partition}:iam::${local.account_id}:role/aws-service-role/elasticloadbalancing.amazonaws.com/AWSServiceRoleForElasticLoadBalancing"
+        Condition = {
+          StringEquals = { "iam:AWSServiceName" = "elasticloadbalancing.amazonaws.com" }
+        }
+      },
+      {
         Sid      = "VeleroBucketOnly"
         Effect   = "Allow"
         Action   = local.lab_velero_bucket_actions

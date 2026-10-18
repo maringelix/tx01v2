@@ -7,6 +7,10 @@ metadata:
   namespace: dx01v2
 rules:
   - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["gateways"]
+    resourceNames: ["dx01v2-waypoint"]
+    verbs: ["get"]
+  - apiGroups: ["gateway.networking.k8s.io"]
     resources: ["httproutes"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: ["networking.istio.io"]
@@ -28,4 +32,29 @@ subjects:
 roleRef:
   kind: Role
   name: dx01v2-deployer-full
+  apiGroup: rbac.authorization.k8s.io
+---
+# A Namespace is cluster-scoped. The deploy preflight needs only this named object's
+# ambient labels; a namespaced Role cannot grant that read. No namespace list/write.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: dx01v2-deployer-namespace-read
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    resourceNames: ["dx01v2"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: dx01v2-deployer-namespace-read
+subjects:
+  - kind: Group
+    name: dx01v2-deployers
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: dx01v2-deployer-namespace-read
   apiGroup: rbac.authorization.k8s.io
