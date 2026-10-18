@@ -36,7 +36,7 @@ helm_install() {
   local release=$1 ns=$2 tgz=$3 chart small=""
   shift 3
   # LOCAL_SIZE=small: platform/local/values/small/<chart>.yaml (chart = the archive name without its
-  # version) goes last, so its sizes win over every other values file (docs/LAB_LOCAL.md).
+  # version) goes last, so its sizes win over every other values file (docs/LOCAL_LAB.md).
   chart="$(basename "$tgz" .tgz)"
   chart="${chart%-*}"
   if [[ "${LOCAL_SIZE:-default}" == small && -f "$REPO_ROOT/platform/local/values/small/$chart.yaml" ]]; then

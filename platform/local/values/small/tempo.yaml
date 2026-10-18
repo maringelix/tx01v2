@@ -1,4 +1,4 @@
-# Size small (LOCAL_SIZE=small, docs/LAB_LOCAL.md): shorter retention and less memory for Tempo.
+# Size small (LOCAL_SIZE=small, docs/LOCAL_LAB.md): shorter retention and less memory for Tempo.
 tempo:
   retention: 1h
   extraEnv:

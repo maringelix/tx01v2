@@ -25,7 +25,7 @@ HARNESS_WORK_DIR="${HARNESS_WORK_DIR:-${TMPDIR:-/tmp}/tx01v2-harness}"
 # Optional extended regex: run only the checks whose name matches (local debugging; never in CI).
 HARNESS_ONLY="${HARNESS_ONLY:-}"
 
-# Pinned schema sources of kubeconform (update procedure: docs/SUSTENTACAO.md).
+# Pinned schema sources of kubeconform (update procedure: docs/MAINTENANCE.md).
 K8S_SCHEMA_KUBERNETES_VERSION="1.36.0"
 K8S_SCHEMA_REF="5f1fa4f7908afc9b6641c62d282a4a22437626e1" # yannh/kubernetes-json-schema
 # datreeio/CRDs-catalog at 2026-06-02: its next revision of external-secrets.io/clustersecretstore_v1.json
@@ -35,15 +35,15 @@ CRD_SCHEMA_REF="f3e4382095909ac60000da025f323ba44d4c738a"
 TRIVYIGNORE_MAX_DAYS=214
 
 REQUIRED_FILES=(
-  README.md README.pt-BR.md AGENTS.md CLAUDE.md CONTRIBUTING.md SECURITY.md CHANGELOG.md LICENSE FORK.md
+  README.md AGENTS.md CLAUDE.md CONTRIBUTING.md SECURITY.md CHANGELOG.md LICENSE FORK.md
   .editorconfig .gitattributes .gitignore .pre-commit-config.yaml Makefile .tflint.hcl .trivyignore.yaml
   .devcontainer/devcontainer.json
   .github/CODEOWNERS .github/dependabot.yml .github/pull_request_template.md
   .github/ISSUE_TEMPLATE/config.yml .github/ISSUE_TEMPLATE/bug_report.yml .github/ISSUE_TEMPLATE/cloud_run_report.yml
   .github/workflows/ci.yml .github/rulesets/main.json
   .github/workflows/platform.yml
-  docs/SUSTENTACAO.md docs/GUARDRAILS.md docs/HARNESS.md docs/CONTRATO.md docs/RUNBOOK.md
-  docs/ARQUITETURA.md docs/PUBLICACAO.md docs/CUSTOS.md
+  docs/MAINTENANCE.md docs/GUARDRAILS.md docs/HARNESS.md docs/CONTRACT.md docs/RUNBOOK.md
+  docs/ARCHITECTURE.md docs/PUBLISHING.md docs/COSTS.md
   tools/versions.env tools/checksums.txt
   scripts/install-tools.sh scripts/update-tool-checksums.sh scripts/harness.sh scripts/repo-guardrails.sh scripts/leftovers.sh
   scripts/destroy.sh scripts/tests/destroy-flow.sh scripts/tests/local-preflight.sh scripts/tests/fork-profiles.sh
@@ -252,13 +252,31 @@ check_repo_structure() {
       rc=1
     fi
   fi
-  forbid 'production-grade|production-ready|enterprise|best-in-class|world-class' "self-ratings in the READMEs" '*' README.md README.pt-BR.md || rc=1
+  forbid 'production-grade|production-ready|enterprise|best-in-class|world-class' "self-ratings in the README" '*' README.md || rc=1
   grep -qF 'not run in the cloud (v2)' README.md || {
     echo "README.md: the status matrix must use the label 'not run in the cloud (v2)'"
     rc=1
   }
-  grep -qF 'não executado em nuvem (v2)' README.pt-BR.md || {
-    echo "README.pt-BR.md: the status matrix must use the label 'não executado em nuvem (v2)'"
+  for status in 'verified in CI' 'verified locally'; do
+    grep -qF "$status" README.md || {
+      echo "README.md: the status matrix must use the evidence label '$status'"
+      rc=1
+    }
+  done
+  if [[ -e README.pt-BR.md ]]; then
+    echo "README.pt-BR.md: maintain the canonical English README.md only"
+    rc=1
+  fi
+  grep -qF 'All public documentation is written in English.' README.md || {
+    echo "README.md: declare the English-only documentation policy"
+    rc=1
+  }
+  grep -qF 'https://github.com/maringelix/tx00v2/blob/main/docs/GETTING_STARTED.md' README.md || {
+    echo "README.md: link the central onboarding guide"
+    rc=1
+  }
+  grep -qi 'English-only' AGENTS.md || {
+    echo "AGENTS.md: retain the English-only documentation rule"
     rc=1
   }
   for d in terraform/modules/*/; do
@@ -647,7 +665,7 @@ check_contract_platform() {
   )
   for e in "${expect[@]}"; do
     grep -qF -- "$e" <<<"$m" || {
-      echo "platform/manifests: missing '$e' (docs/CONTRATO.md)"
+      echo "platform/manifests: missing '$e' (docs/CONTRACT.md)"
       rc=1
     }
   done
@@ -669,7 +687,7 @@ check_contract_platform() {
     rc=1
   }
   grep -qE '^  name: observability$' <<<"$m" || {
-    echo "platform/manifests: missing the namespace observability of the OpenTelemetry Collector (docs/CONTRATO.md)"
+    echo "platform/manifests: missing the namespace observability of the OpenTelemetry Collector (docs/CONTRACT.md)"
     rc=1
   }
   grep -qE '^    istio\.io/dataplane-mode: ambient$' platform/manifests/namespace-observability.yaml || {
@@ -1239,8 +1257,8 @@ check_platform_sizing() {
     echo "platform-sizing must output cpu_millicores and memory_mib"
     return 1
   }
-  grep -qF "| full | ${cpu}m CPU / ${memory}MiB RAM |" docs/CUSTOS.md || {
-    echo "docs/CUSTOS.md must record the reproducible full-profile requests: ${cpu}m CPU / ${memory}MiB RAM"
+  grep -qF "| full | ${cpu}m CPU / ${memory}MiB RAM |" docs/COSTS.md || {
+    echo "docs/COSTS.md must record the reproducible full-profile requests: ${cpu}m CPU / ${memory}MiB RAM"
     return 1
   }
   echo "full profile, ${nodes} nodes: ${cpu}m CPU / ${memory}MiB RAM"

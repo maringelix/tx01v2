@@ -91,7 +91,7 @@ resource "aws_eks_cluster" "this" {
     subnet_ids              = var.private_subnet_ids
     endpoint_private_access = true
     # Public endpoint restricted to var.endpoint_public_access_cidrs. GitHub-hosted runners need it
-    # (see docs/ARQUITETURA.md); every request is still authenticated with IAM + access entries.
+    # (see docs/ARCHITECTURE.md); every request is still authenticated with IAM + access entries.
     endpoint_public_access = true
     public_access_cidrs    = var.endpoint_public_access_cidrs
   }

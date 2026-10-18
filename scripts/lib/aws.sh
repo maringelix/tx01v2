@@ -3,7 +3,7 @@
 # Every function fails (non-zero) when the AWS call fails: callers must never treat an API error
 # as "nothing found". Requires AWS CLI v2 and AWS_REGION.
 
-# Fixed by the contract (docs/CONTRATO.md). Never read from the environment: a shell that already
+# Fixed by the contract (docs/CONTRACT.md). Never read from the environment: a shell that already
 # exports CLUSTER_NAME or similar for another cluster must not retarget a script of the lab.
 LAB_PROJECT=tx01v2
 # shellcheck disable=SC2034 # used by the scripts that source this file

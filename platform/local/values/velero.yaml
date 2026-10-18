@@ -1,6 +1,6 @@
 # vmware-tanzu/velero 12.2.1 (Velero v1.18.4 + plugin for AWS v1.14.4, namespace velero): backup and
 # restore of Kubernetes resources to the S3 emulator of terraform/envs/local (v1 exported Secrets in
-# base64 to a CI artifact and never restored; docs/LICOES_APRENDIDAS.md). install.sh passes the bucket,
+# base64 to a CI artifact and never restored; docs/LESSONS_LEARNED.md). install.sh passes the bucket,
 # the endpoint and the credentials Secret. Images pinned by digest (verified 2026-10-12).
 image:
   repository: docker.io/velero/velero

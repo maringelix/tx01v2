@@ -9,7 +9,7 @@
 - [ ] Docs updated in this PR (README status matrix, docs/*, CHANGELOG `[Unreleased]`)
 - [ ] No new scanner ignore, or each new one has `statement` + `expired_at` and is explained below
 - [ ] No IAM, network, RBAC or CORS widening, or the reason is stated below
-- [ ] Contract (docs/CONTRATO.md) unchanged, or version bumped with a coordinated dx01v2 PR linked below
+- [ ] Contract (docs/CONTRACT.md) unchanged, or version bumped with a coordinated dx01v2 PR linked below
 - [ ] Every new dependency, action or image is pinned (version + SHA256 / commit SHA / digest)
 - [ ] No secrets or real identifiers (account IDs, IPs, e-mails) in code, docs or examples
 

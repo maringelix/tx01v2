@@ -1,4 +1,4 @@
-# Size small (LOCAL_SIZE=small, docs/LAB_LOCAL.md): the chart derives GOMEMLIMIT and the
+# Size small (LOCAL_SIZE=small, docs/LOCAL_LAB.md): the chart derives GOMEMLIMIT and the
 # memory_limiter of the pipeline from this limit.
 resources:
   requests:

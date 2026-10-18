@@ -3,7 +3,7 @@
 ## Reporting a vulnerability
 
 Report privately through GitHub: **Security > Report a vulnerability** on this repository (private
-vulnerability reporting is enabled when the repository is public, see `docs/PUBLICACAO.md`). Do not
+vulnerability reporting is enabled when the repository is public, see `docs/PUBLISHING.md`). Do not
 open a public issue. Never include credentials, AWS account IDs or IP addresses; use placeholders.
 
 This is a personal educational project: reports are handled on a best-effort basis, with no response

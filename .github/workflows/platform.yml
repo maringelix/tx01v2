@@ -2,7 +2,7 @@
 # Balancer Controller, External Secrets Operator and OpenTelemetry Collector; `full` adds the platform
 # of the local lab. CLOUD-MUTATING: dispatch manually after terraform-apply.
 # The apply role must be in LAB_CLUSTER_ADMIN_PRINCIPAL_ARNS and GitHub-hosted runners must reach the
-# public endpoint (LAB_ENDPOINT_PUBLIC_ACCESS_CIDRS, docs/ARQUITETURA.md).
+# public endpoint (LAB_ENDPOINT_PUBLIC_ACCESS_CIDRS, docs/ARCHITECTURE.md).
 name: platform
 
 on:
@@ -65,7 +65,7 @@ jobs:
             [[ -n "${!v}" ]] || missing+=("$v")
           done
           if ((${#missing[@]} > 0)); then
-            echo "::error::Missing repository variables for: ${missing[*]}. See docs/RUNBOOK.md (section 'Variáveis do GitHub')."
+            echo "::error::Missing repository variables for: ${missing[*]}. See docs/RUNBOOK.md (section 'GitHub variables')."
             exit 1
           fi
 

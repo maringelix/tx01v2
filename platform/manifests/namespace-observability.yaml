@@ -1,4 +1,4 @@
-# Namespace of the OpenTelemetry Collector (contract v2, docs/CONTRATO.md): the dx01v2 API sends its
+# Namespace of the OpenTelemetry Collector (contract v2, docs/CONTRACT.md): the dx01v2 API sends its
 # traces to opentelemetry-collector.observability.svc:4318. The ambient label is read only by the
 # profile full and is inert without it: the Collector joins the mesh so that its synthetic probes
 # reach the API with an identity (the AuthorizationPolicy api allows exactly that principal on /readyz;

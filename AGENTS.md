@@ -1,7 +1,7 @@
 # AGENTS.md
 
 Instructions for AI coding agents and humans working in `tx01v2`. `CLAUDE.md` points here; this file
-is the source of truth. The full rule list (pt-BR) is [docs/GUARDRAILS.md](docs/GUARDRAILS.md).
+is the source of truth. The full rule list is [docs/GUARDRAILS.md](docs/GUARDRAILS.md).
 
 ## 1. Mission and context
 
@@ -12,14 +12,15 @@ is the source of truth. The full rule list (pt-BR) is [docs/GUARDRAILS.md](docs/
 - Current status: the harness (`make verify`) and the local lab (`make e2e`) pass locally in a Linux
   container and in CI (jobs `static`, `test`, `e2e`). **Nothing of v2 has run in AWS** (bootstrap, apply, platform, destroy are
   `not run in the cloud (v2)`).
-- The local lab ([docs/LAB_LOCAL.md](docs/LAB_LOCAL.md)) rebuilds the whole v1 platform on Docker:
+- The local lab ([docs/LOCAL_LAB.md](docs/LOCAL_LAB.md)) rebuilds the whole v1 platform on Docker:
   `terraform/envs/local` (kind + emulated ECR, RDS, S3, load balancer, git server) and `platform/local`
   (Istio ambient, cert-manager, ESO, Prometheus/Alertmanager/Grafana, Loki/Alloy, Tempo and the
   OpenTelemetry Collector, Argo CD, Gatekeeper, Trivy Operator, Velero, Chaos Mesh). `make e2e` proves it
-  with 34 probes (CI job `e2e`). It is not
-  cloud-mutating: agents may run it, one heavy run at a time (8 GB of Docker memory for `full`, 7 GB with `LOCAL_SIZE=small`).
-- The interface with `dx01v2` is [docs/CONTRATO.md](docs/CONTRATO.md) (contract v4, owned here; its
-  GitOps and ambient platform additions are coordinated with the dx R4 PR; the
+  with runtime probes in `platform/local/check.sh` (CI job `e2e`). It is not
+  cloud-mutating: agents may run it, one heavy run at a time (12 GiB recommended for HA/FinOps,
+  7 GiB for the one-node `LOCAL_SIZE=small`).
+- The interface with `dx01v2` is [docs/CONTRACT.md](docs/CONTRACT.md) (contract v7, owned here; its
+  GitOps, mesh and continuity additions are coordinated with the corresponding dx deliveries; the
   local lab has its own local contract, `lab-system/lab-contract`).
 
 ## 2. Non-negotiable rules
@@ -39,11 +40,14 @@ is the source of truth. The full rule list (pt-BR) is [docs/GUARDRAILS.md](docs/
 
 ## 3. Repo map
 
+English-only documentation: maintain all public documentation, agent instructions, templates and explanatory prose in English.
+Start fork onboarding with [the central guide](https://github.com/maringelix/tx00v2/blob/main/docs/GETTING_STARTED.md).
+
 ```text
 .github/workflows/      ci.yml (harness), terraform-plan/apply/destroy.yml, platform.yml (cloud, dispatch only)
 .github/rulesets/       main.json: branch ruleset applied by scripts/repo-guardrails.sh
 .devcontainer/          Linux environment + Docker-in-Docker, pinned by digest (runs make tools; make e2e works inside)
-docs/                   pt-BR docs: architecture, contract, runbook, costs, guardrails, harness, sustainment
+docs/                   English docs: architecture, contract, runbook, costs, guardrails, harness, maintenance
 FORK.md                 how to fork the lab: what GitHub does not copy, the local lab, your own cloud account
 platform/               install.sh / uninstall.sh, versions.env, Helm values, manifests (never Terraform)
 platform/local/         local platform: install.sh, check.sh (probes), uninstall.sh, versions.env, values/,
@@ -96,7 +100,7 @@ tools/                  versions.env and checksums.txt of the harness tools
 
 ## 7. Playbooks
 
-**Maintainer / sustentação.** Follow [docs/SUSTENTACAO.md](docs/SUSTENTACAO.md): react to a red
+**Maintainer / maintenance.** Follow [docs/MAINTENANCE.md](docs/MAINTENANCE.md): react to a red
 scheduled CI, merge monthly Dependabot PRs, run the quarterly review (tools, charts, image digests,
 Kubernetes/PostgreSQL calendar, kubeconform schema commits, ignores close to `expired_at`).
 
@@ -106,7 +110,7 @@ proves, and contract changes without a version bump.
 
 **Dependency updater.** One Dependabot group per PR. Read the release notes. Terraform providers:
 keep the same constraint in every `versions.tf` and regenerate both lock files for the four
-platforms (docs/SUSTENTACAO.md 5.3). Actions: confirm the new SHA matches the tag comment. Harness
+platforms (docs/MAINTENANCE.md 5.3). Actions: confirm the new SHA matches the tag comment. Harness
 tools are bumped only with `scripts/update-tool-checksums.sh`.
 
 **Cloud operator** (only with explicit human approval for that action): follow
@@ -122,9 +126,9 @@ tools are bumped only with `scripts/update-tool-checksums.sh`.
   format) to `terraform/tests/mocks/aws.tfmock.hcl`; assert inside the module with a run block
   `module { source = "../../modules/<name>" }`.
 - Bump a harness tool: `scripts/update-tool-checksums.sh <tool> <version>`, then `make tools verify`.
-- Bump the AWS Load Balancer Controller or External Secrets: docs/SUSTENTACAO.md 5.5 / 5.6 (chart,
+- Bump the AWS Load Balancer Controller or External Secrets: docs/MAINTENANCE.md 5.5 / 5.6 (chart,
   image digest, IAM policy file + SHA256, CRDs).
-- Add a check: docs/HARNESS.md ("Como adicionar um check").
+- Add a check: docs/HARNESS.md ("Adding a check").
 
 ## 9. When to stop and ask a human
 

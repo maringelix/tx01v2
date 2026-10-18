@@ -3,7 +3,7 @@ mock_provider "aws" {
   source = "../tests/mocks"
 }
 
-# GitHub OIDC trust and the three contract roles (docs/CONTRATO.md).
+# GitHub OIDC trust and the three contract roles (docs/CONTRACT.md).
 
 mock_provider "aws" {
   source = "../tests/mocks"

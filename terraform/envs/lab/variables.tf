@@ -45,7 +45,7 @@ variable "endpoint_public_access_cidrs" {
 
   validation {
     condition     = var.allow_endpoint_from_anywhere || !contains(var.endpoint_public_access_cidrs, "0.0.0.0/0")
-    error_message = "The CIDR 0.0.0.0/0 opens the API endpoint to the whole Internet: set allow_endpoint_from_anywhere = true to accept it explicitly (GitHub-hosted runners need it, see docs/ARQUITETURA.md)."
+    error_message = "The CIDR 0.0.0.0/0 opens the API endpoint to the whole Internet: set allow_endpoint_from_anywhere = true to accept it explicitly (GitHub-hosted runners need it, see docs/ARCHITECTURE.md)."
   }
 }
 
@@ -89,7 +89,7 @@ variable "app_deployer_principal_arns" {
 # --- EKS ---
 
 variable "cluster_version" {
-  description = "Kubernetes minor version. 1.36 is in EKS standard support until 2027-08-02 (docs/SUSTENTACAO.md)."
+  description = "Kubernetes minor version. 1.36 is in EKS standard support until 2027-08-02 (docs/MAINTENANCE.md)."
   type        = string
   default     = "1.36"
 

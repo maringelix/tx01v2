@@ -1,5 +1,5 @@
 # Monthly dependency PRs: minor + patch grouped per ecosystem, majors one by one.
-# Review procedure: AGENTS.md (Dependency updater) and docs/SUSTENTACAO.md.
+# Review procedure: AGENTS.md (Dependency updater) and docs/MAINTENANCE.md.
 # Harness tools (tools/), charts (platform/versions.env) and image digests are updated by hand
 # (scripts/update-tool-checksums.sh) in the quarterly routine.
 version: 2

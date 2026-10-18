@@ -74,7 +74,7 @@ jobs:
             [[ -n "${!v}" ]] || missing+=("$v")
           done
           if ((${#missing[@]} > 0)); then
-            echo "::error::Missing repository variables or secrets for: ${missing[*]}. Settings > Secrets and variables > Actions > Variables; names and values in docs/RUNBOOK.md (section 'Variáveis do GitHub')."
+            echo "::error::Missing repository variables or secrets for: ${missing[*]}. Settings > Secrets and variables > Actions > Variables; names and values in docs/RUNBOOK.md (section 'GitHub variables')."
             exit 1
           fi
 

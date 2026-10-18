@@ -1,7 +1,7 @@
 # grafana-community/tempo 3.1.0 (Tempo 3.1.0, single binary, namespace monitoring): the trace store of
 # the lab. It receives OTLP only from the OpenTelemetry Collector (values/otel-collector.yaml) and
 # Grafana queries it on port 3200. Monolithic mode needs no Kafka. Traces live 6 hours on an emptyDir
-# and die with the cluster. v1 had no traces at all (docs/LICOES_APRENDIDAS.md). Image pinned by digest
+# and die with the cluster. v1 had no traces at all (docs/LESSONS_LEARNED.md). Image pinned by digest
 # (verified 2026-10-14).
 tempo:
   registry: docker.io

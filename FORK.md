@@ -9,8 +9,8 @@ specific to the app.
 What is proven, and how, is in the [status matrix](README.md#status-matrix). In short: the harness
 and the local lab are `verified in CI`; the cloud path of v2 is `not run in the cloud (v2)`. If you
 run it in AWS you are one of its first tests: follow [docs/RUNBOOK.md](docs/RUNBOOK.md) step by step
-and report what happened (step 8). Most documents under `docs/` are in Brazilian Portuguese; this
-page, the README, AGENTS.md and CONTRIBUTING.md are in English.
+and report what happened (step 8). Documentation is maintained in English. Start with the
+[central onboarding guide](https://github.com/maringelix/tx00v2/blob/main/docs/GETTING_STARTED.md).
 
 ## What a fork does not bring along
 
@@ -22,7 +22,7 @@ GitHub copies the code and its history, nothing else:
 | Running workflows: a fork keeps its workflows disabled until you enable them, and scheduled workflows stay off in a fork | step 2 |
 | Issues: they start disabled in a fork | step 3 turns them on (the bug report and cloud run report forms) |
 | Dependabot: security updates start disabled; version updates do not run in a fork by default | step 3 turns security updates on; version bumps arrive when you sync (step 9) |
-| Repository variables and secrets | the lab never needs a secret; the cloud path needs variables (step 7) |
+| Repository variables and secrets | local credentials are generated; cloud variables and operator secrets must be configured (step 7) |
 
 A fork of a public repository is public, and so are its workflow logs.
 
@@ -69,16 +69,17 @@ of the ruleset. On Windows, run it from WSL or Git Bash.
 ```bash
 make tools                     # the pinned tools into .tools/, each one SHA256-verified
 HARNESS_STRICT=1 make verify   # static checks and terraform test: what the CI jobs static and test run
-make e2e                       # the whole local lab: apply, platform, 39 probes, destroy
+make e2e                       # the whole local lab: apply, platform, probes, destroy
+LOCAL_TOPOLOGY=ha make e2e      # multi-node HA, default size, 12 GiB Docker recommended
 ```
 
-`make e2e` builds the platform of [docs/LAB_LOCAL.md](docs/LAB_LOCAL.md) on Docker: a kind cluster
+`make e2e` builds the platform of [docs/LOCAL_LAB.md](docs/LOCAL_LAB.md) on Docker: a kind cluster
 with emulated ECR, RDS, S3, load balancer and git server, then Istio ambient, cert-manager, External
 Secrets, Prometheus/Alertmanager/Grafana, Loki/Alloy, Argo CD, Gatekeeper, Trivy Operator, Velero and
 Chaos Mesh. It proves each piece with real traffic and always destroys the lab, also after a failure.
 It needs about 8 GB of memory for Docker and takes 20-40 minutes on a laptop (about 10 in CI): run
 one lab at a time. With 7 GB, `LOCAL_SIZE=small` installs the same platform with smaller limits and
-short retention (proved with the app of dx01v2, [docs/LAB_LOCAL.md](docs/LAB_LOCAL.md)). To keep the
+short retention (proved with the app of dx01v2, [docs/LOCAL_LAB.md](docs/LOCAL_LAB.md)). To keep the
 lab up while you study it:
 
 ```bash
@@ -108,7 +109,7 @@ local integration procedure in the matching `dx01v2` runbook or let the dx CI cl
 
 Before the first apply:
 
-- Read the [cost section of the README](README.md#cloud-path-costs-money) and [docs/CUSTOS.md](docs/CUSTOS.md) (reference
+- Read the [cost section of the README](README.md#cloud-path-costs-money) and [docs/COSTS.md](docs/COSTS.md) (reference
   prices: check the current ones). `core` is estimated at US$0.26–0.32/hour; `full`, with larger
   nodes, at US$0.29–0.40/hour. EKS, its nodes, the NAT gateway, the load balancer, the WAF and RDS
   bill by the hour while the lab is up, and free tiers and trial credits change often: check what
@@ -122,7 +123,7 @@ Before the first apply:
 Then, from the root of your `tx01v2` clone:
 
 1. **Bootstrap** (once, from your machine, with the administrator credentials): copy
-   `terraform/bootstrap/terraform.tfvars.example` to `terraform.tfvars` (git-ignored) and set
+   `terraform/bootstrap/terraform.tfvars.example` to `terraform/bootstrap/terraform.tfvars` (git-ignored) and set
    `github_owner` to your GitHub user and `budget_alert_emails` to an address you read. Neither has a
    usable default: the placeholders are refused, so the roles can only trust your forks. Set the three
    numeric GitHub IDs too (`github_owner_id`, `tx01v2_repository_id`, `dx01v2_repository_id`): GitHub
@@ -166,11 +167,19 @@ Then, from the root of your `tx01v2` clone:
    ```
 
    Optionally set the secret `SLACK_WEBHOOK_URL` for warning and critical Alertmanager notifications.
+   Before the first full install, set Secret `LAB_VELERO_REPOSITORY_PASSWORD` to 64 random hex
+   characters and escrow it outside both regions. Reuse the same key in primary and DR.
+   Before plan/apply, prepare the current-price worksheet and repository variables
+   `LAB_FINOPS_PRICING_JSON`, `LAB_COST_BUDGET_USD`, `LAB_COST_HOURS` and `LAB_COST_EXPIRES_AT`
+   using [FINOPS](docs/FINOPS.md). A first authenticated read-only local plan supplies its inventory.
    `core` uses the defaults and does not need the `LAB_NODE_*` variables.
-3. **Run**: choose `core` (the default) or `full`. For `full`, first merge the R4 code in both the tx
-   and dx repositories, then run `terraform-plan`, review the node types and capacity, and dispatch
+3. **Run**: choose `core` (the default) or `full`. Run `terraform-plan`, review cost,
+   node types and capacity, and dispatch
    `terraform-apply`. After approval of the `lab` environment, dispatch `platform` with
-   `action=install` and the same `profile`. Deploy the app through its dx workflow: it commits the
+   `action=install`, `target=primary`, initially `finops=false` and the same `profile`.
+   In dx, wait for successful push CI on current main, run `publish-images.yml` with that
+   `ci_run_id`, then `deploy-aws.yml` with the publication's `release_run_id`, matching
+   `platform_profile`, `deploy_mode=auto` and `target=primary`. It commits the
    image digest to `gitops/aws`; Argo CD syncs it and reports `Synced`/`Healthy`. Then run the smoke
    and Velero restore drill and dispatch `terraform-destroy`, which ends with the leftover check.
    See [docs/RUNBOOK.md](docs/RUNBOOK.md), sections 3 to 9. The workflows take `github_owner` from
@@ -202,9 +211,9 @@ request. Run `scripts/repo-guardrails.sh` again when `.github/rulesets/main.json
 |---|---|
 | A pull request waits forever for `static`, `test` or `e2e` | Actions are still disabled in the fork: step 2 |
 | `repo-guardrails.sh` fails with "the workflows of this fork are not enabled yet" | step 2, then run it again |
-| `full` pods stay Pending | compare requests with the selected node types in `docs/CUSTOS.md`, check Spot capacity, then inspect `kubectl describe pod`; do not run the full chart set on the default `t3.medium` group |
+| `full` pods stay Pending | compare requests with the selected node types in `docs/COSTS.md`, check Spot capacity, then inspect `kubectl describe pod`; do not run the full chart set on the default `t3.medium` group |
 | Argo CD reports `ComparisonError` or the app is OutOfSync | confirm the dx `gitops/aws` branch exists, the repo is public or has an Argo CD credential, and the source path is correct; inspect the dx workflow logs |
-| `make e2e` gets killed or Docker freezes | give Docker about 8 GB of memory (Docker Desktop on WSL 2: `memory=8GB` under `[wsl2]` in `%UserProfile%\.wslconfig`, then `wsl --shutdown`) and run one lab at a time; with 7 GB, `LOCAL_SIZE=small make local-up`; with less memory, `LOCAL_PROFILE=core make e2e` proves the base layers |
+| `make e2e` gets killed or Docker freezes | allow about 8 GB for historical single-node full, or 12 GiB for `LOCAL_TOPOLOGY=ha`; run one lab at a time. With 7 GB use single-node `LOCAL_SIZE=small make local-up`; with less memory use `LOCAL_PROFILE=core make e2e`. Change WSL memory settings before starting Docker and restart WSL if needed. |
 | Port 5001 is already in use | another local lab or registry is running: `make local-down`, `docker ps` |
 | Something of the local lab is left after an interruption | `make local-down` (destroy and leftover check) |
 | Bootstrap: `Set github_owner ...` or `Replace the placeholder ...` | put your values in `terraform/bootstrap/terraform.tfvars` |
@@ -215,6 +224,8 @@ request. Run `scripts/repo-guardrails.sh` again when `.github/rulesets/main.json
 Pull requests to the original repository are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md). Their
 workflow runs wait for the maintainer's approval, and the same harness decides.
 
-## R10: capacidade e FinOps
+## R10: capacity and FinOps
 
-Veja [FinOps e escala](docs/FINOPS.md) para kind HA, carga/HPA/PDB, OpenCost, VPA Off, Spot opt-in, preços regionais, orçamento/expiração e limpeza. Construção para fork; nada executado na nuvem (v2).
+See [FinOps and scaling](docs/FINOPS.md) for kind HA, bounded load/HPA/PDB, OpenCost,
+recommendation-only VPA, opt-in Spot, regional pricing, budget/expiry and cleanup.
+Construction for forks; not run in the cloud (v2).

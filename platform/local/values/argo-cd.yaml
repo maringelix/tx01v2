@@ -1,6 +1,6 @@
 # argo/argo-cd 10.10.3 (Argo CD v3.5.5, namespace argocd): the GitOps engine of the local lab. v1 ran
 # Argo CD 2.x on a public LoadBalancer with the admin password in a workflow input
-# (docs/LICOES_APRENDIDAS.md); here it is ClusterIP only with the local admin user disabled (the
+# (docs/LESSONS_LEARNED.md); here it is ClusterIP only with the local admin user disabled (the
 # Application resources are inspected with kubectl), and it reads the GitOps repository of the lab git
 # server anonymously, read-only. Images pinned by digest (verified 2026-10-12).
 global:

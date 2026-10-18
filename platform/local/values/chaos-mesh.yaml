@@ -1,6 +1,6 @@
 # chaos-mesh/chaos-mesh 2.8.4 (namespace chaos-mesh, privileged: the daemon enters other pods'
 # namespaces through the containerd socket of the kind node). v1 ran it in "prd" with every fault at
-# once and no hypothesis (docs/LICOES_APRENDIDAS.md, 13); here each experiment of the probes states a
+# once and no hypothesis (docs/LESSONS_LEARNED.md, 13); here each experiment of the probes states a
 # hypothesis and measures it. Images pinned by digest (verified 2026-10-12).
 enableProfiling: false
 controllerManager:

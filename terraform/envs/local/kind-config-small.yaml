@@ -1,4 +1,4 @@
-# LOCAL_SIZE=small (docs/LAB_LOCAL.md): scripts/local/kind-cluster.sh appends this file to
+# LOCAL_SIZE=small (docs/LOCAL_LAB.md): scripts/local/kind-cluster.sh appends this file to
 # kind-config.yaml. The control plane is the largest consumer of the lab (the API server alone passes
 # 1 GiB with the CRDs of the full platform): GOMEMLIMIT makes the Go garbage collector of each component
 # work before the memory of the node runs out. Kubernetes 1.36 nodes get kubeadm v1beta4 from kind
