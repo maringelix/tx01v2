@@ -1,5 +1,5 @@
 # Cross-repo contract: values dx01v2 and platform/install.sh read at deploy time
-# (docs/CONTRATO.md, prefix /tx01v2/lab/). None of them is a secret.
+# (docs/CONTRACT.md, prefix /tx01v2/lab/). None of them is a secret.
 
 locals {
   ssm_prefix = "/${local.project}/${local.environment}"
@@ -28,7 +28,7 @@ resource "aws_ssm_parameter" "contract" {
   for_each = local.contract_parameters
 
   name        = "${local.ssm_prefix}/${each.key}"
-  description = "tx01v2 -> dx01v2 contract (docs/CONTRATO.md)."
+  description = "tx01v2 -> dx01v2 contract (docs/CONTRACT.md)."
   type        = "String"
   tier        = "Standard"
   # Not secret: insecure_value keeps the value readable in plans.

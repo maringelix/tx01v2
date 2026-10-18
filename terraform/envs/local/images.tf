@@ -1,5 +1,5 @@
 # Images of the emulated services, pinned by digest (multi-arch index; verified 2026-10-12). Bump them
-# in docs/SUSTENTACAO.md (local lab section); the kind node image lives in kind-config.yaml.
+# in docs/MAINTENANCE.md (local lab section); the kind node image lives in kind-config.yaml.
 locals {
   images = {
     # Emulates ECR: CNCF Distribution 3.1.2 (registry:3 at the time of pinning).

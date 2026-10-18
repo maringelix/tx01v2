@@ -56,7 +56,7 @@ variable "db_name" {
 }
 
 variable "username" {
-  description = "Master user name (the lab app uses it; see docs/ARQUITETURA.md)."
+  description = "Master user name (the lab app uses it; see docs/ARCHITECTURE.md)."
   type        = string
   default     = "dx01v2_admin"
 }

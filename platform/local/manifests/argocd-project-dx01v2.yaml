@@ -7,7 +7,7 @@ metadata:
   name: dx01v2
   namespace: argocd
 spec:
-  description: dx01v2 app of the local lab (docs/CONTRATO.md, Lab local)
+  description: dx01v2 app of the local lab (docs/CONTRACT.md, Lab local)
   sourceRepos:
     - __GITOPS_READ_URL__
   destinations:

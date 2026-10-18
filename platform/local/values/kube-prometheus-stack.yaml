@@ -1,5 +1,5 @@
 # prometheus-community/kube-prometheus-stack 92.3.0 (namespace monitoring; node-exporter in the
-# privileged namespace monitoring-agents). The v1 stack, without its mistakes (docs/LICOES_APRENDIDAS.md,
+# privileged namespace monitoring-agents). The v1 stack, without its mistakes (docs/LESSONS_LEARNED.md,
 # 7.x): admission webhooks on (certificates from cert-manager), Grafana only through port-forward with a
 # generated password, rules that the harness tests with promtool, Alertmanager delivering to a sink that
 # the probes read. Images pinned by digest (verified 2026-10-12).

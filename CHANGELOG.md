@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- Standardize public documentation, historical lessons, templates and agent instructions in
+  English; rename Portuguese document paths, retain one README and link the central onboarding
+  guide. Preserve evidence labels and update AWS workflow, pricing and backup-key prerequisites.
+  This change does not execute AWS or alter infrastructure behavior.
+
 - R9: complete the independent AWS recovery region, current-secret replication, contract v7,
   encrypted/versioned backup replication and optional state copy; fence DNS writers and monitor recovery.
 
@@ -70,7 +75,7 @@ All notable changes to this project are documented here. The format follows
   lab, as in tx02v2 and tx03v2: before, the key was `OTEL_COLLECTOR_SHA256` in
   `platform/local/versions.env`, and the cloud install took the chart from the repository without
   checking it. The `helm-template` check renders the same verified archive (roadmap R1.7).
-- Comments, script messages and docs say "the contract" or point to `docs/CONTRATO.md` instead of
+- Comments, script messages and docs say "the contract" or point to `docs/CONTRACT.md` instead of
   "contract v1": the contract has been at version 2 since round 1 (roadmap S.8).
 - The family table of both READMEs links the family hub `tx00v2` (roadmap, family guardrails,
   cross-repo checks).
@@ -178,7 +183,7 @@ All notable changes to this project are documented here. The format follows
   are pinned by digest.
 - `terraform/bootstrap` outputs `github_variables_tx01v2` and `github_variables_dx01v2` (the
   repository variables it knows, as in the other pairs), ready for `gh variable set -f`.
-- The local lab (docs/LAB_LOCAL.md): the whole v1 platform on Docker, with no cloud account.
+- The local lab (docs/LOCAL_LAB.md): the whole v1 platform on Docker, with no cloud account.
   - `terraform/envs/local` (providers docker 4.6.0, tls 4.4.1, random 3.9.1): network
     `tx01v2-local`, kind 1.36 cluster, emulated ECR (registry 3.1.2), RDS (PostgreSQL 17, TLS only,
     lab CA), S3 (Versity S3 Gateway 1.8.0), load balancer (cloud-provider-kind 0.12.0) and git server
@@ -197,7 +202,7 @@ All notable changes to this project are documented here. The format follows
     HTTPS through the emulated load balancer, X-Request-Id pass-through, alert delivery, logs, GitOps sync and self-heal, policy
     denials, vulnerability reports, backup/restore drill, chaos experiment with a hypothesis).
   - `scripts/local-lab.sh` (up, down, check, e2e, kubeconfig, status) and
-    `scripts/leftovers-local.sh`; local contract `lab-system/lab-contract` (docs/CONTRATO.md).
+    `scripts/leftovers-local.sh`; local contract `lab-system/lab-contract` (docs/CONTRACT.md).
   - Harness: checks `local-versions`, `helm-template-local`, `kubeconform-local`, `policy-gator`,
     `terraform-validate:envs/local`, `terraform-test:envs/local`; stage `e2e` (`local-lab-e2e`,
     `make e2e`) and the CI job `e2e`; tools kind 0.33.0 and gator 3.23.1.
@@ -223,7 +228,7 @@ All notable changes to this project are documented here. The format follows
 ### Added (first v2)
 
 - Initial v2 of the AWS infrastructure lab, rebuilt from scratch with the lessons of v1
-  (docs/ARQUITETURA.md, "v1 → v2"):
+  (docs/ARCHITECTURE.md, "v1 → v2"):
   - `terraform/bootstrap`: S3 state bucket (versioned, TLS-only, native locking), GitHub OIDC
     provider and the contract roles `tx01v2-gha-plan`, `tx01v2-gha-apply`, `dx01v2-gha-deploy`,
     monthly cost budget with ACTUAL 50/80/100 % and FORECASTED 100 % alerts.
@@ -239,7 +244,7 @@ All notable changes to this project are documented here. The format follows
     ruleset and repository settings as code; Dependabot; issue and PR templates.
   - `scripts/leftovers.sh` to find billable leftovers after a destroy.
   - Brazilian Portuguese docs: architecture, contract v1, runbook, costs, guardrails, harness,
-    sustainment, publication checklist, and `docs/LICOES_APRENDIDAS.md` (sanitized lessons learned
+    sustainment, publication checklist, and `docs/LESSONS_LEARNED.md` (sanitized lessons learned
     from the v1 AWS lab, Nov 2025 – Mar 2026).
 
 ### Changed
@@ -249,6 +254,7 @@ All notable changes to this project are documented here. The format follows
 - The README family table links the Azure pair (`tx02v2`, `dx02v2`), now public.
 - The README family table and AGENTS.md link the Google Cloud pair (`tx03v2`, `dx03v2`), now public.
 
-## R10: capacidade e FinOps
+## R10: capacity and FinOps
 
-- OpenCost/VPA Off, carga/HPA/PDB e kind HA; orçamento/expiração e Spot opcionais. Prova pesada no CI; nada executado na nuvem (v2).
+- OpenCost/recommendation-only VPA, load/HPA/PDB and kind HA; optional budget/expiration and Spot.
+  Heavy runtime proof runs in CI; nothing has run in AWS v2.

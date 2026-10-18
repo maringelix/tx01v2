@@ -1,6 +1,6 @@
 # R9 pilot-light data copy. The destination key and replicated RDS backups exist only in the
 # opt-in DR profile. An automated backup copy is not a running standby database: recovery requires
-# an explicit restore and endpoint switch, described in docs/DR.md.
+# an explicit restore and endpoint switch, described in docs/CONTINUITY.md.
 resource "aws_kms_key" "dr_rds_backups" {
   count    = var.db_profile == "dr" ? 1 : 0
   provider = aws.dr

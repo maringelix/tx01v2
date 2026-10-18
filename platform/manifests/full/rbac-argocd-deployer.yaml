@@ -1,4 +1,4 @@
-# What the deploy role of dx01v2 may do in Argo CD (docs/CONTRATO.md): read the Application dx01v2 and
+# What the deploy role of dx01v2 may do in Argo CD (docs/CONTRACT.md): read the Application dx01v2 and
 # ask it to refresh (an annotation), nothing else and nothing in any other Application. The EKS access
 # entry puts the role in the group dx01v2-deployers; the Role of the app namespace is in
 # platform/manifests/rbac-dx01v2-deployer.yaml.

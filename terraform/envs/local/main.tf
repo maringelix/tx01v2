@@ -1,4 +1,4 @@
-# Local lab: the AWS lab of tx01v2 emulated on the Docker daemon of this machine (docs/ARQUITETURA.md,
+# Local lab: the AWS lab of tx01v2 emulated on the Docker daemon of this machine (docs/ARCHITECTURE.md,
 # "Lab local"). Nothing here talks to AWS. AWS service -> local emulation:
 #   EKS -> kind cluster (Kubernetes 1.36)        ECR -> registry (Distribution 3)
 #   RDS PostgreSQL 17 (TLS) -> postgres:17 (TLS only, lab CA)   S3 -> Versity S3 Gateway

@@ -31,7 +31,7 @@ locals {
   tx_subject_prefix = "repo:${var.github_owner}@${var.github_owner_id}/tx01v2@${var.tx01v2_repository_id}"
   dx_subject_prefix = "repo:${var.github_owner}@${var.github_owner_id}/dx01v2@${var.dx01v2_repository_id}"
 
-  # The contract (docs/CONTRATO.md): exact sub claims, no wildcards. Only the apply and deploy jobs
+  # The contract (docs/CONTRACT.md): exact sub claims, no wildcards. Only the apply and deploy jobs
   # use the environment lab, whose deployment branches are limited to main (repo-guardrails.sh).
   github_oidc_subjects = {
     plan = [

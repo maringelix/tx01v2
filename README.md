@@ -4,8 +4,6 @@ AWS infrastructure half of a DevOps lab: Terraform, EKS, RDS, ALB + WAF and GitH
 
 [![ci](https://github.com/maringelix/tx01v2/actions/workflows/ci.yml/badge.svg)](https://github.com/maringelix/tx01v2/actions/workflows/ci.yml)
 
-[Português](README.pt-BR.md)
-
 **Fork this lab:** [FORK.md](FORK.md) takes you from a fork to a running lab, on your machine first, then in your own cloud account.
 
 ## What is this
@@ -21,7 +19,7 @@ The lab family (v2):
 |---|---|---|---|
 | [`tx00v2`](https://github.com/maringelix/tx00v2) | all three | family hub: roadmap, family guardrails, cross-repo checks | see its status matrix |
 | `tx01v2` (this repo) | AWS | infrastructure (Terraform, platform layer) | see status matrix |
-| [`dx01v2`](https://github.com/maringelix/dx01v2) | AWS | application (built against `docs/CONTRATO.md`) | see its status matrix |
+| [`dx01v2`](https://github.com/maringelix/dx01v2) | AWS | application (built against `docs/CONTRACT.md`) | see its status matrix |
 | [`tx02v2`](https://github.com/maringelix/tx02v2) | Azure | infrastructure (Terraform, AKS, PostgreSQL Flexible Server, Application Gateway for Containers) | see its status matrix |
 | [`dx02v2`](https://github.com/maringelix/dx02v2) | Azure | application (the dx01v2 app on AKS) | see its status matrix |
 | [`tx03v2`](https://github.com/maringelix/tx03v2) | GCP | infrastructure (Terraform, GKE Autopilot, Cloud SQL, Cloud Armor) | see its status matrix |
@@ -36,15 +34,15 @@ The lab family (v2):
 | Workflows, scripts, Kubernetes manifests and Helm values (actionlint, shellcheck, kubeconform, helm template) | `verified in CI` | `make static` (including `destroy-flow`, `local-preflight`) |
 | Secret scan and repository policies (no real identifiers, pinned actions, scripts that act only on the lab, v1 regressions) | `verified in CI` | `make static` (`gitleaks`, `policy-*`, `repo-structure`) |
 | Terraform unit tests with a mocked AWS provider (immutable OIDC subjects, apply permissions boundary, scoped plan reads, bucket, budget, EKS, nodes, RDS, ECR, WAF, KMS, contract SSM parameters, negative validations) | `verified in CI` | `make test`; CI job `test` |
-| Cloud readiness regressions: scoped EKS Auth/ELB boundary allowances, provider S3 reads/deletion, ECR digest resolution, named deployer reads and Kubernetes image-admission mode | `implemented as code; not run in the cloud (v2)` | `terraform/bootstrap/tests/cloud_readiness.tftest.hcl`; `cloud-readiness` static check and eight negative fixtures; [limits and operator steps](docs/RUNBOOK.md#correções-de-prontidão-aws) |
+| Cloud readiness regressions: scoped EKS Auth/ELB boundary allowances, provider S3 reads/deletion, ECR digest resolution, named deployer reads and Kubernetes image-admission mode | `implemented as code; not run in the cloud (v2)` | `terraform/bootstrap/tests/cloud_readiness.tftest.hcl`; `cloud-readiness` static check and eight negative fixtures; [limits and operator steps](docs/RUNBOOK.md#aws-readiness-fixes) |
 | Bootstrap (state bucket, GitHub OIDC roles, budget) | `not run in the cloud (v2)` | `terraform/bootstrap`, `docs/RUNBOOK.md` |
-| Lab apply (VPC, EKS 1.36, RDS PostgreSQL 17, ECR, WAF, optional Route53 + ACM, SSM contract v5) | `not run in the cloud (v2)` | `.github/workflows/terraform-apply.yml` |
+| Lab apply (VPC, EKS 1.36, RDS PostgreSQL 17, ECR, WAF, optional Route53 + ACM, SSM contract v7) | `not run in the cloud (v2)` | `.github/workflows/terraform-apply.yml` |
 | Plan on pull requests | `not run in the cloud (v2)` | `.github/workflows/terraform-plan.yml` |
 | Platform layer (AWS Load Balancer Controller v3.6.0, optional ExternalDNS 1.23.0, External Secrets Operator 2.12.0, OpenTelemetry Collector 0.176.0 sending app traces to AWS X-Ray) | `implemented as code; not run in the cloud (v2)` | `.github/workflows/platform.yml`, `platform/install.sh`; pinned charts rendered by `helm-template` |
 | Destroy + leftover check | `not run in the cloud (v2)` | `.github/workflows/terraform-destroy.yml`, `scripts/leftovers.sh` |
-| Repository settings as code (ruleset, environment `lab`) | `verified locally` | `scripts/repo-guardrails.sh` applied; read back with `gh api` on 2026-10-14 (`docs/PUBLICACAO.md`) |
+| Repository settings as code (ruleset, environment `lab`) | `verified locally` | `scripts/repo-guardrails.sh` applied; read back with `gh api` on 2026-10-14 (`docs/PUBLISHING.md`) |
 | **Local lab** (Terraform on Docker): kind cluster + emulated ECR, RDS (TLS only), S3, load balancer, git server; destroy + leftover check | `verified in CI` | `make e2e` (`terraform/envs/local`, `scripts/local-lab.sh`); `terraform-test:envs/local` |
-| PostgreSQL continuity: optional Multi-AZ/PITR/cross-Region backup replication, physical local PITR with corruption rejection | `implemented as code; cloud not run (v2)` | `terraform/envs/lab/continuity.tf`, `scripts/local/pitr-drill.sh`, [runbook](docs/CONTINUIDADE.md) |
+| PostgreSQL continuity: optional Multi-AZ/PITR/cross-Region backup replication, physical local PITR with corruption rejection | `implemented as code; cloud not run (v2)` | `terraform/envs/lab/continuity.tf`, `scripts/local/pitr-drill.sh`, [runbook](docs/CONTINUITY.md) |
 | Service mesh: Istio 1.31 ambient, mTLS `STRICT`, identity-based `AuthorizationPolicy` | `verified in CI` | `make e2e` (`platform/local/check.sh`: allowed, other identity and plaintext probes) |
 | Gateway API on Istio behind the emulated load balancer, HTTPS with cert-manager (lab CA), HTTP → HTTPS | `verified in CI` | `make e2e` |
 | External Secrets (ClusterSecretStore `local-secrets`), metrics-server | `verified in CI` | `make e2e` |
@@ -81,7 +79,7 @@ flowchart LR
 - `terraform/envs/lab`: modules `kms`, `network`, `eks`, `rds`, `ecr`, `waf`, the admin-token secret
   and the SSM parameters dx01v2 reads.
 - `platform/`: Helm charts and manifests installed after the apply, never by Terraform.
-- Design decisions and the v1 → v2 table: [docs/ARQUITETURA.md](docs/ARQUITETURA.md).
+- Design decisions and the v1 → v2 table: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Quick start (free, local)
 
@@ -104,7 +102,8 @@ the cloud. The local lab builds the same platform on Docker, so you can study an
 an account:
 
 ```bash
-make e2e            # up + every probe + down: about 30-40 minutes, 8 GB of Docker memory for "full"
+make e2e            # up + probes + down; single-node full historically needed about 8 GB
+LOCAL_TOPOLOGY=ha make e2e   # current multi-node HA CI topology; 12 GiB Docker recommended
 make local-up       # or keep it running (LOCAL_PROFILE=core|observability|operations|full)
 LOCAL_SIZE=small make local-up   # the same platform with smaller limits, for 7 GB of Docker memory
 make local-check    # probes against the running lab
@@ -120,17 +119,17 @@ make local-down     # destroy + leftover check
 | ACM | cert-manager, ClusterIssuer `lab-ca` |
 | Secrets Manager + ESO | Secrets of `lab-secrets` + ESO |
 | S3 (backups) | Versity S3 Gateway |
-| SSM contract | ConfigMap `lab-system/lab-contract` (`docs/CONTRATO.md`) |
+| SSM contract | ConfigMap `lab-system/lab-contract` (`docs/CONTRACT.md`) |
 | GitHub (GitOps source) | Soft Serve git server |
 
-Details, probes and limits: [docs/LAB_LOCAL.md](docs/LAB_LOCAL.md) and
-[docs/ARQUITETURA.md](docs/ARQUITETURA.md). dx01v2 deploys the app on top of it (`make e2e-platform`
+Details, probes and limits: [docs/LOCAL_LAB.md](docs/LOCAL_LAB.md) and
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). dx01v2 deploys the app on top of it (`make e2e-platform`
 there).
 
 ## Cloud path (costs money)
 
 **Cost first:** about US$0.26–0.32 per hour in us-east-1 with the defaults (reference list prices,
-see [docs/CUSTOS.md](docs/CUSTOS.md)). A forgotten lab costs more than US$40 per week. Use a
+see [docs/COSTS.md](docs/COSTS.md)). A forgotten lab costs more than US$40 per week. Use a
 dedicated AWS account, keep the budget alerts, and destroy on the same day.
 
 Follow [docs/RUNBOOK.md](docs/RUNBOOK.md): bootstrap → GitHub variables → apply → platform → deploy
@@ -153,21 +152,24 @@ dx01v2 → smoke test → destroy → leftover check → `cloud_run_report` issu
 
 ## Docs
 
-All docs are in Brazilian Portuguese.
+All public documentation is written in English. Start with the
+[complete lab onboarding guide](https://github.com/maringelix/tx00v2/blob/main/docs/GETTING_STARTED.md).
 
 | Doc | Content |
 |---|---|
 | [FORK.md](FORK.md) | fork the lab: what GitHub does not copy, the local lab, your own cloud account |
-| [docs/ARQUITETURA.md](docs/ARQUITETURA.md) | diagram, ADRs, v1 → v2 |
-| [docs/CONTRATO.md](docs/CONTRATO.md) | tx01v2 ⇄ dx01v2 contract v5 (source of truth) |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | diagram, ADRs, v1 → v2 |
+| [docs/CONTRACT.md](docs/CONTRACT.md) | tx01v2 ⇄ dx01v2 contract v7 (source of truth) |
 | [docs/RUNBOOK.md](docs/RUNBOOK.md) | full cloud round |
-| [docs/LAB_LOCAL.md](docs/LAB_LOCAL.md) | the local lab: what is emulated, how to run it, probes, limits |
-| [docs/CUSTOS.md](docs/CUSTOS.md) | cost estimate per component |
+| [docs/LOCAL_LAB.md](docs/LOCAL_LAB.md) | the local lab: what is emulated, how to run it, probes, limits |
+| [docs/COSTS.md](docs/COSTS.md) | cost estimate per component |
+| [docs/CONTINUITY.md](docs/CONTINUITY.md) | HA, data backups, PITR, regional recovery and teardown |
+| [docs/FINOPS.md](docs/FINOPS.md) | current regional rates, budget/expiry, capacity and showback |
 | [docs/GUARDRAILS.md](docs/GUARDRAILS.md) | rules, enforcement, exceptions, limits |
 | [docs/HARNESS.md](docs/HARNESS.md) | checks, strict mode, troubleshooting |
-| [docs/SUSTENTACAO.md](docs/SUSTENTACAO.md) | routines, end-of-support calendar, update procedures |
-| [docs/PUBLICACAO.md](docs/PUBLICACAO.md) | checklist to make the repository public |
-| [docs/LICOES_APRENDIDAS.md](docs/LICOES_APRENDIDAS.md) | lessons learned from v1 |
+| [docs/MAINTENANCE.md](docs/MAINTENANCE.md) | routines, end-of-support calendar, update procedures |
+| [docs/PUBLISHING.md](docs/PUBLISHING.md) | checklist to make the repository public |
+| [docs/LESSONS_LEARNED.md](docs/LESSONS_LEARNED.md) | lessons learned from v1 |
 
 ## Contributing
 
@@ -178,6 +180,9 @@ issues: [SECURITY.md](SECURITY.md).
 
 [MIT](LICENSE) — Copyright (c) 2025-2026 Bruno Maringeli.
 
-## R10: capacidade e FinOps
+## R10: capacity and FinOps
 
-Veja [FinOps e escala](docs/FINOPS.md) para kind HA, carga/HPA/PDB, OpenCost, VPA Off, Spot opt-in, preços regionais, orçamento/expiração e limpeza. Construção para fork; nada executado na nuvem (v2).
+See [FinOps and scaling](docs/FINOPS.md) for kind HA, load/HPA/PDB, OpenCost,
+recommendation-only VPA, opt-in Spot, regional pricing, budget/expiration and cleanup.
+The dedicated Spot profile retains an on-demand base and changes cost; inexpensive defaults remain.
+Construction for forks; `not run in the cloud (v2)`.

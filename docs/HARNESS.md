@@ -1,105 +1,113 @@
-# Harness do tx01v2
+# tx01v2 harness
 
-O harness é o conjunto de checks que prova o que este repositório afirma, sem conta na nuvem.
-Ele vive em `scripts/harness.sh`; o `Makefile` e o CI só o chamam. O que passa localmente com
-`HARNESS_STRICT=1` passa no CI.
+The harness is the set of checks that supports this repository's claims without a cloud account.
+It lives in `scripts/harness.sh`; the `Makefile` and CI call that same script. CI uses
+`HARNESS_STRICT=1`, so missing prerequisites and unexpected tool versions fail visibly.
 
-## Camadas
+## Layers
 
-| Camada | Comando | O que prova | O que NÃO prova | Onde roda |
+| Layer | Command | What it proves | What it does not prove | Where it runs |
 |---|---|---|---|---|
-| Ferramentas | `make tools` | binários nas versões de `tools/versions.env`, SHA256 conferido | — | local, CI |
-| Versões | check `tool-versions` | PATH usa as versões fixadas (estrito) | — | local, CI |
-| Estrutura e honestidade | `repo-structure`, `version-consistency` | arquivos obrigatórios, rótulos de status, LF, versões coerentes entre arquivos, política do LBC idêntica ao upstream | que a documentação está certa | local, CI |
-| Políticas | `policy-terraform`, `policy-identifiers`, `policy-workflows`, `policy-scripts`, `trivyignore-policy`, `contract-platform` | erros do v1 não voltam; sem IDs reais; actions fixadas; scripts que só agem no lab (sem alvo vindo de variável de ambiente, kubeconfig temporário, tag `Project` conferida, contexto do kind no lab local); ignores com validade; manifests conforme o contrato | intenção de quem escreveu | local, CI |
-| Formato e sintaxe | `terraform-fmt`, `terraform-validate:*` | HCL formatado e válido para o schema do provider fixado | que a AWS aceita os valores | local, CI |
-| Lock de providers | `terraform-lockfiles` | hashes para linux_amd64, linux_arm64, darwin_arm64, windows_amd64 | — | local, CI |
-| Lint | `tflint` | preset recommended + regras AWS sem issues | regras que dependem de chamadas à AWS (deep check desligado) | local, CI |
-| Segurança da IaC | `trivy-config`, `trivy-config-tfvars` | sem HIGH/CRITICAL fora das exceções documentadas | configuração em runtime, IAM efetivo | local, CI |
-| Fluxos dos scripts, offline | `destroy-flow`, `local-preflight` | um uninstall que falha ainda leva à limpeza pela API, ao `terraform destroy` e à checagem de sobras; o lab local recusa uma máquina com daemons diferentes, rede ou rota sobreposta ou porta ocupada, e nunca age num lab de outro `LOCAL_STATE_DIR` | comportamento contra a AWS ou o Docker de verdade (CLIs simuladas) | local, CI |
-| Workflows e scripts | `actionlint` (com shellcheck), `shellcheck` | YAML e bash corretos | comportamento contra a nuvem | local, CI |
-| Manifests | `kubeconform` | core, full e chart `platform/gitops` renderizados válidos (estrito) para Kubernetes 1.36 e CRDs fixados | admission e comportamento no cluster | local, CI (rede) |
-| Charts da plataforma | `helm-template` | os charts fixados (LBC 3.6.0, ESO 2.12.0) aceitam `platform/values` e renderizam imagens por digest, service accounts do Pod Identity, feature gates e tags | instalação real e comportamento dos controllers | local, CI (rede) |
-| Segredos | `gitleaks` | nenhum segredo conhecido (histórico completo quando há commits) | segredos fora dos padrões do gitleaks | local, CI |
-| Testes unitários | `terraform-test:bootstrap`, `terraform-test:envs/lab` | trust OIDC, bucket, budget, EKS, nós, add-ons, Pod Identity, RDS sem senha no state, ECR, WAF, KMS, SSM do contrato, validações negativas; regressões da boundary para EKS Auth e das permissões S3 do provider fixado; resolução de digest ECR com escopo preservado | que os recursos sobem na AWS (provider mockado) | local, CI |
-| Prontidão da plataforma cloud | `cloud-readiness` | parse YAML com o Helm já fixado; modo Kubernetes, deny e escopo da policy Kyverno; `get` somente do Namespace `dx01v2` e Gateway `dx01v2-waypoint`; oito mutantes negativos recusados | assinatura positiva/negativa real no admission webhook, IAM/RBAC efetivos na AWS ou provisioning cloud | local, CI |
-| Lab local: Terraform | `terraform-validate:envs/local`, `terraform-test:envs/local` (10 runs, só plan) | rede privada, labels em tudo, só o registry publicado e só em 127.0.0.1, banco só TLS, imagens por digest, validações negativas | que o Docker cria os contêineres (isso é o `e2e`) | local, CI |
-| Lab local: plataforma | `local-versions`, `helm-template-local`, `kubeconform-local`, `policy-gator` | os 17 charts fixados por SHA256 renderizam só imagens por digest e Services ClusterIP, também com os overlays do tamanho `small` (`platform/local/values/small`), que não podem trocar imagens; manifests válidos; cada política do Gatekeeper aceita e recusa os casos de `platform/local/policies/tests` | comportamento no cluster | local, CI (rede) |
-  | Plataforma AWS `full` | `helm-template-full`, `contract-platform`, `platform-sizing`, `kubeconform`, `policy-gator`, `image-admission-policy`, `full-install-order` | os 16 charts por versão/SHA256, imagens por digest, overlays AWS, PVCs gp3 e retenção dos sinais, mesh waypoint, AppProject do Argo CD, bucket Velero, policies Gatekeeper/Kyverno, manifests, soma de requests para dois nós e Pod Identity de Trivy, Kyverno e EBS CSI; admission precede a sincronização do Argo CD | instalação e comportamento na AWS; leitura de imagens privadas, assinaturas ECR e persistência após reinício em runtime | local, CI (rede) |
-| Teardown de observabilidade | `observability-cleanup` | claims derivados dos StatefulSets dos três releases do lab e seleção de PVs EBS pelo namespace e nome exatos do PVC; claims de outros namespaces, nomes ou drivers não entram na espera | exclusão real pelo EBS CSI | local, CI |
-| Caminho do fork | `fork-references`, `fork-profiles` | scripts, alvos `make`, workflows e variáveis citados no `FORK.md` e `docs/RUNBOOK.md` existem ou estão ligados ao Terraform/workflows; render offline de `core`/`full`, substituição do dono do fork e recusa de owner, perfil e região inválidos antes de qualquer chamada cloud | se os valores da conta do operador estão corretos | local, CI |
-| Lab local: ponta a ponta | `local-lab-e2e` (`make e2e`) | apply do `terraform/envs/local`, instalação do perfil `full` e as 39 sondas de `platform/local/check.sh` (`docs/LAB_LOCAL.md`), incluindo HTTP-01, renovação ACME automática, OWASP CRS para SQLi e rate limit; destroy e checagem de sobras sempre | AWS; a CA Pebble e o WAF local são gêmeos de teste, não serviços cloud homologados | local (Docker, 8 GB), CI |
-| Nuvem | workflows `terraform-*`, `platform` | — | — | `não executado em nuvem (v2)` |
+| Tools | `make tools` | Binaries match `tools/versions.env` and their SHA256 checksums | — | local, CI |
+| Versions | `tool-versions` check | PATH uses the pinned versions in strict mode | — | local, CI |
+| Structure and honest claims | `repo-structure`, `version-consistency` | Required files, status labels, LF, consistent versions and the LBC policy matching upstream | Accuracy of every statement in the documentation | local, CI |
+| Policies | `policy-terraform`, `policy-identifiers`, `policy-workflows`, `policy-scripts`, `trivyignore-policy`, `contract-platform` | Covered v1 regressions stay fixed; no real IDs; actions are pinned; scripts check lab ownership, use a temporary kubeconfig and fixed kind context; ignores expire; manifests follow the contract | Author intent | local, CI |
+| Formatting and syntax | `terraform-fmt`, `terraform-validate:*` | HCL is formatted and valid against the pinned provider schema | AWS accepting all supplied values | local, CI |
+| Provider locks | `terraform-lockfiles` | Hashes cover linux_amd64, linux_arm64, darwin_arm64 and windows_amd64 | — | local, CI |
+| Lint | `tflint` | Recommended preset and AWS rules report no issues | Rules requiring AWS calls; deep checking is disabled | local, CI |
+| IaC security | `trivy-config`, `trivy-config-tfvars` | No HIGH/CRITICAL findings outside documented exceptions | Runtime configuration or effective IAM permissions | local, CI |
+| Offline script flows | `destroy-flow`, `local-preflight` | A failed uninstall still reaches API cleanup, Terraform destroy and leftover checks; local preflight refuses mismatched Docker daemons, overlapping networks/routes and occupied ports, and never adopts a different `LOCAL_STATE_DIR` | Actual AWS or Docker behavior; these tests use simulated CLIs | local, CI |
+| Workflows and scripts | `actionlint` with shellcheck, `shellcheck` | Valid workflow YAML and bash | Cloud behavior | local, CI |
+| Manifests | `kubeconform` | Strict validation of rendered core/full manifests and `platform/gitops` against Kubernetes 1.36 and pinned CRD schemas | Admission decisions or cluster behavior | local, CI (network) |
+| Platform charts | `helm-template` | Pinned LBC 3.6.0 and ESO 2.12.0 charts consume the values, render digest-pinned images, Pod Identity service accounts, feature gates and tags | Installation or controller behavior | local, CI (network) |
+| Secrets | `gitleaks` | No recognized secrets in the scanned Git history | Secrets outside the scanner's patterns | local, CI |
+| Unit tests | `terraform-test:bootstrap`, `terraform-test:envs/lab` | OIDC trust, bucket, budget, EKS, nodes, add-ons, Pod Identity, state-free RDS passwords, ECR, WAF, KMS, contract SSM parameters and negative validations; scoped EKS Auth/ELB boundary allowances, pinned-provider S3 calls and ECR digest resolution | Resources provisioning in AWS; providers are mocked | local, CI |
+| Cloud platform readiness | `cloud-readiness` | Real YAML parsed with pinned Helm; Kubernetes evaluation, deny behavior and scope of the Kyverno configuration; `get` only for Namespace `dx01v2` and Gateway `dx01v2-waypoint`; eight negative fixtures rejected | Live webhook signature verification, effective AWS IAM/RBAC or cloud provisioning | local, CI |
+| Local lab: Terraform | `terraform-validate:envs/local`, `terraform-test:envs/local` | Private network, ownership labels, only the registry published on 127.0.0.1, TLS-only database, pinned images and negative validations | Docker creating the containers; that is exercised by e2e | local, CI |
+| Local lab: platform | `local-versions`, `helm-template-local`, `kubeconform-local`, `policy-gator` | The pinned charts render digest-pinned images and ClusterIP Services, including small overlays that cannot replace images; valid manifests; allowed and denied Gatekeeper fixtures | Cluster behavior | local, CI (network) |
+| AWS full platform | `helm-template-full`, `contract-platform`, `platform-sizing`, `kubeconform`, `policy-gator`, `image-admission-policy`, `full-install-order` | Pinned chart archives/images, AWS overlays, gp3 PVCs and signal retention, ambient waypoint, Argo CD project, Velero bucket, Gatekeeper/Kyverno policies, requests for two nodes and Pod Identity for Trivy, Kyverno and EBS CSI; admission is installed before Argo CD sync | AWS installation, private image access, live ECR signature verification or persistence after a real restart | local, CI (network) |
+| Observability teardown | `observability-cleanup` | Claims derived from StatefulSets of the lab's three releases; EBS PV selection uses exact PVC namespace/name and excludes other claims/drivers | Actual deletion by EBS CSI | local, CI |
+| Fork path | `fork-references`, `fork-profiles` | Referenced scripts, Make targets, workflows and variables exist or are wired; offline core/full render, owner substitution, invalid owner/profile/region rejected before cloud access | Correctness of the operator's account-specific values | local, CI |
+| Local lab: end to end | `local-lab-e2e` (`make e2e`) | Local Terraform apply, full installation and probes in `platform/local/check.sh`, including HTTP-01, ACME renewal, OWASP CRS SQLi/rate limiting, continuity and opt-in capacity/FinOps; destroy and leftover checks always run | AWS; Pebble and the local WAF are test counterparts, not homologated cloud services | local Docker, CI |
+| Cloud | `terraform-*` and `platform` workflows | — | — | `not run in the cloud (v2)` |
 
-## Jobs do CI
+The single-node default and the HA capacity/FinOps scenario have different resource requirements.
+The HA scenario recommends 12 GiB available to Docker; `LOCAL_SIZE=small` uses one node and 7 GiB.
+See [LOCAL_LAB.md](LOCAL_LAB.md) and [FINOPS.md](FINOPS.md).
 
-| Job (`ci.yml`) | Alvo | Estágio do harness |
+## CI jobs
+
+| Job in `ci.yml` | Target | Harness stage |
 |---|---|---|
 | `static` | `make tools && make static` | `static` |
 | `test` | `make tools && make test` | `test` |
-| `e2e` | `make tools && make e2e` | `e2e` (o lab local; diagnósticos como artifact em caso de falha) |
+| `e2e` | `make tools && make e2e` | `e2e`; the local lab, with diagnostic artifacts on failure |
 
-Os ids `static`, `test` e `e2e` são estáveis: são os checks exigidos pelo ruleset
-(`.github/rulesets/main.json`; o `e2e`, o lab local, entrou em 2026-10-13).
+The job IDs `static`, `test` and `e2e` are stable required checks in
+`.github/rulesets/main.json`. The local-lab `e2e` gate was added on 2026-10-13.
+The complete current CI enables `LOCAL_TOPOLOGY=ha` and `LOCAL_FINOPS=1` for e2e.
 
-## Modo estrito
+## Strict mode
 
-`HARNESS_STRICT=1` (definido no CI) transforma todo `SKIP` em `FAIL` e exige que as versões no PATH
-sejam as de `tools/versions.env`. Sem ele, um check só pode dar `SKIP` quando falta um pré-requisito
-local (por exemplo, ferramenta não instalada) e sempre imprime o motivo.
+`HARNESS_STRICT=1`, set in CI, converts every SKIP into FAIL and requires the PATH versions in
+`tools/versions.env`. Without it, a check may skip only a missing local prerequisite, such as a
+tool that is not installed, and must print the reason.
 
-Outras variáveis: `HARNESS_VERBOSE=1` mostra a saída dos checks que passam; `HARNESS_ONLY=<regex>`
-roda só os checks cujo nome casa com a expressão (depuração local, por exemplo
-`HARNESS_ONLY='^tflint$' scripts/harness.sh static`; o CI nunca usa).
+`HARNESS_VERBOSE=1` prints output from passing checks. `HARNESS_ONLY=<regex>` runs only checks
+whose names match, for local debugging, for example
+`HARNESS_ONLY='^tflint$' scripts/harness.sh static`. CI never uses that filter.
 
-## Como adicionar um check
+## Adding a check
 
-1. Escreva uma função `check_<nome>` em `scripts/harness.sh` que retorna 0 (PASS) ou não-zero (FAIL);
-   use `need <ferramenta>` ou `skip "<motivo>"` só para pré-requisitos ausentes.
-2. Registre-a em `register_checks` no estágio certo (`static` ou `test`).
-3. Rode `scripts/harness.sh list` e `HARNESS_STRICT=1 make verify`.
-4. Atualize esta tabela, `docs/GUARDRAILS.md` (se for um guardrail) e o CHANGELOG.
+1. Write `check_<name>` in `scripts/harness.sh`, returning zero for PASS and nonzero for FAIL.
+   Use `need <tool>` or `skip "<reason>"` only for missing prerequisites.
+2. Register it in `register_checks` under the appropriate stage, `static` or `test`.
+3. Run `scripts/harness.sh list` and `HARNESS_STRICT=1 make verify`.
+4. Update this table, `docs/GUARDRAILS.md` if it is a guardrail, and the changelog.
 
-Ferramenta nova: adicione-a a `scripts/lib/tools.sh` (URLs oficiais), a `tools/versions.env` e rode
-`scripts/update-tool-checksums.sh <ferramenta> <versão>`.
+For a new tool, add its official URLs to `scripts/lib/tools.sh` and its version to
+`tools/versions.env`; run `scripts/update-tool-checksums.sh <tool> <version>`.
 
-## Windows e macOS
+## Windows and macOS
 
-- Windows: use o devcontainer (`.devcontainer/devcontainer.json`, imagem fixada por digest) ou WSL 2
-  com Ubuntu. Git Bash não é suportado (as ferramentas são binários Linux/macOS).
-- macOS (Apple Silicon): `brew install bash` (o bash 3.2 do sistema não serve; o harness exige
-  bash >= 4.4) ou o devcontainer. Plataformas suportadas pelo `install-tools.sh`: linux_amd64,
-  linux_arm64, darwin_arm64.
-- Container avulso (como a verificação local deste repositório):
-  `docker run --rm -e HARNESS_STRICT=1 -v "$PWD:/work" -w /work ubuntu:24.04 bash -c "apt-get update -qq && apt-get install -y -qq --no-install-recommends ca-certificates curl unzip git xz-utils make >/dev/null && make tools && make verify"`
-  (adicione `-e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=*` se o dono dos arquivos for outro usuário).
+- Windows: use the digest-pinned devcontainer in `.devcontainer/devcontainer.json` or Ubuntu on
+  WSL 2. Git Bash is not the supported full harness environment; installer binaries target Linux/macOS.
+- Apple Silicon macOS: use `brew install bash`; the system bash 3.2 is too old for the harness's
+  bash >=4.4 requirement. The devcontainer is another option. The installer supports linux_amd64,
+  linux_arm64 and darwin_arm64.
+- A standalone container can reproduce the lightweight verification environment:
+  `docker run --rm -e HARNESS_STRICT=1 -v "$PWD:/work" -w /work ubuntu:24.04 bash -c "apt-get update -qq && apt-get install -y -qq --no-install-recommends ca-certificates curl unzip git xz-utils make >/dev/null && make tools && make verify"`.
+  If files are owned by another user, add
+  `-e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=*`.
 
-## Dados fora do repositório
+## Data outside the repository
 
-O harness grava dados do Terraform (`TF_DATA_DIR`), logs e caches em `HARNESS_WORK_DIR` (padrão
-`$TMPDIR/tx01v2-harness`) e usa o cache de plugins `TF_PLUGIN_CACHE_DIR` (padrão
-`~/.terraform.d/plugin-cache`, também cacheado no CI). No repositório ficam só `.tools/` e os lock
-files dos módulos (ignorados pelo git). `make clean` remove tudo isso.
+The harness stores Terraform data (`TF_DATA_DIR`), logs and caches in `HARNESS_WORK_DIR`,
+defaulting to `$TMPDIR/tx01v2-harness`. Provider plugins use `TF_PLUGIN_CACHE_DIR`, defaulting to
+`~/.terraform.d/plugin-cache` and cached in CI. Only ignored `.tools/` and module lock files remain
+inside the working tree. `make clean` removes these generated files.
 
-## Problemas comuns
+## Troubleshooting
 
-| Sintoma | Causa provável | O que fazer |
+| Symptom | Likely cause | Action |
 |---|---|---|
-| `SKIP tool-versions - missing tools` | `make tools` não rodou | `make tools` |
-| `FAIL terraform-validate:terraform/envs/lab` com erro de lock | provider mudou sem atualizar o lock | `terraform providers lock -platform=linux_amd64 -platform=linux_arm64 -platform=darwin_arm64 -platform=windows_amd64` no root |
-| `FAIL trivyignore-policy ... expired` | ignore venceu | revise a exceção: corrija o código ou renove com nova justificativa |
-| `FAIL kubeconform ... could not find schema` | sem rede, ou schema do catálogo que o kubeconform não compila | confira a rede; veja a nota abaixo |
-| `FAIL gitleaks` | segredo ou falso positivo | remova o segredo e gire a credencial; falso positivo vai para `.gitleaksignore` com justificativa no PR. Antes do primeiro commit o check roda `gitleaks dir .`, que também lê arquivos ignorados pelo git (`terraform.tfvars`, `.env`): mantenha credenciais locais fora da pasta do repositório |
-| `FAIL policy-identifiers` | ID de conta, e-mail ou IP real | use `123456789012`, `you@example.com`, `203.0.113.10/32` |
+| `SKIP tool-versions - missing tools` | `make tools` was not run | Run `make tools` |
+| `FAIL terraform-validate:terraform/envs/lab` with a lock error | Provider changed without refreshed lock hashes | Run `terraform providers lock -platform=linux_amd64 -platform=linux_arm64 -platform=darwin_arm64 -platform=windows_amd64` in the affected root |
+| `FAIL trivyignore-policy ... expired` | Exception expired | Review it; fix the code or renew with a current justification |
+| `FAIL kubeconform ... could not find schema` | Network failure or a catalog schema kubeconform cannot compile | Check connectivity and the note below |
+| `FAIL gitleaks` | Secret or false positive | Remove the secret and rotate it. A justified false-positive exception requires review; never silently weaken the gate. Before the first commit, `gitleaks dir .` also reads ignored tfvars/env files, so keep local credentials outside the repository |
+| `FAIL policy-identifiers` | Real account ID, email or IP | Use `123456789012`, `you@example.com` or `203.0.113.10/32` |
 
-Nota sobre o kubeconform (verificado em 2026-10-10): a revisão de 2026-10-08 de
-`external-secrets.io/clustersecretstore_v1.json` no datreeio/CRDs-catalog (gerada do ESO 2.12) contém
-`"additionalProperties": false` dentro de um mapa `properties` (provider `crd`), e o kubeconform não
-consegue compilá-la ("could not find schema"). O harness usa a revisão anterior (commit
-`f3e4382`, 2026-06-02), que valida o ClusterSecretStore deste repositório em modo estrito (um campo
-com erro de digitação é rejeitado). Reavalie a cada atualização trimestral do harness
-(`docs/SUSTENTACAO.md`).
+Kubeconform note, checked on 2026-10-10: the 2026-10-08 revision of
+`external-secrets.io/clustersecretstore_v1.json` in datreeio/CRDs-catalog, generated from ESO 2.12,
+places `"additionalProperties": false` inside a `properties` map for the `crd` provider. Kubeconform
+cannot compile it and reports "could not find schema". The harness pins the previous revision,
+commit `f3e4382` dated 2026-06-02, which strictly validates this repository's ClusterSecretStore and
+rejects misspelled fields. Reassess this choice during the quarterly harness review in
+[MAINTENANCE.md](MAINTENANCE.md).
 
-## R10: capacidade e FinOps
+## R10: capacity and FinOps
 
-Veja [FinOps e escala](FINOPS.md) para kind HA, carga/HPA/PDB, OpenCost, VPA Off, Spot opt-in, preços regionais, orçamento/expiração e limpeza. Construção para fork; nada executado na nuvem (v2).
+See [FinOps and scaling](FINOPS.md) for kind HA, load/HPA/PDB, OpenCost, recommendation-only VPA,
+opt-in Spot, regional pricing, budget/expiration and cleanup. This is construction for forks;
+nothing has run in AWS v2.

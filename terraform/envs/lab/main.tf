@@ -1,5 +1,5 @@
 # Lab root: composes the modules for the tx01v2-lab environment. Names, tags and published
-# values follow docs/CONTRATO.md (the contract with dx01v2). Nothing in Terraform talks to the
+# values follow docs/CONTRACT.md (the contract with dx01v2). Nothing in Terraform talks to the
 # Kubernetes API: controllers and manifests are installed by platform/install.sh.
 
 locals {

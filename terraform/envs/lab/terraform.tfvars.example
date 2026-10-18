@@ -8,7 +8,7 @@ aws_region = "us-east-1"
 github_owner = "your-github-user"
 
 # Your public IP as /32. GitHub-hosted runners need 0.0.0.0/0 plus
-# allow_endpoint_from_anywhere = true for the platform/deploy workflows (docs/ARQUITETURA.md).
+# allow_endpoint_from_anywhere = true for the platform/deploy workflows (docs/ARCHITECTURE.md).
 endpoint_public_access_cidrs = ["203.0.113.10/32"]
 allow_endpoint_from_anywhere = false
 
@@ -27,7 +27,7 @@ cluster_admin_principal_arns = [
 # Output deploy_role_arn of terraform/bootstrap.
 app_deployer_principal_arns = ["arn:aws:iam::123456789012:role/dx01v2-gha-deploy"]
 
-# Lab-friendly defaults (change only if you know the cost impact, see docs/CUSTOS.md):
+# Lab-friendly defaults (change only if you know the cost impact, see docs/COSTS.md):
 # cluster_version          = "1.36"
 # node_capacity_type       = "SPOT"
 # node_instance_types      = ["t3.medium", "t3a.medium"]

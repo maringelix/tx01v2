@@ -1,4 +1,4 @@
-# Size small (LOCAL_SIZE=small, docs/LAB_LOCAL.md): the audit lists every constrained resource of the
+# Size small (LOCAL_SIZE=small, docs/LOCAL_LAB.md): the audit lists every constrained resource of the
 # cluster; every 5 minutes instead of every minute, and only the kinds the constraints match (each run
 # otherwise lists every kind of the cluster through the API server). The probes test the admission,
 # not the audit.

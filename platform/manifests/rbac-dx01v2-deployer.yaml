@@ -1,4 +1,4 @@
-# RBAC of the dx01v2 deploy role (docs/CONTRATO.md). The EKS access entry of dx01v2-gha-deploy puts it in
+# RBAC of the dx01v2 deploy role (docs/CONTRACT.md). The EKS access entry of dx01v2-gha-deploy puts it in
 # the group dx01v2-deployers; this binding grants it the Role below in the dx01v2 namespace only.
 # Secrets are read-only: External Secrets Operator writes them, the deployer never does.
 apiVersion: rbac.authorization.k8s.io/v1

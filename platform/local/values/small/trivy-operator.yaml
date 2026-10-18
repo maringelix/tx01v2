@@ -1,4 +1,4 @@
-# Size small (LOCAL_SIZE=small, docs/LAB_LOCAL.md): one scan job at a time (each runs a Trivy client)
+# Size small (LOCAL_SIZE=small, docs/LOCAL_LAB.md): one scan job at a time (each runs a Trivy client)
 # and less memory for the operator.
 operator:
   scanJobsConcurrentLimit: 1

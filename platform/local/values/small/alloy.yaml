@@ -1,4 +1,4 @@
-# Size small (LOCAL_SIZE=small, docs/LAB_LOCAL.md): less memory for Alloy.
+# Size small (LOCAL_SIZE=small, docs/LOCAL_LAB.md): less memory for Alloy.
 alloy:
   extraEnv:
     - name: GOMEMLIMIT

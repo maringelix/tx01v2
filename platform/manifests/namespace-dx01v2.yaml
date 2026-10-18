@@ -1,4 +1,4 @@
-# Namespace of the dx01v2 app (docs/CONTRATO.md). The last two labels are read only by the profile full
+# Namespace of the dx01v2 app (docs/CONTRACT.md). The last two labels are read only by the profile full
 # of platform/install.sh and are inert without it: istio.io/dataplane-mode puts the pods of the app in
 # the ambient mesh (mTLS between them by ztunnel, PERMISSIVE: the ALB reaches the pods from outside the
 # mesh) and policy.lab/enforce selects the namespace for the Gatekeeper constraints
