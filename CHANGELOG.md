@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- Dependency round of 2026-11-09: AWS provider 6.68.0 -> 6.71.0 in the `terraform/bootstrap` and
+  `terraform/envs/lab` lock files (Dependabot #23; the 6.69-6.71 release notes list no change to
+  `aws_s3_bucket`, whose read path the bootstrap IAM follows). TLS provider 4.4.1 -> 4.4.2 in
+  `terraform/envs/local`, the same lock entry as tx02v2 and tx03v2. The capacity image
+  `node:24-alpine3.24` moves to digest `a34ab6d7` (Node.js 24.22.2), the digest of the dx build
+  images. Nothing ran in AWS.
+
 - Standardize public documentation, historical lessons, templates and agent instructions in
   English; rename Portuguese document paths, retain one README and link the central onboarding
   guide. Preserve evidence labels and update AWS workflow, pricing and backup-key prerequisites.

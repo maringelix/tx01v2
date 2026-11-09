@@ -46,7 +46,7 @@ release calendars take precedence when planning a new update.
 | Amazon Linux 2023 nodes | AL2023 | Standard to 2027-06-30; maintenance to 2029-06-30 | [AL2023 cadence](https://docs.aws.amazon.com/linux/al2023/ug/release-cadence.html) | New AMIs arrive through node-group updates; plan a successor before 2029 |
 | PostgreSQL on RDS | 17 | Community: 2029-11-08; RDS standard: 2030-02-28, then Extended Support billing | [RDS PostgreSQL calendar](https://docs.aws.amazon.com/AmazonRDS/latest/PostgreSQLReleaseNotes/postgresql-release-calendar.html) | Coordinate a major-version/contract update before standard support ends |
 | Terraform CLI | 1.16.5, `>=1.11.0,<2.0.0` | No fixed date | [Releases](https://releases.hashicorp.com/terraform/) | Quarterly review, section 5.2 |
-| hashicorp/aws provider | 6.68.0, `~>6.68` | No fixed date; major 7 requires migration review | registry.terraform.io | Monthly Dependabot, section 5.3 |
+| hashicorp/aws provider | 6.71.0 (2026-11-09), `~>6.68` | No fixed date; major 7 requires migration review | registry.terraform.io | Monthly Dependabot, section 5.3 |
 | hashicorp/random provider | 3.9.1, `~>3.9` | No fixed date | registry.terraform.io | Monthly Dependabot |
 | AWS Load Balancer Controller | v3.6.0, chart 3.6.0 | No published EOL policy | [Releases](https://github.com/kubernetes-sigs/aws-load-balancer-controller/releases) | Quarterly, section 5.5 |
 | External Secrets Operator | v2.12.0, chart 2.12.0; `external-secrets.io/v1` | The project maintains recent versions | [Releases](https://github.com/external-secrets/external-secrets/releases) | Quarterly, section 5.6 |
